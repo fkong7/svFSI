@@ -57,7 +57,7 @@ c     Default integer precision
 c     Default real precision
       INTEGER, PARAMETER :: RKIND = RKIND8
 c     Default complex precision
-      INTEGER, PARAMETER :: CXKIND = 2*RKIND
+      INTEGER, PARAMETER :: CXKIND = 8
 
       END MODULE TYPEMOD
 !#######################################################################
