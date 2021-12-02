@@ -44,9 +44,9 @@
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo)
 
-      LOGICAL :: vmsStab
+      LOGICAL :: vmsStab, Stab
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), hfluid
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -228,9 +228,9 @@
             ELSE IF (nsd .EQ. 2) THEN
                SELECT CASE (cPhys)
                CASE (phys_fluid)
-                  CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
-     2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK)
+                  CALL FLUID2D_C(vmsStab, Stab, fs(1)%eNoN, fs(2)%eNoN, 
+     2               w, ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, 
+     3               Nwxx, al, yl, bfl, lR, lK, hfluid)
 
                CASE (phys_ustruct)
                   CALL USTRUCT2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
