@@ -44,9 +44,9 @@
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo)
 
-      LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
+      LOGICAL :: vmsStab, Stab
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, ido, jdo
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), hfluid, maxdist, dist
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -62,6 +62,9 @@
       ELSE
          vmsStab = .FALSE.
       END IF
+
+C     For the moment we are considering inf-sup non compatible fem
+      Stab = .TRUE. 
 
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
@@ -89,6 +92,26 @@
             yl(:,a)  = Yg(:,Ac)
             bfl(:,a) = Bf(:,Ac)
          END DO
+
+C        Compute hfluid
+         maxdist = 0._RKIND
+         dist = 0._RKIND
+
+         DO ido=1, eNoN
+            DO jdo=1, eNoN
+               IF (ido .NE. jdo) THEN
+                  dist = SQRT(NORM(xl(:,ido)-xl(:,jdo)))
+               END IF
+
+               IF (dist .GE. maxdist) THEN
+                  maxdist = dist
+               END IF
+            END DO
+         END DO
+
+         hfluid = maxdist
+
+C          write (*,*) "The max distance is " , hfluid
 
 !        Initialize residue and tangents
          lR = 0._RKIND
@@ -131,10 +154,11 @@
      3            bfl, lR, lK)
 
              ELSE IF (nsd .EQ. 2) THEN
-               CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
-     2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+               CALL FLUID2D_M(vmsStab, Stab, fs(1)%eNoN, fs(2)%eNoN, w, 
+     2            ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, 
+     3            yl, bfl, lR, lK)
             END IF
+
          END DO ! g: loop
 
 !        Set function spaces for velocity and pressure.
@@ -161,9 +185,9 @@
      3            bfl, lR, lK)
 
             ELSE IF (nsd .EQ. 2) THEN
-               CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
-     2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+               CALL FLUID2D_C(vmsStab, Stab, fs(1)%eNoN, fs(2)%eNoN, w, 
+     2            ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, 
+     3            yl, bfl, lR, lK, hfluid)
             END IF
          END DO ! g: loop
 
@@ -559,12 +583,12 @@
       RETURN
       END SUBROUTINE FLUID3D_M
 !--------------------------------------------------------------------
-      SUBROUTINE FLUID2D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+      SUBROUTINE FLUID2D_M(vmsFlag, bpStab, eNoNw, eNoNq, w, Kxi, Nw, 
+     2    Nq, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      LOGICAL, INTENT(IN) :: vmsFlag
+      LOGICAL, INTENT(IN) :: vmsFlag, bpStab
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
@@ -706,7 +730,7 @@
       up(1) = -tauM*(rho*rV(1) + px(1) - rS(1))
       up(2) = -tauM*(rho*rV(2) + px(2) - rS(2))
 
-      IF (vmsFlag) THEN
+      IF (vmsFlag .AND. (.not. bpStab)) THEN
          tauC = 1._RKIND / (tauM * (Kxi(1,1) + Kxi(2,2)))
          tauB = up(1)*up(1)*Kxi(1,1) + up(2)*up(1)*Kxi(2,1)
      2        + up(1)*up(2)*Kxi(1,2) + up(2)*up(2)*Kxi(2,2)
@@ -746,7 +770,7 @@
 !        Quantities used for stiffness matrix
          uNx(a)  = u(1)*Nwx(1,a)  + u(2)*Nwx(2,a)
          upNx(a) = up(1)*Nwx(1,a) + up(2)*Nwx(2,a)
-         IF (vmsFlag) THEN
+         IF (vmsFlag .AND. (.not. bpStab)) THEN
             uaNx(a) = uNx(a) + upNx(a)
          ELSE
             uaNx(a) = uNx(a)
@@ -1083,18 +1107,19 @@
       RETURN
       END SUBROUTINE FLUID3D_C
 !--------------------------------------------------------------------
-      SUBROUTINE FLUID2D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+      SUBROUTINE FLUID2D_C(vmsFlag, bpStab, eNoNw, eNoNq, w, Kxi, Nw, 
+     2    Nq, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, hfluid)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      LOGICAL, INTENT(IN) :: vmsFlag
+      LOGICAL, INTENT(IN) :: vmsFlag, bpStab
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(2,eNoNw)
+     3   yl(tDof,eNoNw), bfl(2,eNoNw), hfluid
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
+      REAL(KIND=RKIND) BPcoeff, gammaP
 
       INTEGER(KIND=IKIND) a, b, k
       REAL(KIND=RKIND) ctM, ctC, amd, wl, rho, tauM, kT, kS, kU, divU,
@@ -1204,7 +1229,7 @@
       END IF
       mu_x(:) = mu_g * mu_x(:)
 
-      IF (vmsFlag) THEN
+      IF (vmsFlag .AND. (.not. bpStab)) THEN
 !        Stabilization parameters
          kT = 4._RKIND*(ctM/dt)**2_RKIND
 
@@ -1264,7 +1289,7 @@
          END DO
       END DO
 
-      IF (vmsFlag) THEN
+      IF (vmsFlag .AND. (.not. bpStab)) THEN
          DO b=1, eNoNq
             DO a=1, eNoNq
 !              dC/dP
@@ -1272,6 +1297,27 @@
                lK(9,a,b) = lK(9,a,b) + wl*tauM*NxNx
             END DO
          END DO
+      END IF
+
+      IF (bpStab) THEN
+C     Adding the BP stabilization: 
+          gammaP = 0.001
+C     Compute coeff BP stab 
+          BPcoeff = gammaP*(hfluid**2._RKIND)/mu
+
+          DO b=1, eNoNq
+             DO a=1, eNoNq
+!               dC/dP
+                NxNx = Nqx(1,a)*Nqx(1,b) + Nqx(2,a)*Nqx(2,b)
+                lK(9,a,b) = lK(9,a,b) + wl*BPcoeff*NxNx
+             END DO
+          END DO
+
+          DO a=1, eNoNq
+             upNx    = px(1)*Nqx(1,a) + px(2)*Nqx(2,a)
+             lR(3,a) = lR(3,a) + BPcoeff*w*upNx
+          END DO
+
       END IF
 
       RETURN
