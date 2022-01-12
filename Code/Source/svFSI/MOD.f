@@ -850,6 +850,7 @@
       LOGICAL iCntct
 !     Whether any Immersed Boundary (IB) treatment is required
       LOGICAL ibFlag
+      LOGICAL ibFlagFannie
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
 

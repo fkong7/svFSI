@@ -181,6 +181,10 @@
                CALL IB_CONSTRUCT()
             END IF
 
+            IF (ibFlagFannie) THEN
+               CALL IFEM_CONSTRUCT()
+            END IF
+
             incL = 0
             IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
             IF (cmmInit) incL(nFacesLS) = 1
