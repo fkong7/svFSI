@@ -135,6 +135,7 @@ set(FSRCS TYPEMOD.f
          HEATF.f
          HEATS.f
          IB.f
+         IFEM.f
          INITIALIZE.f
          LELAS.f
          LHSA.f

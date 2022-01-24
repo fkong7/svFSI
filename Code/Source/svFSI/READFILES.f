@@ -97,6 +97,7 @@
          pstEq        = .FALSE.
          sstEq        = .FALSE.
          ibFlag       = .FALSE.
+         ifemFlag       = .FALSE.
 
          i = IARGC()
          IF (i .NE. 0) THEN
@@ -210,6 +211,7 @@
 
 !--------------------------------------------------------------------
 !     Reading the mesh
+      write(*,*) "call to READMSH:"
       CALL READMSH(list)
 
 !     Reading immersed boundary mesh data
@@ -219,6 +221,15 @@
          ALLOCATE(ib)
          CALL IB_READMSH(list)
          CALL IB_READOPTS(list)
+      END IF
+      
+      write(*,*) "call to IFEM_READMSH:"
+      i = list%srch("Add IFEM")
+      IF (i .GT. 0) THEN
+         ifemFlag = .TRUE.
+         ALLOCATE(ifem)
+         CALL IFEM_READMSH(list)
+!        CALL IFEM_READOPTS(list)
       END IF
 
 !--------------------------------------------------------------------
@@ -235,6 +246,13 @@
             IF (eq(iEq)%phys .EQ. phys_fluid .OR.
      2          eq(iEq)%phys .EQ. phys_FSI) THEN
                CALL IB_READEQ(eq(iEq), lPtr, ctmp)
+            END IF
+         END IF
+
+         IF (ifemFlag) THEN
+            IF (eq(iEq)%phys .EQ. phys_fluid .OR.
+     2          eq(iEq)%phys .EQ. phys_FSI) THEN
+               CALL IFEM_READEQ(eq(iEq), lPtr, ctmp)
             END IF
          END IF
 
@@ -863,8 +881,8 @@
          IF (.NOT.THFlag) THEN
             msh(iM)%nFs = 1
          ELSE
-            IF (ibFlag) err = "Taylor-Hood basis is not implemented "//
-     2         "for immersed boundaries"
+            IF (ibFlag .OR. ifemFlag) err = "Taylor-Hood basis"// 
+     2            "is not implemented for immersed boundaries"
             IF (msh(iM)%lShl .OR. msh(iM)%lFib .OR.
      2         (msh(iM)%eType.EQ.eType_NRB)) THEN
                msh(iM)%nFs = 1
@@ -1228,8 +1246,8 @@
 
          IF (lEq%useTLS) THEN
             lPtr => lPL%get(lEq%assmTLS, "Use Trilinos for assembly")
-            IF (lEq%assmTLS .AND. ibFlag) err = "Cannnot assemble "//
-     2         "immersed bodies using Trilinos"
+            IF (lEq%assmTLS .AND. (ibFlag.OR.ifemFlag)) err="Cannnot"//
+     2         " assemble immersed bodies using Trilinos"
          END IF
 
          lPtr => lPL%get(lEq%ls%mItr,"Max iterations",ll=1)

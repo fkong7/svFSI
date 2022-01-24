@@ -1853,6 +1853,128 @@ c        N(8) = lx*my*0.5_RKIND
 !     This routine returns a vector at element "e" and Gauss point
 !     "g" of face "lFa" that is the normal weigthed by Jac, i.e.
 !     Jac = SQRT(NORM(n)).
+      SUBROUTINE GNNIFEM(lFa, e, g, n)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: e, g
+      REAL(KIND=RKIND), INTENT(OUT) :: n(nsd)
+      TYPE(faceType), INTENT(IN) :: lFa
+
+      INTEGER(KIND=IKIND) a, Ac, i, iM, Ec, b, Bc, eNoN, insd
+      REAL(KIND=RKIND) v(nsd)
+
+      LOGICAL, ALLOCATABLE :: setIt(:)
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:)
+
+      iM   = lFa%iM
+      Ec   = lFa%gE(e)
+      eNoN = ifem%msh(iM)%eNoN
+      insd = nsd - 1
+
+      ALLOCATE(lX(nsd,eNoN), ptr(eNoN), setIt(eNoN))
+!     Creating a ptr list that contains pointer to the nodes of elements
+!     that are at the face at the beginning of the list and the rest at
+!     the end
+      setIt = .TRUE.
+      DO a=1, lFa%eNoN
+         Ac = lFa%IEN(a,e)
+         DO b=1, eNoN
+            IF (setIt(b)) THEN
+               Bc = ifem%msh(iM)%IEN(b,Ec)
+               IF (Bc .EQ. Ac) EXIT
+            END IF
+         END DO
+         ptr(a)   = b
+         setIt(b) = .FALSE.
+      END DO
+      a = lFa%eNoN
+      DO b=1, eNoN
+         IF (setIt(b)) THEN
+            a      = a + 1
+            ptr(a) = b
+         END IF
+      END DO
+
+!     Correct the position vector
+      DO a=1, eNoN
+         Ac = ifem%msh(iM)%IEN(a,Ec)
+         lX(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
+      END DO
+
+!     Calculating surface deflation
+      IF (ifem%msh(iM)%lShl) THEN
+!        Since the face has only one parametric coordinate (edge), find
+!        its normal from cross product of mesh normal and interior edge
+
+!        Update shape functions if NURBS
+         IF (ifem%msh(iM)%eType .EQ. eType_NRB)
+     2      CALL NRBNNX(ifem%msh(iM), Ec)
+
+!        Compute adjoining mesh element normal
+         ALLOCATE(xXi(nsd,insd))
+         xXi = 0._RKIND
+         DO a=1, eNoN
+            DO i=1, insd
+               xXi(:,i) = xXi(:,i) + lX(:,a)*ifem%msh(iM)%Nx(i,a,g)
+            END DO
+         END DO
+         v(:) = CROSS(xXi)
+         v(:) = v(:) / SQRT(NORM(v))
+         DEALLOCATE(xXi)
+
+!        Face element surface deflation
+         ALLOCATE(xXi(nsd,1))
+         xXi = 0._RKIND
+         DO a=1, lFa%eNoN
+            b = ptr(a)
+            xXi(:,1) = xXi(:,1) + lFa%Nx(1,a,g)*lX(:,b)
+         END DO
+
+!        Face normal
+         n(1) = v(2)*xXi(3,1) - v(3)*xXi(2,1)
+         n(2) = v(3)*xXi(1,1) - v(1)*xXi(3,1)
+         n(3) = v(1)*xXi(2,1) - v(2)*xXi(1,1)
+
+!        I choose Gauss point of the mesh element for calculating
+!        interior edge
+         v(:) = 0._RKIND
+         DO a=1, eNoN
+            v(:) = v(:) + lX(:,a)*ifem%msh(iM)%N(a,g)
+         END DO
+         a = ptr(1)
+         v(:) = lX(:,a) - v(:)
+         IF (NORM(n,v) .LT. 0._RKIND) n = -n
+
+         DEALLOCATE(xXi)
+         RETURN
+      ELSE
+         ALLOCATE(xXi(nsd,insd))
+         xXi = 0._RKIND
+         DO a=1, lFa%eNoN
+            b = ptr(a)
+            DO i=1, insd
+               xXi(:,i) = xXi(:,i) + lFa%Nx(i,a,g)*lX(:,b)
+            END DO
+         END DO
+         n = CROSS(xXi)
+         DEALLOCATE(xXi)
+      END IF
+
+!     Changing the sign if neccessary. a locates on the face and b
+!     outside of the face, in the parent element
+      a = ptr(1)
+      b = ptr(lFa%eNoN+1)
+      v = lX(:,a) - lX(:,b)
+      IF (NORM(n,v) .LT. 0._RKIND) n = -n
+
+      RETURN
+      END SUBROUTINE GNNIFEM
+!--------------------------------------------------------------------
+!     This routine returns a vector at element "e" and Gauss point
+!     "g" of face "lFa" that is the normal weigthed by Jac, i.e.
+!     Jac = SQRT(NORM(n)).
       SUBROUTINE GNNB(lFa, e, g, insd, eNoNb, Nx, n)
       USE COMMOD
       USE ALLFUN

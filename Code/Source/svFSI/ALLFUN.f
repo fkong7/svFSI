@@ -69,8 +69,8 @@
       INTERFACE DESTROY
          MODULE PROCEDURE DESTROYFACE, DESTROYMSH, DESTROYBC, DESTROYBF,
      2      DESTROYDMN, DESTROYEQ, DESTROYBS, DESTROYMB, DESTROYDATA,
-     3      DESTROYADJ, DESTROYSTACK, DESTROYQUEUE, DESTROYTRACE,
-     4      DESTROYIBCM, DESTROYFS
+     3      DESTROYADJ, DESTROYSTN, DESTROYSTACK, DESTROYQUEUE, 
+     4      DESTROYTRACE, DESTROYIBCM, DESTROYFS
       END INTERFACE DESTROY
 
       INTERFACE GETNADJCNCY
@@ -100,7 +100,7 @@
       LOGICAL, INTENT(IN), OPTIONAL :: pflag
       REAL(KIND=RKIND) IntegS
 
-      LOGICAL isIB, flag
+      LOGICAL isIfem,isIB, flag
       INTEGER(KIND=IKIND) a, e, g, Ac, nNo, insd
       REAL(KIND=RKIND) sHat, Jac, n(nsd)
       TYPE(fsType) :: fs
@@ -117,6 +117,9 @@
          IF (ibFlag) THEN
             IF (nNo .NE. ib%tnNo) err =
      2         "Incompatible vector size in Integ"
+         ELSEIF(ifemFlag) THEN
+            IF (nNo .NE. ifem%tnNo) err =
+     2         "Incompatible vector size in Integ"
          ELSE
             err = "Incompatible vector size in vInteg"
          END IF
@@ -125,6 +128,11 @@
       isIB = .FALSE.
       IF (ibFlag) THEN
          IF (nNo .EQ. ib%tnNo) isIB = .TRUE.
+      END IF
+
+      isIfem = .FALSE.
+      IF (ifemFlag) THEN
+         IF (nNo .EQ. ifem%tnNo) isIfem = .TRUE.
       END IF
 
 !     Update pressure function space for Taylor-Hood element
@@ -171,10 +179,17 @@
          END IF
 
          DO g=1, fs%nG
-            IF (.NOT.isIB) THEN
-               CALL GNNB(lFa, e, g, insd, fs%eNoN, fs%Nx(:,:,g), n)
-            ELSE
+C             IF (.NOT.isIB) THEN
+C                CALL GNNB(lFa, e, g, insd, fs%eNoN, fs%Nx(:,:,g), n)
+C             ELSE
+C                CALL GNNIB(lFa, e, g, n)
+C             END IF
+            IF (isIB) THEN
                CALL GNNIB(lFa, e, g, n)
+            ELSEIF (isIfem) THEN
+               CALL GNNIFEM(lFa, e, g, n)
+            ELSE 
+               CALL GNNB(lFa, e, g, insd, fs%eNoN, fs%Nx(:,:,g), n)
             END IF
             Jac = SQRT(NORM(n))
 
@@ -189,7 +204,7 @@
          END DO
       END DO
 
-      IF (cm%seq() .OR. isIB) RETURN
+      IF (cm%seq() .OR. isIB .OR. isIfem) RETURN
       IntegS = cm%reduce(IntegS)
 
       RETURN
@@ -203,7 +218,7 @@
       REAL(KIND=RKIND), INTENT(IN) :: s(:,:)
       REAL(KIND=RKIND) IntegV
 
-      LOGICAL isIB
+      LOGICAL isIB, isIfem
       INTEGER(KIND=IKIND) a, i, e, Ac, g, nNo
       REAL(KIND=RKIND) sHat, n(nsd)
 
@@ -214,6 +229,9 @@
          IF (ibFlag) THEN
             IF (nNo .NE. ib%tnNo) err =
      2         "Incompatible vector size in IntegV"
+         ELSE IF(ifemFlag) THEN
+            IF (nNo .NE. ifem%tnNo) err =
+     2         "Incompatible vector size in IntegV"
          ELSE
             err = "Incompatible vector size in IntegV"
          END IF
@@ -222,6 +240,11 @@
       isIB = .FALSE.
       IF (ibFlag) THEN
          IF (nNo .EQ. ib%tnNo) isIB = .TRUE.
+      END IF
+
+      isIfem = .FALSE.
+      IF (ifemFlag) THEN
+         IF (nNo .EQ. ifem%tnNo) isIfem = .TRUE.
       END IF
 
       IntegV = 0._RKIND
@@ -236,10 +259,12 @@
          END IF
 
          DO g=1, lFa%nG
-            IF (.NOT.isIB) THEN
-               CALL GNNB(lFa, e, g, nsd-1, lFa%eNoN, lFa%Nx(:,:,g), n)
-            ELSE
+            IF (isIB) THEN
                CALL GNNIB(lFa, e, g, n)
+            ELSEIF(isIfem) THEN
+               CALL GNNIFEM(lFa, e, g, n)
+            ELSE
+               CALL GNNB(lFa, e, g, nsd-1, lFa%eNoN, lFa%Nx(:,:,g), n)               
             END IF
 
 !     Calculating the function value
@@ -255,7 +280,7 @@
          END DO
       END DO
 
-      IF (cm%seq() .OR . isIB) RETURN
+      IF (cm%seq() .OR. isIB .OR. isIfem) RETURN
       IntegV = cm%reduce(IntegV)
 
       RETURN
@@ -335,6 +360,9 @@
       IF (nNo .NE. tnNo) THEN
          IF (ibFlag) THEN
             IF (nNo .NE. ib%tnNo) err =
+     2         "Incompatible vector size in vInteg"
+         ELSEIF(ifemFlag) THEN
+            IF (nNo .NE. ifem%tnNo) err =
      2         "Incompatible vector size in vInteg"
          ELSE
             err = "Incompatible vector size in vInteg"
@@ -1201,6 +1229,7 @@
 
       CALL DESTROYADJ(lM%nAdj)
       CALL DESTROYADJ(lM%eAdj)
+      CALL DESTROYSTN(lM%stn)
       CALL DESTROYTRACE(lM%trc)
 
       lM%lShl  = .FALSE.
@@ -1427,6 +1456,17 @@
 
       RETURN
       END SUBROUTINE DESTROYADJ
+!--------------------------------------------------------------------
+      PURE SUBROUTINE DESTROYSTN(stc)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(stencilType), INTENT(OUT) :: stc
+
+      IF (ALLOCATED(stc%ndStn)) DEALLOCATE(stc%ndStn)
+      IF (ALLOCATED(stc%elmStn)) DEALLOCATE(stc%elmStn)
+
+      RETURN
+      END SUBROUTINE DESTROYSTN
 !--------------------------------------------------------------------
       PURE SUBROUTINE DESTROYSTACK(stk)
       USE COMMOD
@@ -1790,16 +1830,28 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: incNd(:), adjL(:,:)
 
       ALLOCATE(incNd(lM%nNo))
-      incNd = 0
+      incNd = 0 !It stores the number of elements that contains the node
       DO e=1, lM%nEl
          DO a=1, lM%eNoN
             Ac = lM%IEN(a,e)
-            Ac = lM%lN(Ac)
+            Ac = lM%lN(Ac) ! CHECK THIS because Ac before and after 
+                           ! is the same 
+            IF ((lM%IEN(a,e) .EQ. lM%lN(lM%IEN(a,e))) 
+     2                                  .AND. (cm%np() .GE. 2)) THEN
+               write(*,*)"!!!! WARNING: local and global id are equal!!"
+               write(*,*)"cm%np() = ", cm%np()
+            END IF
+
+
             DO b=1, lM%eNoN
                IF (b .EQ. a) CYCLE
                incNd(Ac) = incNd(Ac) + 1
             END DO
          END DO
+      END DO
+
+      DO a=1, lM%nNo
+         write(*,*) "node ", a, " in ", incNd(Ac), " elements"
       END DO
 
       maxAdj = MAXVAL(incNd)
@@ -1866,6 +1918,128 @@
 
       RETURN
       END SUBROUTINE GETNADJ_MSH
+
+!####################################################################
+!     Find nodal stencil/adjacency of a given mesh.  ?? TODO
+!     Computes list of all nodes (just IDs) around a given node of a mesh.
+      SUBROUTINE GETNSTENCIL(lM)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(INOUT) :: lM
+
+      INTEGER(KIND=IKIND) :: a, b, e, Ac, Bc, i, j, k, maxAdj, IdElmF
+      LOGICAL :: flag
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: incNd(:) !nbr of elem included in the stencil 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: idxInsrt(:) !nbr of elem included in the stencil 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: stcNd(:,:) !stencil with node id
+      INTEGER(KIND=IKIND), ALLOCATABLE :: stcElm(:,:) !stencil with element id
+
+      ALLOCATE(incNd(lM%nNo))
+      incNd = 0 !It stores the number of elements that contains that fluid node
+      write(*,*)"allocating incNd for nNo = ", lM%nNo
+      DO e=1, lM%nEl
+         DO a=1, lM%eNoN
+            ! TODO FOR PARALLEL VERSION
+            Ac = lM%IEN(a,e)
+            Ac = lM%lN(Ac) 
+            incNd(Ac) = incNd(Ac) + 1
+!           CHECK THIS because Ac before and after is the same 
+            IF ((lM%IEN(a,e) .EQ. lM%lN(lM%IEN(a,e))) 
+     2                                  .AND. (cm%np() .GE. 2)) THEN
+               write(*,*)"!!!! WARNING: local and global id are equal!!"
+               write(*,*)"cm%np() = ", cm%np()
+            END IF
+         END DO
+         write(*,*) " for element ", e , " incNd is ", incNd
+      END DO
+
+      DO a=1, lM%nNo
+         write(*,*) "node ", a, " in ", incNd(Ac), " elements"
+      END DO
+
+!     The number of elements in the stencil is also equal to the 
+!     number of nodes in the stencil 
+      maxAdj = MAXVAL(incNd)
+      ALLOCATE(stcNd(lM%nNo,maxAdj+1))
+      ALLOCATE(stcElm(lM%nNo,maxAdj))
+      ALLOCATE(idxInsrt(lM%nNo))
+
+      stcNd = 0
+      stcElm = 0
+      idxInsrt = 1
+
+!     Fill stcElm()
+      DO e=1, lM%nEl
+         DO a=1, lM%eNoN
+            ! TODO FOR PARALLEL VERSION
+            Ac = lM%IEN(a,e)
+!             Ac = lM%lN(Ac) 
+            stcElm(Ac,idxInsrt(Ac)) = e
+            idxInsrt(Ac) = idxInsrt(Ac) + 1
+         END DO
+      END DO
+
+      DO e=1, lM%nNo
+         a = incNd(e)
+         write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
+      END DO
+
+!     Filling stcNd
+      idxInsrt = 1
+      flag = .FALSE.
+
+      DO e = 1, lM%nNo ! Fluid Id node
+         DO a = 1, incNd(e) 
+            IdElmF = stcElm(e,a) ! Id fluid element
+         
+            DO i=1, lM%eNoN
+               ! TODO FOR PARALLEL VERSION
+               Ac = lM%IEN(i,IdElmF)
+!              Ac = lM%lN(Ac) 
+               IF (Ac .EQ. e) CYCLE
+
+!              check if we have already added 
+               DO j=1, maxAdj+1
+                  IF (stcNd(e,j) == Ac) THEN 
+                     flag = .TRUE. ! we have already added it
+                  END IF
+               END DO
+
+!              we add the new vertex in the stencil
+               IF(.NOT.flag) THEN 
+                  stcNd(e,idxInsrt(e)) = Ac
+                  idxInsrt(e) = idxInsrt(e) + 1
+               END IF
+            END DO
+
+            flag = .FALSE.
+         END DO
+
+         flag = .FALSE.
+      END DO
+
+      DO e=1, lM%nNo
+         a = idxInsrt(e)-1
+         write(*,*) "   "
+         write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
+      END DO
+
+!     insert them into lm%stn
+
+      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+1)) 
+      ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
+
+      lm%stn%ndStn = stcNd
+      lm%stn%elmStn = stcElm
+
+      DEALLOCATE(incNd)
+      DEALLOCATE(stcNd)
+      DEALLOCATE(stcElm)
+      DEALLOCATE(idxInsrt)
+
+      RETURN
+      END SUBROUTINE GETNSTENCIL
 !--------------------------------------------------------------------
 !     Find nodal adjacency of a given face. Computes list of all nodes
 !     around a given node of a face.
@@ -1976,6 +2150,9 @@
          DO a=1, lM%eNoN
             Ac = lM%IEN(a,e)
             Ac = lM%lN(Ac)
+!           counting how many elements contain this node
+!           ?? what if the node is not included in the local map? 
+!           ?? lM is the local map, why are lM%IEN(a,e) and lM%lN(Ac) the same? 
             incNd(Ac) = incNd(Ac) + 1
          END DO
       END DO

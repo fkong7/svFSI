@@ -290,6 +290,14 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: prow(:)
       END TYPE adjType
 
+!     Mesh stencil for each fluid node 
+      TYPE stencilType
+!        Node stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
+!        Element stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
+      END TYPE stencilType
+
 !     Tracer type used for immersed boundaries. Identifies traces of
 !     nodes and integration points on background mesh elements
       TYPE traceType
@@ -598,6 +606,8 @@
          TYPE(faceType), ALLOCATABLE :: fa(:)
 !        IB: tracers
          TYPE(traceType) :: trc
+!        StencilType for IFEM
+         TYPE(stencilType) :: stn
       END TYPE mshType
 
 !     Equation type
@@ -801,6 +811,81 @@
          TYPE(ibCommType) :: cm
       END TYPE ibType
 
+!     Immersed Finite Element (IFEM) data type
+      TYPE ifemType
+!        IFEM position coordinates (initial Lagrangian nodes)
+         REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
+!        Total number of immersed nodes (solid nodes)  
+         INTEGER(KIND=IKIND) :: tnNo
+!        Number of IB meshes
+         INTEGER(KIND=IKIND) :: nMsh
+!        IB Domain ID
+         INTEGER(KIND=IKIND), ALLOCATABLE :: dmnID(:)
+!         
+!        Displacement (new) ?? Need to be deleted
+         REAL(KIND=RKIND), ALLOCATABLE :: Ubn(:,:)
+!        Velocity (new)
+         REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
+!        Time derivative of displacement (old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Auo(:,:)
+!        Displacement (old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Ubo(:,:)
+!
+!        Residue (FSI force)
+         REAL(KIND=RKIND), ALLOCATABLE :: Rfluid(:,:) !R
+         REAL(KIND=RKIND), ALLOCATABLE :: R(:,:) !nned to be deleted
+!        Residue (displacement, background mesh)
+         REAL(KIND=RKIND), ALLOCATABLE :: Rsolid(:,:) !Ru
+         REAL(KIND=RKIND), ALLOCATABLE :: Ru(:,:) !nned to be deleted 
+!        DERIVED TYPE VARIABLES
+!        IFEM meshes
+         TYPE(mshType), ALLOCATABLE :: msh(:)
+!        Closest fluid node for each solid node
+         REAL(KIND=RKIND), ALLOCATABLE :: clsFNd(:)
+!        IB communicator
+         TYPE(ibCommType) :: cm
+
+
+
+!        Whether any file being saved
+         LOGICAL :: savedOnce = .FALSE.
+!        IB method
+         INTEGER(KIND=IKIND) :: mthd = ibMthd_NA
+!        IB coupling
+         INTEGER(KIND=IKIND) :: cpld = ibCpld_NA
+!        IB interpolation method
+         INTEGER(KIND=IKIND) :: intrp = ibIntrp_NA
+!        Current IB domain ID
+         INTEGER(KIND=IKIND) :: cDmn
+!        Current equation
+         INTEGER(KIND=IKIND) :: cEq = 0
+!        IB call duration (1: total time; 2: update; 3,4: communication)
+         REAL(KIND=RKIND) :: callD(4)
+
+!        Row pointer (for sparse LHS matrix storage)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: rowPtr(:)
+!        Column pointer (for sparse LHS matrix storage)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: colPtr(:)
+
+!        THOSE NEED TO BE DELETED
+!        Time derivative of displacement (new)
+         REAL(KIND=RKIND), ALLOCATABLE :: Aun(:,:)
+!        Time derivative of displacement (n+am)
+         REAL(KIND=RKIND), ALLOCATABLE :: Auk(:,:)
+
+!        Displacement (n+af)
+         REAL(KIND=RKIND), ALLOCATABLE :: Ubk(:,:)
+!        Displacement (projected on background mesh, old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Uo(:,:)
+!        Displacement (projected on background mesh, new, n+af)
+         REAL(KIND=RKIND), ALLOCATABLE :: Un(:,:)
+
+!        Residue (displacement, IB mesh)
+         REAL(KIND=RKIND), ALLOCATABLE :: Rub(:,:)
+!        LHS tangent matrix for displacement
+         REAL(KIND=RKIND), ALLOCATABLE :: Ku(:,:)
+      END TYPE ifemType
+
 !     Data type for Trilinos Linear Solver related arrays
       TYPE tlsType
 !        Local to global mapping
@@ -850,6 +935,8 @@
       LOGICAL iCntct
 !     Whether any Immersed Boundary (IB) treatment is required
       LOGICAL ibFlag
+!     Whether any Immersed Finite Element (IFEM) treatment is required
+      LOGICAL ifemFlag
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
 
@@ -936,7 +1023,7 @@
       REAL(KIND=RKIND), ALLOCATABLE :: Ao(:,:)
 !     New time derivative of variables
       REAL(KIND=RKIND), ALLOCATABLE :: An(:,:)
-!     Old integrated variables (dissplacement)
+!     Old integrated variables (displacement)
       REAL(KIND=RKIND), ALLOCATABLE :: Do(:,:)
 !     New integrated variables
       REAL(KIND=RKIND), ALLOCATABLE :: Dn(:,:)
@@ -996,6 +1083,8 @@
       TYPE(cntctModelType) cntctM
 !     IB: Immersed boundary data structure
       TYPE(ibType), ALLOCATABLE :: ib
+!     IFEM: Immersed finite element data structure
+      TYPE(ifemType), ALLOCATABLE :: ifem
 !     Trilinos Linear Solver data type
       TYPE(tlsType), ALLOCATABLE :: tls
 

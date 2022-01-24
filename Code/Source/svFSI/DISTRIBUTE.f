@@ -98,7 +98,7 @@
          CALL PARTMSH(msh(iM), gmtl, cm%np(), iWgt)
       END DO
 
-!     Setting gtl pointer in case that it is needed and mapping IEN
+      !     Setting gtl pointer in case that it is needed and mapping IEN
       DO iM=1, nMsh
          IF (ALLOCATED(msh(iM)%lN)) DEALLOCATE(msh(iM)%lN)
          ALLOCATE(msh(iM)%lN(tnNo))
@@ -207,8 +207,10 @@
             CALL cm%bcast(cntctM%h)
             CALL cm%bcast(cntctM%al)
          END IF
+         write(*,*)"before bcast"
          CALL cm%bcast(ibFlag)
-         IF (ibFlag) CALL DISTIB()
+         CALL cm%bcast(ifemFlag)
+         IF (ibFlag .OR. ifemFlag) CALL DISTIB()
          CALL cm%bcast(nXion)
       END IF
 
@@ -374,26 +376,52 @@
 
       INTEGER(KIND=IKIND) iM, iFa
 
-      IF (cm%slv()) ALLOCATE(ib)
+      write(*,*)"Inside DISTIB"
+      IF(ibFlag) THEN
+         IF (cm%slv()) ALLOCATE(ib)
 
-      CALL cm%bcast(ib%mthd)
-      CALL cm%bcast(ib%cpld)
-      CALL cm%bcast(ib%intrp)
+         CALL cm%bcast(ib%mthd)
+         CALL cm%bcast(ib%cpld)
+         CALL cm%bcast(ib%intrp)
 
-      CALL cm%bcast(ib%nMsh)
-      CALL cm%bcast(ib%tnNo)
-      IF (cm%slv()) THEN
-         ALLOCATE(ib%msh(ib%nMsh))
-         ALLOCATE(ib%x(nsd,ib%tnNo))
-      END IF
-      CALL cm%bcast(ib%x)
+         CALL cm%bcast(ib%nMsh)
+         CALL cm%bcast(ib%tnNo)
+         IF (cm%slv()) THEN
+            ALLOCATE(ib%msh(ib%nMsh))
+            ALLOCATE(ib%x(nsd,ib%tnNo))
+         END IF
+         CALL cm%bcast(ib%x)
 
-      DO iM=1, ib%nMsh
-         CALL DISTIBMSH(ib%msh(iM))
-         DO iFa=1, ib%msh(iM)%nFa
-            CALL DISTIBFa(ib%msh(iM), ib%msh(iM)%fa(iFa))
+         DO iM=1, ib%nMsh
+            CALL DISTIBMSH(ib%msh(iM))
+            DO iFa=1, ib%msh(iM)%nFa
+               CALL DISTIBFa(ib%msh(iM), ib%msh(iM)%fa(iFa))
+            END DO
          END DO
-      END DO
+      ELSE 
+         IF (cm%slv()) ALLOCATE(ifem)
+
+         CALL cm%bcast(ifem%mthd)
+         CALL cm%bcast(ifem%cpld)
+         CALL cm%bcast(ifem%intrp)
+
+         CALL cm%bcast(ifem%nMsh)
+         CALL cm%bcast(ifem%tnNo)
+         IF (cm%slv()) THEN
+            ALLOCATE(ifem%msh(ifem%nMsh))
+            ALLOCATE(ifem%x(nsd,ifem%tnNo))
+         END IF
+         CALL cm%bcast(ifem%x)
+
+         DO iM=1, ifem%nMsh
+            CALL DISTIBMSH(ifem%msh(iM))
+            DO iFa=1, ifem%msh(iM)%nFa
+               CALL DISTIBFa(ifem%msh(iM), ifem%msh(iM)%fa(iFa))
+            END DO
+         END DO
+
+
+      END IF
 
       RETURN
       END SUBROUTINE DISTIB
@@ -429,7 +457,8 @@
          lM%nNo = lM%gnNo
          lM%nEl = lM%gnEl
          ALLOCATE(lM%gN(lM%nNo))
-         ALLOCATE(lM%lN(ib%tnNo))
+         IF(ibFlag) ALLOCATE(lM%lN(ib%tnNo))
+         IF(ifemFlag) ALLOCATE(lM%lN(ifem%tnNo))
          ALLOCATE(lM%IEN(lM%eNoN, lM%nEl))
          ALLOCATE(lM%eId(lM%nEl))
          ALLOCATE(lM%fa(lM%nFa))
@@ -482,7 +511,8 @@
       IF (cm%slv()) THEN
          ALLOCATE(lFa%IEN(lFa%eNoN,lFa%nEl))
          ALLOCATE(lFa%gN(lFa%nNo))
-         ALLOCATE(lFa%lN(ib%tnNo))
+         IF(ibFlag) ALLOCATE(lFa%lN(ib%tnNo))
+         IF(ifemFlag) ALLOCATE(lFa%lN(ib%tnNo))
          ALLOCATE(lFa%gE(lFa%nEl))
          CALL SELECTELEB(lM, lFa)
       END IF

@@ -66,13 +66,16 @@
       resetSim  = .FALSE.
       rmsh%cntr = 0
 
+      write(*,*) "READFILES: "
 !     Reading the user-defined parameters from foo.inp
  101  CALL READFILES
 
+      write(*,*) "DISTRIBUTE: "
 !     Doing the partitioning and distributing the data to the all
 !     Processors
       CALL DISTRIBUTE
 
+      write(*,*) "INITIALIZE: "
 !     Initializing the solution vectors and constructing LHS matrix
 !     format
       CALL INITIALIZE(timeP)
@@ -181,6 +184,10 @@
                CALL IB_CONSTRUCT()
             END IF
 
+            IF (ifemFlag) THEN
+               CALL IFEM_CONSTRUCT()
+            END IF
+
             incL = 0
             IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
             IF (cmmInit) incL(nFacesLS) = 1
@@ -216,6 +223,12 @@
                ib%Auo = ib%Aun
                ib%Ubo = ib%Ubn
             END IF
+         END IF
+
+!     IFEM: update the solid displacement and velocity given the new 
+!     fluid velocity, using Adams-Bashforth scheme 
+         IF (ifemFlag) THEN
+            CALL IFEM_INTERPYU(Yn, Dn)
          END IF
 
 !     Saving the TXT files containing average and fluxes
@@ -258,6 +271,7 @@
                CALL OUTRESULT(timeP, 3, iEqOld)
                CALL WRITEVTUS(An, Yn, Dn, .FALSE.)
                IF (ibFlag) CALL IB_WRITEVTUS(ib%Yb, ib%Ubo)
+               IF (ifemFlag) CALL IFEM_WRITEVTUS(ib%Yb, ib%Ubo)
             ELSE
                CALL OUTRESULT(timeP, 2, iEqOld)
             END IF
@@ -267,6 +281,7 @@
          IF (pstEq) CALL OUTDNORM()
 
          IF (ibFlag) CALL IB_OUTCPUT()
+         IF (ifemFlag) CALL IFEM_OUTCPUT()
 
 !     Exiting outer loop if l1
          IF (l1) EXIT

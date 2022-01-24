@@ -161,6 +161,8 @@
       i = IKIND*(1+SIZE(stamp)) + RKIND*(2+nEq+cplBC%nX+i*tnNo)
 
       IF (ibFlag) i = i + RKIND*(3*nsd+1)*ib%tnNo
+      write(*,*) "First call to ifemFlag?"
+      IF (ifemFlag) i = i + RKIND*(3*nsd+1)*ifem%tnNo
       IF (cm%seq()) THEN
          recLn = i
       ELSE
@@ -219,6 +221,7 @@
       ALLOCATE(Ao(tDof,tnNo), An(tDof,tnNo), Yo(tDof,tnNo),
      2   Yn(tDof,tnNo), Do(tDof,tnNo), Dn(tDof,tnNo), Bf(nsd,tnNo))
       IF (ibFlag) CALL IB_MEMALLOC()
+      IF (ifemFlag) CALL IFEM_MEMALLOC()
 
 !     Additional physics dependent variables
 !     USTRUCT phys
@@ -344,7 +347,10 @@
 !     Initialize Immersed Boundary data structures
       ALLOCATE(iblank(tnNo))
       iblank = 0
-      IF (ibFlag) CALL IB_INIT(Do)
+!     Initialize fe spaces 
+!     Set iblank, communication structures and ghost cells from Do
+      IF (ibFlag) CALL IB_INIT(Do) 
+      IF (ifemFlag) CALL IFEM_INIT(Do) 
 
 !     Calculating the volume of each domain
       ALLOCATE(s(1,tnNo))
@@ -384,7 +390,7 @@
       RETURN
       END SUBROUTINE INITIALIZE
 !--------------------------------------------------------------------
-!     Initializing accelaration, velocity and displacement to zero
+!     Initializing acceleration, velocity and displacement to zero
       SUBROUTINE ZEROINIT(timeP)
       USE COMMOD
       IMPLICIT NONE
@@ -424,6 +430,12 @@
             ib%Uo  = 0._RKIND
             ib%Un  = 0._RKIND
          END IF
+      END IF
+
+      IF (ifemFlag) THEN
+         ifem%Yb  = 0._RKIND
+         ifem%Auo = 0._RKIND
+         ifem%Ubo = 0._RKIND
       END IF
 
 !     Load any explicitly provided solution variables
@@ -506,7 +518,7 @@
       END IF
 
       OPEN(fid, FILE=fName, ACCESS='DIRECT', RECL=recLn)
-      IF (.NOT.ibFlag) THEN
+      IF ((.NOT.ibFlag).OR.(.NOT.ifemFlag)) THEN
          IF (dFlag) THEN
             IF (sstEq) THEN
                IF (pstEq) THEN
@@ -710,6 +722,29 @@
          DEALLOCATE(ib%msh)
 
          DEALLOCATE(ib)
+      END IF
+
+      !     IFEM structures
+      IF (ifemFlag) THEN
+         IF (ALLOCATED(ifem%dmnId))  DEALLOCATE(ifem%dmnId)
+         IF (ALLOCATED(ifem%rowPtr)) DEALLOCATE(ifem%rowPtr)
+         IF (ALLOCATED(ifem%colPtr)) DEALLOCATE(ifem%colPtr)
+         IF (ALLOCATED(ifem%x))      DEALLOCATE(ifem%x)
+         IF (ALLOCATED(ifem%Yb))     DEALLOCATE(ifem%Yb)
+         IF (ALLOCATED(ifem%Auo))    DEALLOCATE(ifem%Auo)
+         IF (ALLOCATED(ifem%Ubo))    DEALLOCATE(ifem%Ubo)
+         IF (ALLOCATED(ifem%Rfluid)) DEALLOCATE(ifem%Rfluid)
+         IF (ALLOCATED(ifem%Rsolid)) DEALLOCATE(ifem%Rsolid)
+         IF (ALLOCATED(ifem%cm%n))   DEALLOCATE(ifem%cm%n)
+         IF (ALLOCATED(ifem%cm%gN))  DEALLOCATE(ifem%cm%gN)
+         IF (ALLOCATED(ifem%clsFNd))  DEALLOCATE(ifem%clsFNd)
+
+         DO iM=1, ib%nMsh
+            CALL DESTROY(ifem%msh(iM))
+         END DO
+         DEALLOCATE(ifem%msh)
+
+         DEALLOCATE(ifem)
       END IF
 
 !     Closing the output channels
