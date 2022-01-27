@@ -52,7 +52,7 @@
          Do = 0._RKIND
       END IF
 
-!     IB treatment: Set dirichlet BC and update traces. For explicit
+!     IB treatment: Set Dirichlet BC and update traces. For explicit
 !     coupling, compute FSI forcing and freeze it for the time step.
 !     For implicit coupling, project IB displacement on background
 !     mesh and predict quantities at next time step
@@ -76,6 +76,18 @@
 
          END IF
       END IF
+
+C       IF (ifemFlag) THEN
+C !        Set IB Dirichlet BCs
+C          CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+
+C !        Update IB location and tracers, if we are not at the first iteration
+C !        search for the new closest point looking in the fluid neighbors 
+C          CALL IFEM_UPDATE(Do)
+
+C !        FSI forcing for immersed bodies (explicit coupling)
+C          CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+C       END IF
 
       DO iEq=1, nEq
          s = eq(iEq)%s
@@ -246,7 +258,7 @@
          END DO
       END IF
 
-!     IB treatment
+!     IB treatment, no need for ifem (we consider an explicit treatment)
       IF (ibFlag) CALL IB_PICC()
 
       IF (ISZERO(eq(cEq)%FSILS%RI%iNorm)) eq(cEq)%FSILS%RI%iNorm = eps

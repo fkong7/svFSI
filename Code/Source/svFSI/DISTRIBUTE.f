@@ -410,8 +410,10 @@
          IF (cm%slv()) THEN
             ALLOCATE(ifem%msh(ifem%nMsh))
             ALLOCATE(ifem%x(nsd,ifem%tnNo))
+            ALLOCATE(ifem%xcrn(nsd,ifem%tnNo))
          END IF
          CALL cm%bcast(ifem%x)
+         CALL cm%bcast(ifem%xcrn)
 
          DO iM=1, ifem%nMsh
             CALL DISTIBMSH(ifem%msh(iM))

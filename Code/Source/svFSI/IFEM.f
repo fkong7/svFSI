@@ -117,7 +117,9 @@
          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
       END DO
       ALLOCATE(ifem%x(nsd,ifem%tnNo))
+      ALLOCATE(ifem%xcrn(nsd,ifem%tnNo))
       ifem%x = gX
+      ifem%xcrn = gX
       DEALLOCATE(gX)
 
 !     Setting msh%gN, msh%lN parameter
@@ -910,36 +912,18 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
          CALL GETNSTENCIL(msh(iM))
       END DO
 
-!     Find the fluid element where each solid node is
+!     Find the closest fluid node for each solid node 
+!     and search in which fluid element the solid node belongs
       DO iM=1, ifem%nMsh
          CALL IFEM_FINDCLOSEST(ifem%msh(iM), lD)
       END DO
 
-
-!     Find the closest fluid node for each solid node 
-!     searching from the fluid element in which the solid node belongs 
-
-
-
-
-
-
-
-
-
-!     Set iblank field for immersed boundaries
-      CALL IFEM_SETIBLANK(lD)
-
-!     Compute the traces of IFEM nodes on the background mesh
-      DO iM=1, ifem%nMsh
-         CALL IFEM_FINDTRACES(ifem%msh(iM), lD)
-      END DO
-
+!     DO something for paralle here??
 !     Initialize IFEM communication structure
-      CALL IFEM_SETCOMMU()
+!      CALL IFEM_SETCOMMU()
 
 !     Identify ghost cells for immersed boundaries
-      CALL IFEM_SETIGHOST()
+!      CALL IFEM_SETIGHOST()
 
       tt = CPUT() - tt
       WRITE(sOut,'(F6.2)') tt
@@ -1554,16 +1538,155 @@ C       END SUBROUTINE IFEM_LHSA
       RETURN
       END SUBROUTINE IFEM_CHECKINOUT
 !####################################################################
-!     Find closest fluid node for each solid node
+!     Find closest fluid node for each solid node, TODO for parallel
       SUBROUTINE IFEM_FINDCLOSEST(lM, lD)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      TYPE(mshType), INTENT(INOUT) :: lM
+      TYPE(mshType), INTENT(INOUT) :: lM ! ifem mesh 
       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
 
-!     Find nodal traces
-      CALL IFEM_FINDNDTRACES(lM, lD)
+      INTEGER(KIND=IKIND) :: a, e, i, j, iM, Ac, Acn
+      REAL(KIND=RKIND), ALLOCATABLE :: xSCur(:,:)
+      INTEGER(KIND=IKIND), ALLOCATABLE :: elmF(:), nodeF(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: poly(:,:)
+      REAL(KIND=RKIND) :: xp(nsd), xs(nsd), minb(nsd), maxb(nsd)
+      REAL(KIND=RKIND) :: diam, maxDist
+      LOGICAL :: flag = .FALSE.
+      LOGICAL :: find = .FALSE.      
+
+
+!     Update current solid (from Lag to Eul) and fluid location (in case of ALE)
+      ALLOCATE(xSCur(nsd,lM%nNo))
+      ALLOCATE(elmF(lM%nNo))
+      ALLOCATE(nodeF(lM%nNo))
+      ALLOCATE(poly(nsd,lM%eNoN))
+
+      xsCur = 0._RKIND
+      elmF = 0
+      nodeF = 0
+
+      DO a=1, lM%nNo
+         Ac = lM%gN(a)
+         ! ?? check this for parallel 
+         xSCur(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
+      END DO
+
+C       write(*,*)"The solid ifem%Ubo is: ", ifem%Ubo
+C       write(*,*)"The solid xSCur is: ", xSCur
+
+      maxDist = TINY(maxDist)
+!     compute solid mesh diamter (in the current configuration)
+      DO e=1, lM%nEl
+
+         Ac = lM%IEN(1,e)
+         Acn = lM%IEN(2,e)
+         diam = DIST(ifem%x(:,Ac),ifem%x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         Ac = lM%IEN(2,e)
+         Acn = lM%IEN(3,e)
+         diam = DIST(ifem%x(:,Ac),ifem%x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         Ac = lM%IEN(1,e)
+         Acn = lM%IEN(3,e)
+         diam = DIST(ifem%x(:,Ac),ifem%x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+      END DO
+
+C       write(*,*)"The solid diameter is : ", maxDist
+
+!     Create a bounding box around of the current solid location 
+      minb = HUGE(minb)
+      maxb = TINY(maxb)
+
+      DO i=1, nsd
+         minb(i) = MINVAL(xSCur(i,:)) - maxDist
+         maxb(i) = MAXVAL(xSCur(i,:)) + maxDist
+      END DO
+
+C       write(*,*)"The solid BBOX x-dir is: ", minb(1), " and ", maxb(1)
+C       write(*,*)"The solid BBOX y-dir is: ", minb(2), " and ", maxb(2)
+
+!     Check that the solid is inside the fluid deformed mesh 
+C       DO iM=1, nMsh
+C          DO a=1, msh(iM)%nNo
+C             Ac = msh(iM)%gN(a)
+C             xp(:) = x(:,Ac) + lD(:,Ac)
+C             DO i=1, nsd
+C                IF (minb(i) .GT. xp(i)) minb(i) = xp(i)
+C                IF (maxb(i) .LT. xp(i)) maxb(i) = xp(i)
+C             END DO
+C          END DO
+C       END DO
+
+!     loop over the fluid element to search if any of the solid node is inside 
+      DO iM=1, nMsh
+         DO e=1, msh(iM)%nEl ! fluid elem id
+C             write(*,*)"Testing fluid element: ", e
+            flag = .FALSE.
+
+            DO a=1, msh(iM)%eNoN
+
+               Ac = msh(iM)%IEN(a,e)
+
+               xp(:) = x(:,Ac) + lD(:,Ac)
+
+!              is the fluid element in the solid BBox? 
+               IF((xp(1) .LE. maxb(1)) .AND. (xp(1) .GE. minb(1)) 
+     2                   .AND. (xp(2) .LE. maxb(2)) 
+     3                   .AND. (xp(2) .GE. minb(2))) THEN 
+!                 The node is inside the Bounding Box
+                  flag = .TRUE.
+                  EXIT
+               END IF 
+            END DO
+
+            IF (flag) THEN
+!              Loop over the solid node, and search if is inside the fluid element 
+C                write(*,*) "Element ", e, " inside BBox, with vertices: "
+
+               DO a=1, msh(iM)%eNoN
+                  Ac = msh(iM)%IEN(a,e)
+                  poly(:,a) = x(:,Ac) + lD(:,Ac)
+C                   write(*,*) poly(:,a)
+               END DO  
+
+               DO a=1, lM%nNo
+                  xs = xSCur(:,a)
+                  find = IN_POLY(xs,poly)
+C                   write(*,*)"find node solid ", a, " is ", find
+
+!                 is the solid node in this fluis element 
+                  IF (find) THEN 
+                     elmF(a) = e 
+!                    If inside, serach for the closest point   
+!                    local (element) id of the closest point
+                     nodeF(a) = CLOSEST_POINT(xs,poly) 
+C                      write(*,*)"Closes id is ", msh(iM)%IEN(nodeF(a),e)
+C                      EXIT
+                  END IF
+               END DO
+            END IF
+
+         END DO
+      END DO
+
+      ALLOCATE(ifem%clsFElm(lM%nNo))
+      ALLOCATE(ifem%clsFNd(lM%nNo))
+
+      ifem%clsFNd = nodeF
+      ifem%clsFElm = elmF
+
+C       write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
+C       write(*,*) "closest local id is : ", ifem%clsFNd
+
+      DEALLOCATE(xSCur)
+      DEALLOCATE(elmF)
+      DEALLOCATE(nodeF)
+      DEALLOCATE(poly)
 
       RETURN
       END SUBROUTINE IFEM_FINDCLOSEST
@@ -3720,7 +3843,7 @@ c      END DO
       CALL IFEM_CALCFFSI(Ag, Yg, Dg, ifem%Auk, ifem%Ubk)
 
 !     Interpolate flow variables (v, p) from fluid mesh to IFEM
-      CALL IFEM_INTERPYU(Yg, Dg)
+      CALL IFEM_INTERPVEL(Yg, Dg)
 
 !     Correct RHS and compute ifem%Rub
       CALL IFEM_RHSUpdate()
@@ -3816,61 +3939,45 @@ c      END DO
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo), Aug(nsd,ifem%tnNo), Ubg(nsd,ifem%tnNo)
 
-      INTEGER(KIND=IKIND) a, b, e, g, i, j, Ac, Bc, Ec, iM, jM, eNoNb,
-     2   eNoN, nFn, ibl
-      REAL(KIND=RKIND) w, Jac, dtF, rt, xi(nsd), Kxi(nsd,nsd), tt(2)
 
-      INTEGER, ALLOCATABLE :: ptr(:)
-      REAL(KIND=RKIND), ALLOCATABLE :: Nb(:), Nbx(:,:), N(:), Nxi(:,:),
-     2   Nx(:,:), xbl(:,:), xl(:,:), al(:,:), yl(:,:), aul(:,:),
-     3   ubl(:,:), ul(:,:), fN(:,:), lR(:,:), lRu(:,:), lKu(:,:,:),
-     4   lK(:,:,:), sA(:)
+!     Allocation
+ 
 
       tt(1) = CPUT()
       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
 !     Initialize residues to 0
       ifem%R = 0._RKIND
-      IF (ifem%cpld .EQ. ibCpld_I) THEN
-         ALLOCATE(sA(tnNo))
-         sA    = 0._RKIND
-         ifem%Ru = 0._RKIND
-         ifem%Ku = 0._RKIND
-      END IF
 
-!     We compute the fluid-structure interaction force on the IFEM domain
-!     and assemble the residue on the background mesh. The test or the
-!     weighting function spaces used in the weak form for residue is
-!     based on the background fluid mesh, while the integration is
-!     performed on the IFEM mesh in its reference configuration.
+!     We compute the fluid-structure interaction force on the solid initial 
+!     domain
+
+
+
+
+
+HERE!
+
+
 !     Loop over all IFEM mesh
       DO iM=1, ifem%nMsh
-         eNoNb = ifem%msh(iM)%eNoN
-         nFn   = MAX(ifem%msh(iM)%nFn, 1)
-         ALLOCATE(Nb(eNoNb), Nbx(nsd,eNoNb), fN(nsd,nFn),xbl(nsd,eNoNb),
-     2      ubl(nsd,eNoNb), aul(nsd,eNoNb))
-!        Loop over each trace of IFEM integration points
-         DO i=1, ifem%msh(iM)%trc%nG
-            e  = ifem%msh(iM)%trc%gE(1,i)
-            g  = ifem%msh(iM)%trc%gE(2,i)
-            Ec = ifem%msh(iM)%trc%gptr(1,i)
-            jM = ifem%msh(iM)%trc%gptr(2,i)
+   !     Loop over all elements of mesh
+         eNoN = ifem%msh(iM)%eNoN
+         nFn  = MAX(ifem%msh(iM)%nFn, 1)
 
-!           Get IFEM domain
-            ifem%cDmn = IB_DOMAIN(ifem%msh(iM), ifem%cEq, e)
+         DO e=1, ifem%msh(iM)%nEl
 
-!           Get IFEM shape functions at the integration point
-            Nb = ifem%msh(iM)%N(:,g)
-            IF (ifem%msh(iM)%eType .EQ. eType_NRB)
-     2         CALL NRBNNX(ifem%msh(iM), e)
+   !        Update shape functions for NURBS
+            IF (ifem%msh(iM)%eType .EQ. eType_NRB)  
+               CALL NRBNNX(ifem%msh(iM), e)
 
-!           Transfer to element-level local arrays
-            fN = 0._RKIND
-            DO b=1, eNoNb
-               Bc = ifem%msh(iM)%IEN(b,e)
-               xbl(:,b) = ifem%x(:,Bc)
-               ubl(:,b) = Ubg(:,Bc)
-               aul(:,b) = Aug(:,Bc)
+   !        Create local copies
+            fN   = 0._RKIND
+            DO a=1, eNoN
+               Ac = ifem%msh(iM)%IEN(a,e)
+               xbl(:,a) = ifem%x(:,Ac)
+               ubl(:,a) = Ubg(:,Ac)
+               aul(:,a) = Aug(:,Ac)
                IF (ALLOCATED(ifem%msh(iM)%fN)) THEN
                   DO j=1, nFn
                      fN(:,j) = ifem%msh(iM)%fN((j-1)*nsd+1:j*nsd,e)
@@ -3878,109 +3985,80 @@ c      END DO
                END IF
             END DO
 
-!           Compute shapefunction gradients and element Jacobian in the
-!           reference configuration. The shapefunction gradients will be
-!           used to compute deformation gradient tensor
-            CALL GNN(eNoNb, nsd, ifem%msh(iM)%Nx(:,:,g), xbl, Nbx, Jac,
-     2         Kxi)
-            IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+   !        Gauss integration
+            lR = 0._RKIND
+            lK = 0._RKIND
+            DO g=1, ifem%msh(iM)%nG
+               IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
+                  CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xl, Nx, 
+     2                              Jac, ksix)
+                  IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+               END IF
+               w = ifem%msh(iM)%w(g) * Jac
+               N = ifem%msh(iM)%N(:,g)
 
-!           Scaled Gauss weight
-            w = ifem%msh(iM)%w(g) * Jac
-
-            eNoN = msh(jM)%eNoN
-            ALLOCATE(N(eNoN), Nxi(nsd,eNoN), Nx(nsd,eNoN), xl(nsd,eNoN),
-     2         al(tDof,eNoN), yl(tDof,eNoN), ul(nsd,eNoN), ptr(eNoN),
-     3         lR(nsd+1,eNoN), lRu(nsd,eNoN), lK(dof*dof,eNoN,eNoN),
-     4         lKu((nsd+1)*nsd,eNoN,eNoN))
-
-            lR   = 0._RKIND
-            lK   = 0._RKIND
-            lRu  = 0._RKIND
-            lKu  = 0._RKIND
-
-!           Transfer to local arrays: background mesh variables
-            ul   = 0._RKIND
-            DO a=1, eNoN
-               Ac = msh(jM)%IEN(a,Ec)
-               al(:,a) = Ag(:,Ac)
-               yl(:,a) = Yg(:,Ac)
-               xl(:,a) = x(:,Ac)
-               IF (mvMsh) xl(:,a) = xl(:,a) + Dg(nsd+1:2*nsd+1,Ac)
-               IF (ifem%cpld .EQ. ibCpld_I) ul(:,a) = ifem%Un(:,Ac)
-            END DO
-
-!           Find shape functions and derivatives on the background mesh
-!           at the integration point.
-            xi = ifem%msh(iM)%trc%xiG(:,i)
-            CALL GETGNN(nsd, msh(jM)%eType, eNoN, xi, N, Nxi)
-
-!           Get the shapefunction derivatives in physical space
-            CALL GNN(eNoN, nsd, Nxi, xl, Nx, rt, Kxi)
-
-!           Compute the local residue due to IFEM-FSI forcing
-            IF (nsd .EQ. 3) THEN
-               CALL IFEM_CALCFFSIL3D(eNoNb, eNoN, nFn, w, Jac, Nb, Nbx, 
-     2            N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
-
-            ELSE IF (nsd .EQ. 2) THEN
-               CALL IFEM_CALCFFSIL2D(eNoNb, eNoN, nFn, w, Jac, Nb, Nbx, 
-     2            N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
-            END IF
-
-!           Assemble to global residue
-            ibl = 0
-            DO a=1, eNoN
-               Ac = msh(jM)%IEN(a,Ec)
-               ptr(a) = Ac
-               DO j=1, nsd+1
-                  ifem%R(j,Ac) = ifem%R(j,Ac) + lR(j,a)
-               END DO
-               ibl = ibl + iblank(Ac)
-            END DO
-
-!           Assemble ifem%Rub and stiffness matrices
-            IF (ifem%cpld.EQ.ibCpld_I .AND. ibl.EQ.eNoN) THEN
-               DO a=1, eNoN
-                  Ac = ptr(a)
-                  sA(Ac) = sA(Ac) + w*dtF*N(a)
-                  ifem%Ru(:,Ac) = ifem%Ru(:,Ac) + lRu(:,a)
-               END DO
-
-!              Compute and assemble material stiffness tensor
                IF (nsd .EQ. 3) THEN
-                  CALL IFEM_CALCSTK3D(eNoN, nFn, w, Nx, ul, fN, lKu, lK)
-               ELSE
-                  CALL IFEM_CALCSTK2D(eNoN, nFn, w, Nx, ul, fN, lKu, lK)
+                  CALL IFEM_CALCFFSIL3D(eNoNb, eNoN, nFn, w, Jac, Nb,  
+     2          Nbx, N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
+
+               ELSE IF (nsd .EQ. 2) THEN
+                  CALL IFEM_CALCFFSIL2D(eNoNb, eNoN, nFn, w, Jac, Nb,  
+     2          Nbx, N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
                END IF
 
-#ifdef WITH_TRILINOS
-               IF (eq(cEq)%assmTLS) err = "Cannot assemble IFEM data"//
-     2            " using Trilinos"
-#endif
-               CALL IFEM_DOASSEM(eNoN, ptr, lKu, lK)
-            END IF
+!              Assemble to global residue
+               DO a=1, eNoN
+                  Ac = msh(jM)%IEN(a,e)
+                  ptr(a) = Ac
+                  DO j=1, nsd+1
+                     ifem%R(j,Ac) = ifem%R(j,Ac) + lR(j,a)
+                  END DO
+               END DO
 
-            DEALLOCATE(N, Nxi, Nx, xl, al, yl, ul, ptr, lR, lRu, lK,lKu)
+
+
+
+
+            END DO ! g: loop
          END DO
-         DEALLOCATE(Nb, Nbx, xbl, ubl, aul, fN)
       END DO
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!     Deallocation
+
+
+
+
 
       tt(2) = CPUT()
       CALL COMMU(ifem%R)
       ifem%callD(3) = ifem%callD(3) + CPUT() - tt(2)
-
-      IF (ifem%cpld .EQ. ibCpld_I) THEN
-         tt(2) = CPUT()
-         CALL COMMU(ifem%Ru)
-         CALL COMMU(sA)
-         ifem%callD(3) = ifem%callD(3) + CPUT() - tt(2)
-
-         DO a=1, tnNo
-            IF (.NOT.ISZERO(sA(a))) ifem%Ru(:,a) = ifem%Ru(:,a)/sA(a)
-         END DO
-         DEALLOCATE(sA)
-      END IF
 
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt(1)
 
@@ -5089,7 +5167,7 @@ C       END DO
 !     Interpolate flow velocity and pressure at IFEM nodes from background
 !     mesh. Use IFEM velocity to compute IFEM displacement (for explicit
 !     coupling)
-      SUBROUTINE IFEM_INTERPYU(Yg, Dg)
+      SUBROUTINE IFEM_INTERPVEL(Yg, Dg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -5122,7 +5200,7 @@ C       END DO
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
       RETURN
-      END SUBROUTINE IFEM_INTERPYU
+      END SUBROUTINE IFEM_INTERPVEL
 !####################################################################
 !     Interpolate data at IFEM nodes from background mesh
 !     1: interpolation is performed directly at the IFEM nodes

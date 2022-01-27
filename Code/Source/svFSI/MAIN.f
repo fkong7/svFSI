@@ -109,11 +109,20 @@
             IF (resetSim) EXIT
          END IF
 
-!     Predictor step
+!     Predictor step, ifemFlag call to update stencil and force computation
          CALL PICP
 
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
+
+         IF (ifemFlag) THEN
+!           Set IB Dirichlet BCs
+            write(*,*)"Call IFEM_SETBCDIR after PICP"
+            CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+
+!           FSI forcing for immersed bodies (explicit coupling)
+            CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+         END IF
 
 !     Inner loop for iteration
          DO
@@ -184,6 +193,7 @@
                CALL IB_CONSTRUCT()
             END IF
 
+!        IFEM: adding the FSI force to the Fluid residue 
             IF (ifemFlag) THEN
                CALL IFEM_CONSTRUCT()
             END IF
@@ -228,7 +238,11 @@
 !     IFEM: update the solid displacement and velocity given the new 
 !     fluid velocity, using Adams-Bashforth scheme 
          IF (ifemFlag) THEN
-            CALL IFEM_INTERPYU(Yn, Dn)
+!           Find new solid velocity
+            CALL IFEM_INTERPVEL(Yn, Dn) 
+!           Update IB location and tracers
+!           Search for the new closest point looking in the fluid neighbors 
+            CALL IFEM_UPDATE(Do)            
          END IF
 
 !     Saving the TXT files containing average and fluxes

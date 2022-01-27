@@ -1937,7 +1937,7 @@ C             END IF
 
       ALLOCATE(incNd(lM%nNo))
       incNd = 0 !It stores the number of elements that contains that fluid node
-      write(*,*)"allocating incNd for nNo = ", lM%nNo
+C       write(*,*)"allocating incNd for nNo = ", lM%nNo
       DO e=1, lM%nEl
          DO a=1, lM%eNoN
             ! TODO FOR PARALLEL VERSION
@@ -1951,12 +1951,12 @@ C             END IF
                write(*,*)"cm%np() = ", cm%np()
             END IF
          END DO
-         write(*,*) " for element ", e , " incNd is ", incNd
+C          write(*,*) " for element ", e , " incNd is ", incNd
       END DO
 
-      DO a=1, lM%nNo
-         write(*,*) "node ", a, " in ", incNd(Ac), " elements"
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*) "node ", a, " in ", incNd(Ac), " elements"
+C       END DO
 
 !     The number of elements in the stencil is also equal to the 
 !     number of nodes in the stencil 
@@ -1982,7 +1982,7 @@ C             END IF
 
       DO e=1, lM%nNo
          a = incNd(e)
-         write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
+C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
       END DO
 
 !     Filling stcNd
@@ -2021,8 +2021,8 @@ C             END IF
 
       DO e=1, lM%nNo
          a = idxInsrt(e)-1
-         write(*,*) "   "
-         write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
+C          write(*,*) "   "
+C          write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
       END DO
 
 !     insert them into lm%stn

@@ -726,18 +726,20 @@
 
       !     IFEM structures
       IF (ifemFlag) THEN
-         IF (ALLOCATED(ifem%dmnId))  DEALLOCATE(ifem%dmnId)
-         IF (ALLOCATED(ifem%rowPtr)) DEALLOCATE(ifem%rowPtr)
-         IF (ALLOCATED(ifem%colPtr)) DEALLOCATE(ifem%colPtr)
-         IF (ALLOCATED(ifem%x))      DEALLOCATE(ifem%x)
-         IF (ALLOCATED(ifem%Yb))     DEALLOCATE(ifem%Yb)
-         IF (ALLOCATED(ifem%Auo))    DEALLOCATE(ifem%Auo)
-         IF (ALLOCATED(ifem%Ubo))    DEALLOCATE(ifem%Ubo)
-         IF (ALLOCATED(ifem%Rfluid)) DEALLOCATE(ifem%Rfluid)
-         IF (ALLOCATED(ifem%Rsolid)) DEALLOCATE(ifem%Rsolid)
-         IF (ALLOCATED(ifem%cm%n))   DEALLOCATE(ifem%cm%n)
-         IF (ALLOCATED(ifem%cm%gN))  DEALLOCATE(ifem%cm%gN)
-         IF (ALLOCATED(ifem%clsFNd))  DEALLOCATE(ifem%clsFNd)
+         IF (ALLOCATED(ifem%dmnId))    DEALLOCATE(ifem%dmnId)
+         IF (ALLOCATED(ifem%rowPtr))   DEALLOCATE(ifem%rowPtr)
+         IF (ALLOCATED(ifem%colPtr))   DEALLOCATE(ifem%colPtr)
+         IF (ALLOCATED(ifem%x))        DEALLOCATE(ifem%x)
+         IF (ALLOCATED(ifem%xcrn))     DEALLOCATE(ifem%xcrn)
+         IF (ALLOCATED(ifem%Yb))       DEALLOCATE(ifem%Yb)
+         IF (ALLOCATED(ifem%Auo))      DEALLOCATE(ifem%Auo)
+         IF (ALLOCATED(ifem%Ubo))      DEALLOCATE(ifem%Ubo)
+         IF (ALLOCATED(ifem%Rfluid))   DEALLOCATE(ifem%Rfluid)
+         IF (ALLOCATED(ifem%Rsolid))   DEALLOCATE(ifem%Rsolid)
+         IF (ALLOCATED(ifem%cm%n))     DEALLOCATE(ifem%cm%n)
+         IF (ALLOCATED(ifem%cm%gN))    DEALLOCATE(ifem%cm%gN)
+         IF (ALLOCATED(ifem%clsFNd))   DEALLOCATE(ifem%clsFNd)
+         IF (ALLOCATED(ifem%clsFElm))  DEALLOCATE(ifem%clsFElm)
 
          DO iM=1, ib%nMsh
             CALL DESTROY(ifem%msh(iM))

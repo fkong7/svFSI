@@ -815,6 +815,8 @@
       TYPE ifemType
 !        IFEM position coordinates (initial Lagrangian nodes)
          REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
+!        IFEM position coordinates (node in the current configuration)
+         REAL(KIND=RKIND), ALLOCATABLE :: xcrn(:,:)
 !        Total number of immersed nodes (solid nodes)  
          INTEGER(KIND=IKIND) :: tnNo
 !        Number of IB meshes
@@ -840,8 +842,10 @@
 !        DERIVED TYPE VARIABLES
 !        IFEM meshes
          TYPE(mshType), ALLOCATABLE :: msh(:)
-!        Closest fluid node for each solid node
+!        Closest fluid node for each solid node, in the loc elem ordering
          REAL(KIND=RKIND), ALLOCATABLE :: clsFNd(:)
+!        List of fluid element that contains each solid node 
+         REAL(KIND=RKIND), ALLOCATABLE :: clsFElm(:)
 !        IB communicator
          TYPE(ibCommType) :: cm
 
