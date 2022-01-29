@@ -294,6 +294,8 @@
       TYPE stencilType
 !        Node stencil for each fluid node 
          INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
+!        Number of node in the stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
 !        Element stencil for each fluid node 
          INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
       END TYPE stencilType
@@ -544,6 +546,8 @@
          REAL(KIND=RKIND) scF
 !        IB: Mesh size parameter
          REAL(KIND=RKIND) dx
+!        Mesh size parameter computed (TODO check if it whould change with Mesh scale factor scF)
+         REAL(KIND=RKIND) :: diam = -1._RKIND
 !        Element distribution between processors
          INTEGER(KIND=IKIND), ALLOCATABLE :: eDist(:)
 !        Element domain ID number
@@ -816,7 +820,9 @@
 !        IFEM position coordinates (initial Lagrangian nodes)
          REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
 !        IFEM position coordinates (node in the current configuration)
-         REAL(KIND=RKIND), ALLOCATABLE :: xcrn(:,:)
+         REAL(KIND=RKIND), ALLOCATABLE :: xCu(:,:)
+!        IFEM position coordinates (node in the current configuration)
+         REAL(KIND=RKIND), ALLOCATABLE :: xCuo(:,:)
 !        Total number of immersed nodes (solid nodes)  
          INTEGER(KIND=IKIND) :: tnNo
 !        Number of IB meshes

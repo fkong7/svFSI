@@ -120,10 +120,14 @@
             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
 
+            write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
+            write(*,*)"ifem%Auo", ifem%Auo
+            write(*,*)"ifem%Ubo", ifem%Ubo
             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
          END IF
 
+         write(*,*)"Beginning inner loop"
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -194,6 +198,7 @@
             END IF
 
 !        IFEM: adding the FSI force to the Fluid residue 
+            write(*,*)"calling IFEM_CONSTRUCT"
             IF (ifemFlag) THEN
                CALL IFEM_CONSTRUCT()
             END IF

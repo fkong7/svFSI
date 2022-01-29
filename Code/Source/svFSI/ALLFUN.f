@@ -1463,6 +1463,7 @@ C             END IF
       TYPE(stencilType), INTENT(OUT) :: stc
 
       IF (ALLOCATED(stc%ndStn)) DEALLOCATE(stc%ndStn)
+      IF (ALLOCATED(stc%nbrNdStn)) DEALLOCATE(stc%nbrNdStn)
       IF (ALLOCATED(stc%elmStn)) DEALLOCATE(stc%elmStn)
 
       RETURN
@@ -1959,11 +1960,13 @@ C          write(*,*) "node ", a, " in ", incNd(Ac), " elements"
 C       END DO
 
 !     The number of elements in the stencil is also equal to the 
-!     number of nodes in the stencil 
+!     number of nodes in the stencil (+1 in case we are at the boundary)
       maxAdj = MAXVAL(incNd)
       ALLOCATE(stcNd(lM%nNo,maxAdj+1))
       ALLOCATE(stcElm(lM%nNo,maxAdj))
       ALLOCATE(idxInsrt(lM%nNo))
+      ALLOCATE(lm%stn%nbrNdStn(lM%nNo)) 
+
 
       stcNd = 0
       stcElm = 0
@@ -1988,6 +1991,7 @@ C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
 !     Filling stcNd
       idxInsrt = 1
       flag = .FALSE.
+
 
       DO e = 1, lM%nNo ! Fluid Id node
          DO a = 1, incNd(e) 
@@ -2021,17 +2025,30 @@ C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
 
       DO e=1, lM%nNo
          a = idxInsrt(e)-1
+         lm%stn%nbrNdStn(e) = a+1
 C          write(*,*) "   "
 C          write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
       END DO
 
+C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
+
+
 !     insert them into lm%stn
 
-      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+1)) 
+      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+2)) 
+      lm%stn%ndStn = 0
       ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
 
-      lm%stn%ndStn = stcNd
+      lm%stn%ndStn(:,1:maxAdj+1) = stcNd
+      DO a=1, lM%nNo
+         lm%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
+      END DO
       lm%stn%elmStn = stcElm
+
+C       DO a=1, lM%nNo
+C          write(*,*)"lm%stn%ndStn(A,:) = ", lm%stn%ndStn(a,:) 
+C       END DO
+      
 
       DEALLOCATE(incNd)
       DEALLOCATE(stcNd)
@@ -2040,6 +2057,44 @@ C          write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
 
       RETURN
       END SUBROUTINE GETNSTENCIL
+!--------------------------------------------------------------------
+!     Compute mesh space discretization, the diam max, given a mesh 
+      SUBROUTINE GETMESHDIAM(lM)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(INOUT) :: lM
+
+      REAL(KIND=RKIND) :: diam, maxDist
+      INTEGER(KIND=IKIND) :: Ac, Acn, e
+
+      IF (lM%diam .LE. 0._RKIND) THEN 
+
+         maxDist = TINY(maxDist)
+
+         DO e=1, lM%nEl
+
+            Ac = lM%IEN(1,e)
+            Acn = lM%IEN(2,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+            Ac = lM%IEN(2,e)
+            Acn = lM%IEN(3,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+            Ac = lM%IEN(1,e)
+            Acn = lM%IEN(3,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+         END DO
+         write(*,*)"diam is ", maxDist
+         lM%diam = maxDist
+
+      END IF 
+
+      END SUBROUTINE GETMESHDIAM
 !--------------------------------------------------------------------
 !     Find nodal adjacency of a given face. Computes list of all nodes
 !     around a given node of a face.

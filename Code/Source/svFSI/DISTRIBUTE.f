@@ -398,7 +398,7 @@
                CALL DISTIBFa(ib%msh(iM), ib%msh(iM)%fa(iFa))
             END DO
          END DO
-      ELSE 
+      ELSE IF(ifemFlag) THEN
          IF (cm%slv()) ALLOCATE(ifem)
 
          CALL cm%bcast(ifem%mthd)
@@ -410,10 +410,12 @@
          IF (cm%slv()) THEN
             ALLOCATE(ifem%msh(ifem%nMsh))
             ALLOCATE(ifem%x(nsd,ifem%tnNo))
-            ALLOCATE(ifem%xcrn(nsd,ifem%tnNo))
+            ALLOCATE(ifem%xCu(nsd,ifem%tnNo))
+            ALLOCATE(ifem%xCuo(nsd,ifem%tnNo))
          END IF
          CALL cm%bcast(ifem%x)
-         CALL cm%bcast(ifem%xcrn)
+         CALL cm%bcast(ifem%xCu)
+         CALL cm%bcast(ifem%xCuo)
 
          DO iM=1, ifem%nMsh
             CALL DISTIBMSH(ifem%msh(iM))
@@ -421,8 +423,6 @@
                CALL DISTIBFa(ifem%msh(iM), ifem%msh(iM)%fa(iFa))
             END DO
          END DO
-
-
       END IF
 
       RETURN
@@ -514,7 +514,7 @@
          ALLOCATE(lFa%IEN(lFa%eNoN,lFa%nEl))
          ALLOCATE(lFa%gN(lFa%nNo))
          IF(ibFlag) ALLOCATE(lFa%lN(ib%tnNo))
-         IF(ifemFlag) ALLOCATE(lFa%lN(ib%tnNo))
+         IF(ifemFlag) ALLOCATE(lFa%lN(ifem%tnNo))
          ALLOCATE(lFa%gE(lFa%nEl))
          CALL SELECTELEB(lM, lFa)
       END IF
@@ -550,7 +550,7 @@
       CALL cm%bcast(lEq%tol)
       CALL cm%bcast(lEq%useTLS)
       CALL cm%bcast(lEq%assmTLS)
-      IF (ibFlag) THEN
+      IF (ibFlag .OR. ifemFlag) THEN
          CALL cm%bcast(lEq%nDmnIB)
          CALL cm%bcast(lEq%nBcIB)
       END IF
@@ -628,7 +628,7 @@
          CALL cm%bcast(cem%aStrain)
       END IF
 
-      IF (ibFlag) THEN
+      IF (ibFlag .OR. ifemFlag) THEN
          IF (cm%slv()) ALLOCATE(lEq%dmnIB(lEq%nDmnIB))
          DO iDmn=1, lEq%nDmnIB
             CALL cm%bcast(lEq%dmnIB(iDmn)%phys)
@@ -654,7 +654,7 @@
          CALL DISTBC(lEq%bc(iBc), tMs, gmtl)
       END DO
 
-      IF (ibFlag) THEN
+      IF (ibFlag .OR. ifemFlag) THEN
          IF (cm%slv()) ALLOCATE(lEq%bcIB(lEq%nBcIB))
          DO iBc=1, lEq%nBcIB
             CALL DISTBCIB(lEq%bcIB(iBc))

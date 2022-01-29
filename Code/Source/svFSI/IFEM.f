@@ -117,9 +117,11 @@
          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
       END DO
       ALLOCATE(ifem%x(nsd,ifem%tnNo))
-      ALLOCATE(ifem%xcrn(nsd,ifem%tnNo))
+      ALLOCATE(ifem%xCu(nsd,ifem%tnNo))
+      ALLOCATE(ifem%xCuo(nsd,ifem%tnNo))
       ifem%x = gX
-      ifem%xcrn = gX
+      ifem%xCu = gX
+      ifem%xCuo = gX
       DEALLOCATE(gX)
 
 !     Setting msh%gN, msh%lN parameter
@@ -803,8 +805,8 @@ C       END SUBROUTINE IFEM_READOPTS
       ALLOCATE(ifem%Yb(nsd+1,ifem%tnNo)) ! ?? why nsd+1
       ALLOCATE(ifem%Auo(nsd,ifem%tnNo))
       ALLOCATE(ifem%Ubo(nsd,ifem%tnNo))
-      ALLOCATE(ifem%Rfluid(nsd+1,tnNo))
-      ALLOCATE(ifem%Rsolid(nsd+1,ifem%tnNo))
+      ALLOCATE(ifem%Rfluid(nsd,tnNo))
+      ALLOCATE(ifem%Rsolid(nsd,ifem%tnNo))
 
 C       IF (ifem%cpld .EQ. ibCpld_I) THEN
 C          ALLOCATE(ifem%Aun(nsd,ifem%tnNo))
@@ -949,6 +951,7 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
       ifem%callD = 0._RKIND
       tt = CPUT()
 
+      write(*,*)"inside IFEM_UPDATE, mvMsh = ", mvMsh
       ALLOCATE(lD(nsd,tnNo))
       lD = 0._RKIND
       IF (mvMsh) THEN
@@ -958,7 +961,7 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
       END IF
 
 !     As the IFEM may have moved update iblank field
-      CALL IFEM_UPDATEIBLANK(lD)
+!      CALL IFEM_UPDATEIBLANK(lD)
 
 !     Update IFEM traces on background fluid mesh and update ghost cells
       DO iM=1, nMsh
@@ -1665,6 +1668,7 @@ C                   write(*,*)"find node solid ", a, " is ", find
 !                    If inside, serach for the closest point   
 !                    local (element) id of the closest point
                      nodeF(a) = CLOSEST_POINT(xs,poly) 
+                     nodeF(a) = msh(iM)%IEN(nodeF(a),e) 
 C                      write(*,*)"Closes id is ", msh(iM)%IEN(nodeF(a),e)
 C                      EXIT
                   END IF
@@ -3829,28 +3833,6 @@ c      END DO
       RETURN
       END SUBROUTINE IFEM_PICP
 !####################################################################
-!     Implicit coupling
-      SUBROUTINE IFEM_IMPLICIT(Ag, Yg, Dg)
-      USE COMMOD
-      IMPLICIT NONE
-      REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
-     2   Dg(tDof,tnNo)
-
-!     Initiate IFEM variables at n+am, n+af
-      CALL IFEM_PICI()
-
-!     Update FSI forcing and tangent matrices
-      CALL IFEM_CALCFFSI(Ag, Yg, Dg, ifem%Auk, ifem%Ubk)
-
-!     Interpolate flow variables (v, p) from fluid mesh to IFEM
-      CALL IFEM_INTERPVEL(Yg, Dg)
-
-!     Correct RHS and compute ifem%Rub
-      CALL IFEM_RHSUpdate()
-
-      RETURN
-      END SUBROUTINE IFEM_IMPLICIT
-!####################################################################
 !     Initiator step (implicit) - compute Au_(n+am) and Ub_(n+af)
       SUBROUTINE IFEM_PICI()
       USE COMMOD
@@ -3881,56 +3863,6 @@ c      END DO
       RETURN
       END SUBROUTINE IFEM_PICI
 !####################################################################
-!     Corrector step (implicit) - Interpolate V_dot from fluid mesh
-!     to IFEM, update IFEM solution (U_dot, U), and project IFEM displacement
-!     to background mesh for next Newton iteration
-      SUBROUTINE IFEM_PICC()
-      USE COMMOD
-      IMPLICIT NONE
-
-      INTEGER a, i, s, iEq
-      REAL(KIND=RKIND) :: gdt, ami, afm, dUl(nsd), tt
-
-      REAL(KIND=RKIND), ALLOCATABLE :: Rg(:,:), Rb(:,:)
-
-      iEq = ifem%cEq
-      IF (eq(iEq)%phys.NE.phys_fluid .OR. ifem%cpld.NE.ibCpld_I) RETURN
-
-      tt  = CPUT()
-      s   = eq(iEq)%s
-      gdt = eq(iEq)%gam * dt
-      ami = 1._RKIND / eq(iEq)%am
-      afm = eq(iEq)%af * gdt * ami
-
-!     Interpolate change in acceleration (dV_dot) from fluid mesh to IFEM
-      ALLOCATE(Rg(nsd,tnNo), Rb(nsd,ifem%tnNo))
-      Rg = 0._RKIND
-      Rb = 0._RKIND
-      DO a=1, tnNo
-         DO i=1, nsd
-            Rg(i,a) = R(s+i-1,a)
-         END DO
-      END DO
-      CALL IFEM_INTERP(nsd, Rg, Dn, Rb)
-
-!     Correct IFEM solution (ifem%Aun, ifem%Ubn)
-      DO a=1, ifem%tnNo
-         DO i=1, nsd
-            dUl(i)      = ifem%Rub(i,a)*ami + Rb(i,a)*afm
-            ifem%Ubn(i,a) = ifem%Ubn(i,a)     - dUl(i)*gdt
-            ifem%Aun(i,a) = ifem%Aun(i,a)     - dUl(i)
-         END DO
-      END DO
-      DEALLOCATE(Rg, Rb)
-
-      ifem%callD(1) = ifem%callD(1) + CPUT() - tt
-
-!     Project IFEM displacement (ifem%Ubn) to background mesh (ifem%Un)
-      CALL IFEM_PRJCTU(Dn)
-
-      RETURN
-      END SUBROUTINE IFEM_PICC
-!####################################################################
 !     Compute FSI force on the immersed bodies
       SUBROUTINE IFEM_CALCFFSI(Ag, Yg, Dg, Aug, Ubg)
       USE COMMOD
@@ -3939,37 +3871,42 @@ c      END DO
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo), Aug(nsd,ifem%tnNo), Ubg(nsd,ifem%tnNo)
 
+      INTEGER(KIND=IKIND) a, e, g, Ac, eNoN, iFn, nFn, iM, j
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), tt(2)
 
-!     Allocation
+      REAL(KIND=RKIND), ALLOCATABLE :: xbl(:,:), aul(:,:), ubl(:,:), 
+     2   fN(:,:), N(:), Nx(:,:), lR(:,:)
  
 
       tt(1) = CPUT()
-      cDmn = DOMAIN(msh(1), ifem%cEq, 1)
+C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
 !     Initialize residues to 0
-      ifem%R = 0._RKIND
+      ifem%Rsolid = 0._RKIND
+      write(*,*)"Beginning IFEM_CALCFFSI "
+
 
 !     We compute the fluid-structure interaction force on the solid initial 
 !     domain
-
-
-
-
-
-HERE!
-
-
 !     Loop over all IFEM mesh
+      write(*,*)"Beginning loop over nmb of meshes "
       DO iM=1, ifem%nMsh
    !     Loop over all elements of mesh
          eNoN = ifem%msh(iM)%eNoN
          nFn  = MAX(ifem%msh(iM)%nFn, 1)
 
+         ALLOCATE(xbl(nsd,eNoN), aul(nsd,eNoN), ubl(nsd,eNoN), 
+     2            fN(nsd,nFn), N(eNoN), Nx(nsd,eNoN), lR(nsd,eNoN))
+         
+         write(*,*)"Beginning loop over elemtn mesh "
          DO e=1, ifem%msh(iM)%nEl
 
+            ifem%cDmn = IB_DOMAIN(ifem%msh(iM), ifem%cEq, e)
+
    !        Update shape functions for NURBS
-            IF (ifem%msh(iM)%eType .EQ. eType_NRB)  
+            IF (ifem%msh(iM)%eType .EQ. eType_NRB) THEN
                CALL NRBNNX(ifem%msh(iM), e)
+            END IF
 
    !        Create local copies
             fN   = 0._RKIND
@@ -3985,79 +3922,47 @@ HERE!
                END IF
             END DO
 
+            write(*,*)"Beginning loop over gauss point "
    !        Gauss integration
             lR = 0._RKIND
-            lK = 0._RKIND
             DO g=1, ifem%msh(iM)%nG
                IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
-                  CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xl, Nx, 
+                  CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xbl, Nx, 
      2                              Jac, ksix)
                   IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
                END IF
                w = ifem%msh(iM)%w(g) * Jac
                N = ifem%msh(iM)%N(:,g)
 
+               write(*,*)"Calling local force assembly"
                IF (nsd .EQ. 3) THEN
-                  CALL IFEM_CALCFFSIL3D(eNoNb, eNoN, nFn, w, Jac, Nb,  
-     2          Nbx, N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
+                  CALL IFEM_CALCLFFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
+     2                fN, lR)
 
                ELSE IF (nsd .EQ. 2) THEN
-                  CALL IFEM_CALCFFSIL2D(eNoNb, eNoN, nFn, w, Jac, Nb,  
-     2          Nbx, N, Nx, al, yl, aul, ubl, fN, dtF, lR, lRu, lKu, lK)
+                  CALL IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, aul, ubl, 
+     2                fN, lR)
                END IF
 
-!              Assemble to global residue
+               write(*,*)"End call local assembly"
+
+!              Assemble to ifem global residue
                DO a=1, eNoN
-                  Ac = msh(jM)%IEN(a,e)
-                  ptr(a) = Ac
+                  Ac = msh(iM)%IEN(a,e)
                   DO j=1, nsd+1
-                     ifem%R(j,Ac) = ifem%R(j,Ac) + lR(j,a)
+                     ifem%Rsolid(j,Ac) = ifem%Rsolid(j,Ac) + lR(j,a)
                   END DO
                END DO
-
-
-
-
-
-            END DO ! g: loop
+            END DO
+         
          END DO
+
+         DEALLOCATE(xbl, aul, ubl, fN, N, Nx, lR)
+
       END DO
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-!     Deallocation
-
-
-
-
-
       tt(2) = CPUT()
-      CALL COMMU(ifem%R)
+      CALL COMMU(ifem%Rsolid)
       ifem%callD(3) = ifem%callD(3) + CPUT() - tt(2)
 
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt(1)
@@ -4066,966 +3971,124 @@ HERE!
       END SUBROUTINE IFEM_CALCFFSI
 !--------------------------------------------------------------------
 !     Compute the 3D FSI force due to IFEM on the background fluid
-      SUBROUTINE IFEM_CALCFFSIL3D(eNoNb, eNoN, nFn, w, Je, Nb, Nbx, N, 
-     2   Nx, al, yl, aul, ubl, fN, Jac, lR, lRu, lKu, lK)
+      SUBROUTINE IFEM_CALCLFFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, fN, lR)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNb, eNoN, nFn
-      REAL(KIND=RKIND), INTENT(IN) :: w, Je, Nb(eNoNb), Nbx(3,eNoNb),
-     2   N(eNoN), Nx(3,eNoN), al(tDof,eNoN), yl(tDof,eNoN),aul(3,eNoNb),
-     3   ubl(3,eNoNb), fN(3,nFn)
-      REAL(KIND=RKIND), INTENT(OUT) :: Jac
-      REAL(KIND=RKIND), INTENT(INOUT) :: lR(4,eNoN), lRu(3,eNoN),
-     2   lKu(12,eNoN,eNoN), lK(16,eNoN,eNoN)
 
-      INTEGER(KIND=IKIND) a, b, iEq, iDmn
-      REAL(KIND=RKIND) amf, wl, wJ, rho_f, mu_f, rtmp, mu_fx, gam, pd,
-     2   p, fb(3), px(3), v(3), vd(3), vx(3,3), divV, vVx(3), es(3,3),
-     3   es_x(3,eNoN), rV(3), rM(3,3), vNx(eNoN), vpNx(eNoN), NxNx,
-     4   rMNx(3,eNoN), T1, T2, T3, T4
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
+      REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(3,eNoN), 
+     2   aul(3,eNoN), ubl(3,eNoN), fN(3,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(4,eNoN)
 
-!     Solid domain parameters
-      REAL(KIND=RKIND) rho_s, mu_s, bta_s, drho_s, dbta_s, tauM_s,
-     2   tauC_s, rC, rCd, ud(3), vp_s(3), F(3,3), S(3,3), Sgm(3,3),
-     3   Dm(6,6)
+      INTEGER(KIND=IKIND) :: a, iEq, iDmn, i, j, k
+      REAL(KIND=RKIND) :: Jac, ya_g
+      REAL(KIND=RKIND) :: Dm(6,6), F(3,3), Fi(3,3), S(3,3), P(3,3)
 
       iEq     = ifem%cEq
       iDmn    = ifem%cDmn
-      rho_s   = eq(iEq)%dmnIB(iDmn)%prop(solid_density)
-      mu_s    = eq(iEq)%dmnIB(iDmn)%prop(solid_viscosity)
-      fb(1)   = eq(iEq)%dmnIB(iDmn)%prop(f_x)
-      fb(2)   = eq(iEq)%dmnIB(iDmn)%prop(f_y)
-      fb(3)   = eq(iEq)%dmnIB(iDmn)%prop(f_z)
-      rho_f   = eq(iEq)%dmn(cDmn)%prop(fluid_density)
+      i       = 1
+      j       = 2
+      k       = 3
 
-      T1      = eq(iEq)%af * eq(iEq)%gam * dt
-      amf     = eq(iEq)%am / T1
-      wl      = w * T1
-
-!     Inertia and body force
-      vd      = -fb
-      pd      = 0._RKIND
-      v       = 0._RKIND
-      p       = 0._RKIND
-      vx      = 0._RKIND
-      px      = 0._RKIND
-      DO a=1, eNoN
-!        Acceleration (dv_i/dt)
-         vd(1) = vd(1) + N(a)*al(1,a)
-         vd(2) = vd(2) + N(a)*al(2,a)
-         vd(3) = vd(3) + N(a)*al(3,a)
-
-!        Time derivative of pressure
-         pd    = pd    + N(a)*al(4,a)
-
-!        Velocity, v
-         v(1) = v(1)  + N(a)*yl(1,a)
-         v(2) = v(2)  + N(a)*yl(2,a)
-         v(3) = v(3)  + N(a)*yl(3,a)
-
-!        Pressure, p
-         p    = p     + N(a)*yl(4,a)
-
-!        Grad v (v_i,j) w.r.t. current coordinates
-         vx(1,1) = vx(1,1) + Nx(1,a)*yl(1,a)
-         vx(1,2) = vx(1,2) + Nx(2,a)*yl(1,a)
-         vx(1,3) = vx(1,3) + Nx(3,a)*yl(1,a)
-
-         vx(2,1) = vx(2,1) + Nx(1,a)*yl(2,a)
-         vx(2,2) = vx(2,2) + Nx(2,a)*yl(2,a)
-         vx(2,3) = vx(2,3) + Nx(3,a)*yl(2,a)
-
-         vx(3,1) = vx(3,1) + Nx(1,a)*yl(3,a)
-         vx(3,2) = vx(3,2) + Nx(2,a)*yl(3,a)
-         vx(3,3) = vx(3,3) + Nx(3,a)*yl(3,a)
-
-!        Grad p (p_i) w.r.t. current coordinates
-         px(1)   = px(1)   + Nx(1,a)*yl(4,a)
-         px(2)   = px(2)   + Nx(2,a)*yl(4,a)
-         px(3)   = px(3)   + Nx(3,a)*yl(4,a)
-      END DO
-      divV = vx(1,1) + vx(2,2) + vx(3,3)
-
-      IF (mvMsh) THEN
-         DO a=1, eNoN
-            v(1) = v(1) - N(a)*yl(5,a)
-            v(2) = v(2) - N(a)*yl(6,a)
-            v(3) = v(3) - N(a)*yl(7,a)
-         END DO
-      END IF
-
-!     Deformation gradient tensor
-      ud     = 0._RKIND
       F      = 0._RKIND
       F(1,1) = 1._RKIND
       F(2,2) = 1._RKIND
       F(3,3) = 1._RKIND
-      DO b=1, eNoNb
-         ud(1) = ud(1) + Nb(b)*aul(1,b)
-         ud(2) = ud(2) + Nb(b)*aul(2,b)
-         ud(3) = ud(3) + Nb(b)*aul(3,b)
-
-!        Deformation tensor, F_{iI}. Here the shape function derivatives
-!        are w.r.t. the reference coordinates
-         F(1,1) = F(1,1) + Nbx(1,b)*ubl(1,b)
-         F(1,2) = F(1,2) + Nbx(2,b)*ubl(1,b)
-         F(1,3) = F(1,3) + Nbx(3,b)*ubl(1,b)
-
-         F(2,1) = F(2,1) + Nbx(1,b)*ubl(2,b)
-         F(2,2) = F(2,2) + Nbx(2,b)*ubl(2,b)
-         F(2,3) = F(2,3) + Nbx(3,b)*ubl(2,b)
-
-         F(3,1) = F(3,1) + Nbx(1,b)*ubl(3,b)
-         F(3,2) = F(3,2) + Nbx(2,b)*ubl(3,b)
-         F(3,3) = F(3,3) + Nbx(3,b)*ubl(3,b)
-      END DO
-      Jac = MAT_DET(F, nsd)
-
-!     Compute fluid related quantities
-!     V. grad V
-      vVx(1) = v(1)*vx(1,1) + v(2)*vx(1,2) + v(3)*vx(1,3)
-      vVx(2) = v(1)*vx(2,1) + v(2)*vx(2,2) + v(3)*vx(2,3)
-      vVx(3) = v(1)*vx(3,1) + v(2)*vx(3,2) + v(3)*vx(3,3)
-
-!     Strain rate tensor 2*e_ij := (v_ij + v_ji)
-      es(1,1) = vx(1,1) + vx(1,1)
-      es(2,2) = vx(2,2) + vx(2,2)
-      es(3,3) = vx(3,3) + vx(3,3)
-
-      es(1,2) = vx(1,2) + vx(2,1)
-      es(1,3) = vx(1,3) + vx(3,1)
-      es(2,3) = vx(2,3) + vx(3,2)
-
-      es(2,1) = es(1,2)
-      es(3,1) = es(1,3)
-      es(3,2) = es(2,3)
+      ya_g   = 0._RKIND
 
       DO a=1, eNoN
-        es_x(1,a) = es(1,1)*Nx(1,a) + es(1,2)*Nx(2,a) + es(1,3)*Nx(3,a)
-        es_x(2,a) = es(2,1)*Nx(1,a) + es(2,2)*Nx(2,a) + es(2,3)*Nx(3,a)
-        es_x(3,a) = es(3,1)*Nx(1,a) + es(3,2)*Nx(2,a) + es(3,3)*Nx(3,a)
+         F(1,1)  = F(1,1)  + Nx(1,a)*ubl(i,a)
+         F(1,2)  = F(1,2)  + Nx(2,a)*ubl(i,a)
+         F(1,3)  = F(1,3)  + Nx(3,a)*ubl(i,a)
+         F(2,1)  = F(2,1)  + Nx(1,a)*ubl(j,a)
+         F(2,2)  = F(2,2)  + Nx(2,a)*ubl(j,a)
+         F(2,3)  = F(2,3)  + Nx(3,a)*ubl(j,a)
+         F(3,1)  = F(3,1)  + Nx(1,a)*ubl(k,a)
+         F(3,2)  = F(3,2)  + Nx(2,a)*ubl(k,a)
+         F(3,3)  = F(3,3)  + Nx(3,a)*ubl(k,a)
       END DO
 
-!     Shear-rate := (2*e_ij*e_ij)^.5
-      gam = es(1,1)*es(1,1) + es(1,2)*es(1,2) + es(1,3)*es(1,3) +
-     2      es(2,1)*es(2,1) + es(2,2)*es(2,2) + es(2,3)*es(2,3) +
-     3      es(3,1)*es(3,1) + es(3,2)*es(3,2) + es(3,3)*es(3,3)
-      gam = SQRT(0.5_RKIND*gam)
+      Jac = MAT_DET(F, 3)
+      Fi  = MAT_INV(F, 3)
 
-!     Compute viscosity based on shear-rate and chosen viscosity model
-      CALL GETVISCOSITY(eq(iEq)%dmn(cDmn), gam, mu_f, rtmp, mu_fx)
+!     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
+!     Voigt notation
+      CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
-!     Solid internal stresses and stabilization parameters
-      IF (ifem%mthd .EQ. ibMthd_IFEM) THEN
-!        2nd Piola-Kirchhoff stress (S) and material stiffness in Voigt
-!        notation (Dm). Note that S = Siso + Svol. For incompressible
-!        solids, Svol = 0. For compressible solids, Svol = J*p*Cinv
-!        where p is computed based on the dilational penalty model
-         CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S, Dm)
+!     1st Piola-Kirchhoff tensor (P)
+      P = MATMUL(F, S)
 
-!        Jacobian scaling for rho_s for compressible solids
-         IF (.NOT.ISZERO(eq(iEq)%dmnIB(iDmn)%stM%Kpen))
-     2      rho_s = rho_s / Jac
-
-!        No stabilization for IFEM
-         bta_s  = 0._RKIND
-         drho_s = 0._RKIND
-         dbta_s = 0._RKIND
-         tauM_s = 0._RKIND
-         tauC_s = 0._RKIND
-         vp_s   = 0._RKIND
-         rC     = 0._RKIND
-
-      ELSE IF (ifem%mthd .EQ. ibMthd_FEIBs) THEN
-!        Isochoric 2nd Piola-Kirchhoff stress (Siso) and stiffness in
-!        Voigt notation
-         CALL GETPK2CCdev(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S,
-     2      Dm, rtmp)
-
-!        Compute rho and beta depending on the volumetric penalty model
-         CALL GVOLPEN(eq(iEq)%dmnIB(iDmn), p, rho_s, bta_s, drho_s,
-     2      dbta_s, 1._RKIND)
-
-!        Compute stabilization parameters
-         CALL GETTAU(eq(iEq)%dmnIB(iDmn), Jac, Je, tauM_s, tauC_s)
-
-!        Momentum and continuity stabilization
-         vp_s(1) = -tauM_s*(rho_s*(vd(1) + vVx(1)) + px(1))
-         vp_s(2) = -tauM_s*(rho_s*(vd(2) + vVx(2)) + px(2))
-         vp_s(3) = -tauM_s*(rho_s*(vd(3) + vVx(3)) + px(3))
-         rC      = -tauC_s*(bta_s*pd + divV)
-      END IF
-
-!     1st Piola-Kirchhoff stress, P = F * S, or Pdev = F * Siso
-      rM(1,1)  = F(1,1)*S(1,1) + F(1,2)*S(2,1) + F(1,3)*S(3,1)
-      rM(1,2)  = F(1,1)*S(1,2) + F(1,2)*S(2,2) + F(1,3)*S(3,2)
-      rM(1,3)  = F(1,1)*S(1,3) + F(1,2)*S(2,3) + F(1,3)*S(3,3)
-
-      rM(2,1)  = F(2,1)*S(1,1) + F(2,2)*S(2,1) + F(2,3)*S(3,1)
-      rM(2,2)  = F(2,1)*S(1,2) + F(2,2)*S(2,2) + F(2,3)*S(3,2)
-      rM(2,3)  = F(2,1)*S(1,3) + F(2,2)*S(2,3) + F(2,3)*S(3,3)
-
-      rM(3,1)  = F(3,1)*S(1,1) + F(3,2)*S(2,1) + F(3,3)*S(3,1)
-      rM(3,2)  = F(3,1)*S(1,2) + F(3,2)*S(2,2) + F(3,3)*S(3,2)
-      rM(3,3)  = F(3,1)*S(1,3) + F(3,2)*S(2,3) + F(3,3)*S(3,3)
-
-!     sigma = J^-1 * P * F_transpose
-      Sgm(1,1) = (rM(1,1)*F(1,1) + rM(1,2)*F(1,2) + rM(1,3)*F(1,3))/Jac
-      Sgm(1,2) = (rM(1,1)*F(2,1) + rM(1,2)*F(2,2) + rM(1,3)*F(2,3))/Jac
-      Sgm(1,3) = (rM(1,1)*F(3,1) + rM(1,2)*F(3,2) + rM(1,3)*F(3,3))/Jac
-
-      Sgm(2,1) = (rM(2,1)*F(1,1) + rM(2,2)*F(1,2) + rM(2,3)*F(1,3))/Jac
-      Sgm(2,2) = (rM(2,1)*F(2,1) + rM(2,2)*F(2,2) + rM(2,3)*F(2,3))/Jac
-      Sgm(2,3) = (rM(2,1)*F(3,1) + rM(2,2)*F(3,2) + rM(2,3)*F(3,3))/Jac
-
-      Sgm(3,1) = (rM(3,1)*F(1,1) + rM(3,2)*F(1,2) + rM(3,3)*F(1,3))/Jac
-      Sgm(3,2) = (rM(3,1)*F(2,1) + rM(3,2)*F(2,2) + rM(3,3)*F(2,3))/Jac
-      Sgm(3,3) = (rM(3,1)*F(3,1) + rM(3,2)*F(3,2) + rM(3,3)*F(3,3))/Jac
-
-!     Inertia contribution
-      rV(1) = (rho_s-rho_f)*(vd(1) + vVx(1))
-      rV(2) = (rho_s-rho_f)*(vd(2) + vVx(2))
-      rV(3) = (rho_s-rho_f)*(vd(3) + vVx(3))
-
-!     Stress contribution
-      rM(1,1) = (mu_s-mu_f)*es(1,1) + Sgm(1,1) - rC
-      rM(1,2) = (mu_s-mu_f)*es(1,2) + Sgm(1,2)
-      rM(1,3) = (mu_s-mu_f)*es(1,3) + Sgm(1,3)
-
-      rM(2,1) = (mu_s-mu_f)*es(2,1) + Sgm(2,1)
-      rM(2,2) = (mu_s-mu_f)*es(2,2) + Sgm(2,2) - rC
-      rM(2,3) = (mu_s-mu_f)*es(2,3) + Sgm(2,3)
-
-      rM(3,1) = (mu_s-mu_f)*es(3,1) + Sgm(3,1)
-      rM(3,2) = (mu_s-mu_f)*es(3,2) + Sgm(3,2)
-      rM(3,3) = (mu_s-mu_f)*es(3,3) + Sgm(3,3) - rC
-
-!     Residue due to FSI forcing
-      wJ = w*Jac
-      lR = 0._RKIND
+!     Local residue
       DO a=1, eNoN
-         vNx(a)    = Nx(1,a)*v(1)    + Nx(2,a)*v(2)    + Nx(3,a)*v(3)
-         vpNx(a)   = Nx(1,a)*vp_s(1) + Nx(2,a)*vp_s(2) + Nx(3,a)*vp_s(3)
-         rMNx(1,a) = rM(1,1)*Nx(1,a) + rM(1,2)*Nx(2,a) + rM(1,3)*Nx(3,a)
-     2             + rV(1)*N(a)
-         rMNx(2,a) = rM(2,1)*Nx(1,a) + rM(2,2)*Nx(2,a) + rM(2,3)*Nx(3,a)
-     2             + rV(2)*N(a)
-         rMNx(3,a) = rM(3,1)*Nx(1,a) + rM(3,2)*Nx(2,a) + rM(3,3)*Nx(3,a)
-     2             + rV(3)*N(a)
-
-         lR(1,a) = wJ*(N(a)*rV(1) + Nx(1,a)*rM(1,1) + Nx(2,a)*rM(1,2)
-     2      + Nx(3,a)*rM(1,3))
-         lR(2,a) = wJ*(N(a)*rV(2) + Nx(1,a)*rM(2,1) + Nx(2,a)*rM(2,2)
-     2      + Nx(3,a)*rM(2,3))
-         lR(3,a) = wJ*(N(a)*rV(3) + Nx(1,a)*rM(3,1) + Nx(2,a)*rM(3,2)
-     2      + Nx(3,a)*rM(3,3))
-         lR(4,a) = wJ*(N(a)*bta_s*pd - vpNx(a))
-      END DO
-
-!     Return if explicitly coupled
-      IF (ifem%cpld .EQ. ibCpld_E) RETURN
-
-!     Build tangent matrices
-      wl    = wl*Jac
-      rCd   = amf*bta_s + dbta_s*pd
-      rC    = tauC_s*rCd
-      rV(1) = drho_s*(vd(1) + vVx(1))
-      rV(2) = drho_s*(vd(2) + vVx(2))
-      rV(3) = drho_s*(vd(3) + vVx(3))
-      DO b=1, eNoN
-         T2 = rho_s*tauM_s*(amf*N(b) + vNx(b))
-         DO a=1, eNoN
-            NxNx = Nx(1,a)*Nx(1,b) + Nx(2,a)*Nx(2,b) + Nx(3,a)*Nx(3,b)
-
-            T1 = (rho_s-rho_f)*(N(a)*(amf*N(b) + vNx(b)))
-     2         + (mu_s-mu_f)*NxNx
-
-            T3 = tauM_s*(Nx(1,a)*rV(1) + Nx(2,a)*rV(2) + Nx(3,a)*rV(3))
-
-            T4 = bta_s*pd*N(a) - vpNx(a)
-
-            rM(1,1) = (tauC_s + mu_s - mu_f)*Nx(1,a)*Nx(1,a)
-     2              - mu_fx*es_x(1,a)*es_x(1,b)
-            rM(2,1) =     tauC_s *Nx(1,a)*Nx(2,b)
-     2              + (mu_s-mu_f)*Nx(2,a)*Nx(1,a)
-     2              - mu_fx*es_x(1,a)*es_x(2,b)
-            rM(3,1) =     tauC_s *Nx(1,a)*Nx(3,b)
-     2              + (mu_s-mu_f)*Nx(3,a)*Nx(1,a)
-     2              - mu_fx*es_x(1,a)*es_x(3,b)
-
-            rM(1,2) =     tauC_s *Nx(2,a)*Nx(1,b)
-     2              + (mu_s-mu_f)*Nx(1,a)*Nx(2,a)
-     2              - mu_fx*es_x(2,a)*es_x(1,b)
-            rM(2,2) = (tauC_s + mu_s - mu_f)*Nx(2,a)*Nx(2,a)
-     2              - mu_fx*es_x(2,a)*es_x(2,b)
-            rM(3,2) =     tauC_s *Nx(2,a)*Nx(3,b)
-     2              + (mu_s-mu_f)*Nx(3,a)*Nx(2,a)
-     2              - mu_fx*es_x(2,a)*es_x(3,b)
-
-            rM(1,3) =     tauC_s *Nx(3,a)*Nx(1,b)
-     2              + (mu_s-mu_f)*Nx(1,a)*Nx(3,a)
-     2              - mu_fx*es_x(3,a)*es_x(1,b)
-            rM(2,3) =     tauC_s *Nx(3,a)*Nx(2,b)
-     2              + (mu_s-mu_f)*Nx(2,a)*Nx(3,a)
-     2              - mu_fx*es_x(3,a)*es_x(2,b)
-            rM(3,3) = (tauC_s + mu_s - mu_f)*Nx(3,a)*Nx(3,a)
-     2              - mu_fx*es_x(3,a)*es_x(3,b)
-
-!           dM_i/dV_j
-            lK(1,a,b)  = lK(1,a,b)  + wl*(rM(1,1) + T1)
-            lK(2,a,b)  = lK(2,a,b)  + wl* rM(2,1)
-            lK(3,a,b)  = lK(3,a,b)  + wl* rM(3,1)
-
-            lK(5,a,b)  = lK(5,a,b)  + wl* rM(1,2)
-            lK(6,a,b)  = lK(6,a,b)  + wl*(rM(2,2) + T1)
-            lK(7,a,b)  = lK(7,a,b)  + wl* rM(3,2)
-
-            lK(9,a,b)  = lK(9,a,b)  + wl* rM(1,3)
-            lK(10,a,b) = lK(10,a,b) + wl* rM(2,3)
-            lK(11,a,b) = lK(11,a,b) + wl*(rM(3,3) + T1)
-
-!           dM_i/dP
-            lK(4,a,b)  = lK(4,a,b)  + wl*N(b)*(rV(1)*N(a) + rC*Nx(1,a))
-            lK(8,a,b)  = lK(8,a,b)  + wl*N(b)*(rV(2)*N(a) + rC*Nx(2,a))
-            lK(12,a,b) = lK(12,a,b) + wl*N(b)*(rV(3)*N(a) + rC*Nx(3,a))
-
-!           dC/dV_j
-            lK(13,a,b) = lK(13,a,b) + wl*Nx(1,a)*T2
-            lK(14,a,b) = lK(14,a,b) + wl*Nx(2,a)*T2
-            lK(15,a,b) = lK(15,a,b) + wl*Nx(3,a)*T2
-
-!           dC/dP
-            lK(16,a,b) = lK(16,a,b) + wl*(N(b)*(rCd*N(a) + T3)
-     2                 + tauM_s*NxNx)
-
-!           dM_i/dU_j
-            lKu(1,a,b)  = lKu(1,a,b)  + wl*rMNx(1,a)*Nx(1,b)
-            lKu(2,a,b)  = lKu(2,a,b)  + wl*rMNx(1,a)*Nx(2,b)
-            lKu(3,a,b)  = lKu(3,a,b)  + wl*rMNx(1,a)*Nx(3,b)
-
-            lKu(4,a,b)  = lKu(4,a,b)  + wl*rMNx(2,a)*Nx(1,b)
-            lKu(5,a,b)  = lKu(5,a,b)  + wl*rMNx(2,a)*Nx(2,b)
-            lKu(6,a,b)  = lKu(6,a,b)  + wl*rMNx(2,a)*Nx(3,b)
-
-            lKu(7,a,b)  = lKu(7,a,b)  + wl*rMNx(3,a)*Nx(1,b)
-            lKu(8,a,b)  = lKu(8,a,b)  + wl*rMNx(3,a)*Nx(2,b)
-            lKu(9,a,b)  = lKu(9,a,b)  + wl*rMNx(3,a)*Nx(3,b)
-
-!           dC/dU_j
-            lKu(10,a,b) = lKu(10,a,b) + wl*Nx(1,b)*T4
-            lKu(11,a,b) = lKu(11,a,b) + wl*Nx(2,b)*T4
-            lKu(12,a,b) = lKu(12,a,b) + wl*Nx(3,b)*T4
-         END DO
-      END DO
-
-!     Residue in the displacement equation
-      rV(1) = wJ*(ud(1) - v(1))
-      rV(2) = wJ*(ud(2) - v(2))
-      rV(3) = wJ*(ud(3) - v(3))
-
-      DO a=1, eNoN
-         lRu(1,a) = N(a)*rV(1)
-         lRu(2,a) = N(a)*rV(2)
-         lRu(3,a) = N(a)*rV(3)
+         lR(1,a) = lR(1,a) + w*(Nx(1,a)*P(1,1) + 
+     2      Nx(2,a)*P(1,2) + Nx(3,a)*P(1,3))
+         lR(2,a) = lR(2,a) + w*(Nx(1,a)*P(2,1) +
+     2      Nx(2,a)*P(2,2) + Nx(3,a)*P(2,3))
+         lR(3,a) = lR(3,a) + w*(Nx(1,a)*P(3,1) +
+     2      Nx(2,a)*P(3,2) + Nx(3,a)*P(3,3))
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_CALCFFSIL3D
+      END SUBROUTINE IFEM_CALCLFFSI3D
 !--------------------------------------------------------------------
 !     Compute the 2D FSI force due to IFEM on the background fluid
-      SUBROUTINE IFEM_CALCFFSIL2D(eNoNb, eNoN, nFn, w, Je, Nb, Nbx, N, 
-     2   Nx, al, yl, aul, ubl, fN, Jac, lR, lRu, lKu, lK)
+      SUBROUTINE IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, aul, ubl, fN, lR)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNb, eNoN, nFn
-      REAL(KIND=RKIND), INTENT(IN) :: w, Je, Nb(eNoNb), Nbx(2,eNoNb),
-     2   N(eNoN), Nx(2,eNoN), al(tDof,eNoN), yl(tDof,eNoN),aul(2,eNoNb),
-     3   ubl(2,eNoNb), fN(2,nFn)
-      REAL(KIND=RKIND), INTENT(OUT) :: Jac
-      REAL(KIND=RKIND), INTENT(INOUT) :: lR(3,eNoN), lRu(2,eNoN),
-     2   lKu(6,eNoN,eNoN), lK(9,eNoN,eNoN)
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
+      REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
+     2   aul(2,eNoN), ubl(2,eNoN), fN(2,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(3,eNoN)
 
-      INTEGER(KIND=IKIND) a, b, iEq, iDmn
-      REAL(KIND=RKIND) amf, wl, wJ, rho_f, mu_f, rtmp, mu_fx, gam, pd,
-     2   p, fb(2), px(2), v(2), vd(2), vx(2,2), divV, vVx(2), es(2,2),
-     3   es_x(2,eNoN), rV(2), rM(2,2), vNx(eNoN), vpNx(eNoN), NxNx,
-     4   rMNx(2,eNoN), T1, T2, T3, T4
-
-!     Solid domain parameters
-      REAL(KIND=RKIND) rho_s, mu_s, bta_s, drho_s, dbta_s, tauM_s,
-     2   tauC_s, rC, rCd, ud(2), vp_s(2), F(2,2), S(2,2), Sgm(2,2),
-     3   Dm(3,3)
+      INTEGER(KIND=IKIND) :: a, iEq, iDmn, i, j
+      REAL(KIND=RKIND) :: Jac, ya_g
+      REAL(KIND=RKIND) :: Dm(3,3), F(2,2), Fi(2,2), S(2,2), P(2,2)
+      TYPE(dmnType) :: test
 
       iEq     = ifem%cEq
       iDmn    = ifem%cDmn
-      rho_s   = eq(iEq)%dmnIB(iDmn)%prop(solid_density)
-      mu_s    = eq(iEq)%dmnIB(iDmn)%prop(solid_viscosity)
-      fb(1)   = eq(iEq)%dmnIB(iDmn)%prop(f_x)
-      fb(2)   = eq(iEq)%dmnIB(iDmn)%prop(f_y)
-      rho_f   = eq(iEq)%dmn(cDmn)%prop(fluid_density)
+      write(*,*)"iEq = ", iEq
+      write(*,*)"iDmn = ", iDmn
 
-      T1      = eq(iEq)%af * eq(iEq)%gam * dt
-      amf     = eq(iEq)%am / T1
-      wl      = w * T1
-
-!     Inertia and body force
-      vd      = -fb
-      pd      = 0._RKIND
-      v       = 0._RKIND
-      p       = 0._RKIND
-      vx      = 0._RKIND
-      px      = 0._RKIND
-      DO a=1, eNoN
-!        Acceleration (dv_i/dt)
-         vd(1) = vd(1) + N(a)*al(1,a)
-         vd(2) = vd(2) + N(a)*al(2,a)
-
-!        Time derivative of pressure
-         pd    = pd    + N(a)*al(3,a)
-
-!        Velocity, v
-         v(1) = v(1)  + N(a)*yl(1,a)
-         v(2) = v(2)  + N(a)*yl(2,a)
-
-!        Pressure, p
-         p    = p     + N(a)*yl(3,a)
-
-!        Grad v (v_i,j) w.r.t. current coordinates
-         vx(1,1) = vx(1,1) + Nx(1,a)*yl(1,a)
-         vx(1,2) = vx(1,2) + Nx(2,a)*yl(1,a)
-         vx(2,1) = vx(2,1) + Nx(1,a)*yl(2,a)
-         vx(2,2) = vx(2,2) + Nx(2,a)*yl(2,a)
-
-!        Grad p (p_i) w.r.t. current coordinates
-         px(1)   = px(1)   + Nx(1,a)*yl(3,a)
-         px(2)   = px(2)   + Nx(2,a)*yl(3,a)
-      END DO
-      divV = vx(1,1) + vx(2,2)
-
-      IF (mvMsh) THEN
-         DO a=1, eNoN
-            v(1) = v(1) - N(a)*yl(4,a)
-            v(2) = v(2) - N(a)*yl(5,a)
-         END DO
-      END IF
-
-!     Deformation gradient tensor
-      ud     = 0._RKIND
       F      = 0._RKIND
       F(1,1) = 1._RKIND
       F(2,2) = 1._RKIND
-      DO b=1, eNoNb
-         ud(1) = ud(1) + Nb(b)*aul(1,b)
-         ud(2) = ud(2) + Nb(b)*aul(2,b)
-
-!        Deformation tensor, F_{iI}. Here the shape function derivatives
-!        are w.r.t. the reference coordinates
-         F(1,1) = F(1,1) + Nbx(1,b)*ubl(1,b)
-         F(1,2) = F(1,2) + Nbx(2,b)*ubl(1,b)
-         F(2,1) = F(2,1) + Nbx(1,b)*ubl(2,b)
-         F(2,2) = F(2,2) + Nbx(2,b)*ubl(2,b)
-      END DO
-      Jac = MAT_DET(F, nsd)
-
-!     Compute fluid related quantities
-!     V. grad V
-      vVx(1) = v(1)*vx(1,1) + v(2)*vx(1,2)
-      vVx(2) = v(1)*vx(2,1) + v(2)*vx(2,2)
-
-!     Strain rate tensor 2*e_ij := (v_ij + v_ji)
-      es(1,1) = vx(1,1) + vx(1,1)
-      es(2,2) = vx(2,2) + vx(2,2)
-      es(1,2) = vx(1,2) + vx(2,1)
-      es(2,1) = es(1,2)
+      ya_g   = 0._RKIND
+      i = 1
+      j = 2
 
       DO a=1, eNoN
-        es_x(1,a) = es(1,1)*Nx(1,a) + es(1,2)*Nx(2,a)
-        es_x(2,a) = es(2,1)*Nx(1,a) + es(2,2)*Nx(2,a)
+         F(1,1)  = F(1,1)  + Nx(1,a)*ubl(i,a)
+         F(1,2)  = F(1,2)  + Nx(2,a)*ubl(i,a)
+         F(2,1)  = F(2,1)  + Nx(1,a)*ubl(j,a)
+         F(2,2)  = F(2,2)  + Nx(2,a)*ubl(j,a)
       END DO
 
-!     Shear-rate := (2*e_ij*e_ij)^.5
-      gam = es(1,1)*es(1,1) + es(1,2)*es(1,2)
-     2    + es(2,1)*es(2,1) + es(2,2)*es(2,2)
-      gam = SQRT(0.5_RKIND*gam)
+      Jac = MAT_DET(F, 2)
+      Fi  = MAT_INV(F, 2)
 
-!     Compute viscosity based on shear-rate and chosen viscosity model
-      CALL GETVISCOSITY(eq(iEq)%dmn(cDmn), gam, mu_f, rtmp, mu_fx)
+      test = eq(iEq)%dmnIB(iDmn)
+      write(*,*)"this is ok "
+      write(*,*)"Calling GETPK2CC"
+!     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
+!     Voigt notation
+      CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
-      IF (ifem%mthd .EQ. ibMthd_IFEM) THEN
-!        2nd Piola-Kirchhoff stress (S) and material stiffness in Voigt
-!        notation (Dm). Note that S = Siso + Svol. For incompressible
-!        solids, Svol = 0. For compressible solids, Svol = J*p*Cinv
-!        where p is computed based on the dilational penalty model
-         CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S, Dm)
+!     1st Piola-Kirchhoff tensor (P)
+      P = MATMUL(F, S)
 
-!        Jacobian scaling for rho_s for compressible solids
-         IF (.NOT.ISZERO(eq(iEq)%dmnIB(iDmn)%stM%Kpen))
-     2      rho_s = rho_s / Jac
-
-!        No stabilization for IFEM
-         bta_s  = 0._RKIND
-         drho_s = 0._RKIND
-         dbta_s = 0._RKIND
-         tauM_s = 0._RKIND
-         tauC_s = 0._RKIND
-         vp_s   = 0._RKIND
-         rC     = 0._RKIND
-
-      ELSE IF (ifem%mthd .EQ. ibMthd_FEIBs) THEN
-!        Isochoric 2nd Piola-Kirchhoff stress (Siso) and stiffness in
-!        Voigt notation (Dm)
-         CALL GETPK2CCdev(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S,
-     2      Dm, rtmp)
-
-!        Compute rho and beta depending on the volumetric penalty model
-         CALL GVOLPEN(eq(iEq)%dmnIB(iDmn), p, rho_s, bta_s, drho_s,
-     2      dbta_s, 1._RKIND)
-
-!        Compute stabilization parameters
-         CALL GETTAU(eq(iEq)%dmnIB(iDmn), Jac, Je, tauM_s, tauC_s)
-
-!        Momentum and continuity stabilization
-         vp_s(1) = -tauM_s*(rho_s*(vd(1) + vVx(1)) + px(1))
-         vp_s(2) = -tauM_s*(rho_s*(vd(2) + vVx(2)) + px(2))
-         rC      = -tauC_s*(bta_s*pd + divV)
-      END IF
-
-!     1st Piola-Kirchhoff stress, P = F * S, or Pdev = F * Siso
-      rM(1,1)  = F(1,1)*S(1,1) + F(1,2)*S(2,1)
-      rM(1,2)  = F(1,1)*S(1,2) + F(1,2)*S(2,2)
-      rM(2,1)  = F(2,1)*S(1,1) + F(2,2)*S(2,1)
-      rM(2,2)  = F(2,1)*S(1,2) + F(2,2)*S(2,2)
-
-!     sigma = J^-1 * P * F_transpose
-      Sgm(1,1) = (rM(1,1)*F(1,1) + rM(1,2)*F(1,2))/Jac
-      Sgm(1,2) = (rM(1,1)*F(2,1) + rM(1,2)*F(2,2))/Jac
-      Sgm(2,1) = (rM(2,1)*F(1,1) + rM(2,2)*F(1,2))/Jac
-      Sgm(2,2) = (rM(2,1)*F(2,1) + rM(2,2)*F(2,2))/Jac
-
-!     Inertia contribution
-      rV(1) = (rho_s-rho_f)*(vd(1) + vVx(1))
-      rV(2) = (rho_s-rho_f)*(vd(2) + vVx(2))
-
-C !     Stress contribution
-C       rM(1,1) = (mu_s-mu_f)*es(1,1) + Sgm(1,1) - rC
-C       rM(1,2) = (mu_s-mu_f)*es(1,2) + Sgm(1,2)
-C       rM(2,1) = (mu_s-mu_f)*es(2,1) + Sgm(2,1)
-C       rM(2,2) = (mu_s-mu_f)*es(2,2) + Sgm(2,2) - rC
-!     Stress contribution
-      rM(1,1) = (mu_s-mu_f)*es(1,1) + Sgm(1,1)
-      rM(1,2) = (mu_s-mu_f)*es(1,2) + Sgm(1,2)
-      rM(2,1) = (mu_s-mu_f)*es(2,1) + Sgm(2,1)
-      rM(2,2) = (mu_s-mu_f)*es(2,2) + Sgm(2,2)
-
-
-C !     Residue due to FSI forcing
-C       wJ = w*Jac
-C       lR = 0._RKIND
-C       DO a=1, eNoN
-C          vNx(a)    = Nx(1,a)*v(1)    + Nx(2,a)*v(2)
-C          vpNx(a)   = Nx(1,a)*vp_s(1) + Nx(2,a)*vp_s(2)
-C          rMNx(1,a) = rM(1,1)*Nx(1,a) + rM(1,2)*Nx(2,a) + rV(1)*N(a)
-C          rMNx(2,a) = rM(2,1)*Nx(1,a) + rM(2,2)*Nx(2,a) + rV(2)*N(a)
-
-C          lR(1,a) = wJ*(N(a)*rV(1) + Nx(1,a)*rM(1,1) + Nx(2,a)*rM(1,2))
-C          lR(2,a) = wJ*(N(a)*rV(2) + Nx(1,a)*rM(2,1) + Nx(2,a)*rM(2,2))
-C          lR(3,a) = wJ*(N(a)*bta_s*pd - vpNx(a))
-C       END DO
-
-!     Residue due to FSI forcing
-      wJ = w*Jac
-      lR = 0._RKIND
+      write(*,*)"adding to local residue"
+!     Local residue
       DO a=1, eNoN
-         lR(1,a) = wJ*(Nx(1,a)*rM(1,1) + Nx(2,a)*rM(1,2))
-         lR(2,a) = wJ*(Nx(1,a)*rM(2,1) + Nx(2,a)*rM(2,2))
-      END DO
-
-!     Return if explicitly coupled
-      IF (ifem%cpld .EQ. ibCpld_E) RETURN
-
-!     Build tangent matrices
-      wl    = wl*Jac
-      rCd   = amf*bta_s + dbta_s*pd
-      rC    = tauC_s*rCd
-      rV(1) = drho_s*(vd(1) + vVx(1))
-      rV(2) = drho_s*(vd(2) + vVx(2))
-      DO b=1, eNoN
-         T2 = rho_s*tauM_s*(amf*N(b) + vNx(b))
-         DO a=1, eNoN
-            NxNx = Nx(1,a)*Nx(1,b) + Nx(2,a)*Nx(2,b)
-
-            T1 = (rho_s-rho_f)*(N(a)*(amf*N(b) + vNx(b)))
-     2         + (mu_s-mu_f)*NxNx
-
-            T3 = (Nx(1,a)*rV(1) + Nx(2,a)*rV(2)) * tauM_s
-
-            T4 = bta_s*pd*N(a) - vpNx(a)
-
-            rM(1,1) = (tauC_s + mu_s - mu_f)*Nx(1,a)*Nx(1,a)
-     2              - mu_fx*es_x(1,a)*es_x(1,b)
-            rM(2,1) =     tauC_s *Nx(1,a)*Nx(2,b)
-     2              + (mu_s-mu_f)*Nx(2,a)*Nx(1,a)
-     2              - mu_fx*es_x(1,a)*es_x(2,b)
-
-            rM(1,2) =     tauC_s *Nx(2,a)*Nx(1,b)
-     2              + (mu_s-mu_f)*Nx(1,a)*Nx(2,a)
-     2              - mu_fx*es_x(2,a)*es_x(1,b)
-            rM(2,2) = (tauC_s + mu_s - mu_f)*Nx(2,a)*Nx(2,a)
-     2              - mu_fx*es_x(2,a)*es_x(2,b)
-
-!           dM_i/dV_j
-            lK(1,a,b) = lK(1,a,b) + wl*(rM(1,1) + T1)
-            lK(2,a,b) = lK(2,a,b) + wl* rM(2,1)
-
-            lK(4,a,b) = lK(4,a,b) + wl* rM(1,2)
-            lK(5,a,b) = lK(5,a,b) + wl*(rM(2,2) + T1)
-
-!           dM_i/dP
-            lK(3,a,b) = lK(3,a,b) + wl*N(b)*(rV(1)*N(a) + rC*Nx(1,a))
-            lK(6,a,b) = lK(6,a,b) + wl*N(b)*(rV(2)*N(a) + rC*Nx(2,a))
-
-!           dC/dV_j
-            lK(7,a,b) = lK(7,a,b) + wl*Nx(1,a)*T2
-            lK(8,a,b) = lK(8,a,b) + wl*Nx(2,a)*T2
-
-!           dC/dP
-            lK(9,a,b) = lK(9,a,b) + wl*(N(b)*(rCd*N(a) + T3)
-     2                + tauM_s*NxNx)
-
-!           dM_i/dU_j
-            lKu(1,a,b) = lKu(1,a,b) + wl*rMNx(1,a)*Nx(1,b)
-            lKu(2,a,b) = lKu(2,a,b) + wl*rMNx(1,a)*Nx(2,b)
-
-            lKu(3,a,b) = lKu(3,a,b) + wl*rMNx(2,a)*Nx(1,b)
-            lKu(4,a,b) = lKu(4,a,b) + wl*rMNx(2,a)*Nx(2,b)
-
-!           dC/dU_j
-            lKu(5,a,b) = lKu(5,a,b) + wl*Nx(1,b)*T4
-            lKu(6,a,b) = lKu(6,a,b) + wl*Nx(2,b)*T4
-         END DO
-      END DO
-
-!     Residue in the displacement equation
-      rV(1) = wJ*(ud(1) - v(1))
-      rV(2) = wJ*(ud(2) - v(2))
-
-      DO a=1, eNoN
-         lRu(1,a) = N(a)*rV(1)
-         lRu(2,a) = N(a)*rV(2)
+         lR(1,a) = lR(1,a) + w*(Nx(1,a)*P(1,1) + Nx(2,a)*P(1,2))
+         lR(2,a) = lR(2,a) + w*(Nx(1,a)*P(2,1) + Nx(2,a)*P(2,2))
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_CALCFFSIL2D
+      END SUBROUTINE IFEM_CALCLFFSI2D
 !--------------------------------------------------------------------
-!     Compute the 3D elasticity tensor and update LHS
-      SUBROUTINE IFEM_CALCSTK3D(eNoN, nFn, w, Nx, ul, fN, lKu, lK)
-      USE COMMOD
-      USE ALLFUN
-      IMPLICIT NONE
-      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
-      REAL(KIND=RKIND), INTENT(IN) :: w, Nx(3,eNoN), ul(3,eNoN),
-     2   fN(3,nFn)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lKu(12,eNoN,eNoN),
-     2   lK(16,eNoN,eNoN)
-
-      INTEGER(KIND=IKIND) a, b, iEq, iDmn
-      REAL(KIND=RKIND) wl, afm, Jac, rtmp, Fi(3,3), F(3,3), Nbx(3,eNoN),
-     2   S(3,3), Dm(6,6), Bm(6,3,eNoN), DBm(6,3), BtDB, NxSNx
-
-      iEq     = ifem%cEq
-      iDmn    = ifem%cDmn
-
-      wl      = w * eq(iEq)%af * eq(iEq)%gam * dt
-      afm     = wl / eq(iEq)%am / w
-
-!     Inverse of the deformation gradient tensor
-      Fi      = 0._RKIND
-      Fi(1,1) = 1._RKIND
-      Fi(2,2) = 1._RKIND
-      Fi(3,3) = 1._RKIND
-      DO a=1, eNoN
-!        Deformation tensor inverse, Fi_{Ii} = I_{Ii} - u_I,i
-!        Here the shape function derivatives are in spatial coords
-         Fi(1,1) = Fi(1,1) - Nx(1,a)*ul(1,a)
-         Fi(1,2) = Fi(1,2) - Nx(2,a)*ul(1,a)
-         Fi(1,3) = Fi(1,3) - Nx(3,a)*ul(1,a)
-
-         Fi(2,1) = Fi(2,1) - Nx(1,a)*ul(2,a)
-         Fi(2,2) = Fi(2,2) - Nx(2,a)*ul(2,a)
-         Fi(2,3) = Fi(2,3) - Nx(3,a)*ul(2,a)
-
-         Fi(3,1) = Fi(3,1) - Nx(1,a)*ul(3,a)
-         Fi(3,2) = Fi(3,2) - Nx(2,a)*ul(3,a)
-         Fi(3,3) = Fi(3,3) - Nx(3,a)*ul(3,a)
-      END DO
-      F   = MAT_INV(Fi, nsd)
-      Jac = MAT_DET(F,  nsd)
-
-      DO a=1, eNoN
-         Nbx(1,a) = Nx(1,a)*F(1,1) + Nx(2,a)*F(2,1) + Nx(3,a)*F(3,1)
-         Nbx(2,a) = Nx(2,a)*F(1,2) + Nx(2,a)*F(2,2) + Nx(3,a)*F(3,2)
-         Nbx(3,a) = Nx(3,a)*F(1,3) + Nx(2,a)*F(2,3) + Nx(3,a)*F(3,3)
-      END DO
-
-!     Solid internal stresses and stabilization parameters
-      IF (ifem%mthd .EQ. ibMthd_IFEM) THEN
-!        2nd Piola-Kirchhoff stress (S) and material stiffness in Voigt
-!        notation (Dm). Note that S = Siso + Svol. For incompressible
-!        solids, Svol = 0. For compressible solids, Svol = J*p*Cinv
-!        where p is computed based on the dilational penalty model
-         CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S, Dm)
-
-      ELSE IF (ifem%mthd .EQ. ibMthd_FEIBs) THEN
-!        Isochoric 2nd Piola-Kirchhoff stress (Siso) and stiffness in
-!        Voigt notation (Dm)
-         CALL GETPK2CCdev(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S,
-     2      Dm, rtmp)
-
-      END IF
-
-      DO a=1, eNoN
-         Bm(1,1,a) = Nbx(1,a)*F(1,1)
-         Bm(1,2,a) = Nbx(1,a)*F(2,1)
-         Bm(1,3,a) = Nbx(1,a)*F(3,1)
-
-         Bm(2,1,a) = Nbx(2,a)*F(1,2)
-         Bm(2,2,a) = Nbx(2,a)*F(2,2)
-         Bm(2,3,a) = Nbx(2,a)*F(3,2)
-
-         Bm(3,1,a) = Nbx(3,a)*F(1,3)
-         Bm(3,2,a) = Nbx(3,a)*F(2,3)
-         Bm(3,3,a) = Nbx(3,a)*F(3,3)
-
-         Bm(4,1,a) = (Nbx(1,a)*F(1,2) + F(1,1)*Nbx(2,a))
-         Bm(4,2,a) = (Nbx(1,a)*F(2,2) + F(2,1)*Nbx(2,a))
-         Bm(4,3,a) = (Nbx(1,a)*F(3,2) + F(3,1)*Nbx(2,a))
-
-         Bm(5,1,a) = (Nbx(2,a)*F(1,3) + F(1,2)*Nbx(3,a))
-         Bm(5,2,a) = (Nbx(2,a)*F(2,3) + F(2,2)*Nbx(3,a))
-         Bm(5,3,a) = (Nbx(2,a)*F(3,3) + F(3,2)*Nbx(3,a))
-
-         Bm(6,1,a) = (Nbx(3,a)*F(1,1) + F(1,3)*Nbx(1,a))
-         Bm(6,2,a) = (Nbx(3,a)*F(2,1) + F(2,3)*Nbx(1,a))
-         Bm(6,3,a) = (Nbx(3,a)*F(3,1) + F(3,3)*Nbx(1,a))
-      END DO
-
-      DO b=1, eNoN
-         DO a=1, eNoN
-            NxSNx = Nbx(1,a)*S(1,1)*Nbx(1,b) + Nbx(1,a)*S(1,2)*Nbx(2,b)
-     2            + Nbx(1,a)*S(1,3)*Nbx(3,b) + Nbx(2,a)*S(2,1)*Nbx(1,b)
-     3            + Nbx(2,a)*S(2,2)*Nbx(2,b) + Nbx(2,a)*S(2,3)*Nbx(3,b)
-     4            + Nbx(3,a)*S(3,1)*Nbx(1,b) + Nbx(3,a)*S(3,2)*Nbx(2,b)
-     5            + Nbx(3,a)*S(3,3)*Nbx(3,b)
-
-            DBm   = MATMUL(Dm, Bm(:,:,b))
-
-!           Compute elastic tensor (material and geometric stiffnesses)
-!           dM_1/dU_1
-            BtDB = Bm(1,1,a)*DBm(1,1) + Bm(2,1,a)*DBm(2,1) +
-     2             Bm(3,1,a)*DBm(3,1) + Bm(4,1,a)*DBm(4,1) +
-     3             Bm(5,1,a)*DBm(5,1) + Bm(6,1,a)*DBm(6,1)
-            lKu(1,a,b)  = lKu(1,a,b)  + wl*(BtDB + NxSNx)
-
-!           dM_1/dU_2
-            BtDB = Bm(1,1,a)*DBm(1,2) + Bm(2,1,a)*DBm(2,2) +
-     2             Bm(3,1,a)*DBm(3,2) + Bm(4,1,a)*DBm(4,2) +
-     3             Bm(5,1,a)*DBm(5,2) + Bm(6,1,a)*DBm(6,2)
-            lKu(2,a,b)  = lKu(2,a,b)  + wl*BtDB
-
-!           dM_1/dU_3
-            BtDB = Bm(1,1,a)*DBm(1,3) + Bm(2,1,a)*DBm(2,3) +
-     2             Bm(3,1,a)*DBm(3,3) + Bm(4,1,a)*DBm(4,3) +
-     3             Bm(5,1,a)*DBm(5,3) + Bm(6,1,a)*DBm(6,3)
-            lKu(3,a,b)  = lKu(3,a,b)  + wl*BtDB
-
-!           dM_2/dU_1
-            BtDB = Bm(1,2,a)*DBm(1,1) + Bm(2,2,a)*DBm(2,1) +
-     2             Bm(3,2,a)*DBm(3,1) + Bm(4,2,a)*DBm(4,1) +
-     3             Bm(5,2,a)*DBm(5,1) + Bm(6,2,a)*DBm(6,1)
-            lKu(4,a,b)  = lKu(4,a,b)  + wl*BtDB
-
-!           dM_2/dU_2
-            BtDB = Bm(1,2,a)*DBm(1,2) + Bm(2,2,a)*DBm(2,2) +
-     2             Bm(3,2,a)*DBm(3,2) + Bm(4,2,a)*DBm(4,2) +
-     3             Bm(5,2,a)*DBm(5,2) + Bm(6,2,a)*DBm(6,2)
-            lKu(5,a,b)  = lKu(5,a,b)  + wl*(BtDB + NxSNx)
-
-!           dM_2/dU_3
-            BtDB = Bm(1,2,a)*DBm(1,3) + Bm(2,2,a)*DBm(2,3) +
-     2             Bm(3,2,a)*DBm(3,3) + Bm(4,2,a)*DBm(4,3) +
-     3             Bm(5,2,a)*DBm(5,3) + Bm(6,2,a)*DBm(6,3)
-            lKu(6,a,b)  = lKu(6,a,b)  + wl*BtDB
-
-!           dM_3/dU_1
-            BtDB = Bm(1,3,a)*DBm(1,1) + Bm(2,3,a)*DBm(2,1) +
-     2             Bm(3,3,a)*DBm(3,1) + Bm(4,3,a)*DBm(4,1) +
-     3             Bm(5,3,a)*DBm(5,1) + Bm(6,3,a)*DBm(6,1)
-            lKu(7,a,b)  = lKu(7,a,b)  + wl*BtDB
-
-!           dM_3/dU_2
-            BtDB = Bm(1,3,a)*DBm(1,2) + Bm(2,3,a)*DBm(2,2) +
-     2             Bm(3,3,a)*DBm(3,2) + Bm(4,3,a)*DBm(4,2) +
-     3             Bm(5,3,a)*DBm(5,2) + Bm(6,3,a)*DBm(6,2)
-            lKu(8,a,b)  = lKu(8,a,b)  + wl*BtDB
-
-!           dM_3/dU_3
-            BtDB = Bm(1,3,a)*DBm(1,3) + Bm(2,3,a)*DBm(2,3) +
-     2             Bm(3,3,a)*DBm(3,3) + Bm(4,3,a)*DBm(4,3) +
-     3             Bm(5,3,a)*DBm(5,3) + Bm(6,3,a)*DBm(6,3)
-            lKu(9,a,b)  = lKu(9,a,b)  + wl*(BtDB + NxSNx)
-
-!           Now update full stiffness tensor
-!           dM_i/dV_j + (af*gam*dt/am)*dM_i/dU_j
-            lK(1,a,b)  = lK(1,a,b)  + afm*lKu(1,a,b)
-            lK(2,a,b)  = lK(2,a,b)  + afm*lKu(2,a,b)
-            lK(3,a,b)  = lK(3,a,b)  + afm*lKu(3,a,b)
-
-            lK(5,a,b)  = lK(5,a,b)  + afm*lKu(4,a,b)
-            lK(6,a,b)  = lK(6,a,b)  + afm*lKu(5,a,b)
-            lK(7,a,b)  = lK(7,a,b)  + afm*lKu(6,a,b)
-
-            lK(9,a,b)  = lK(9,a,b)  + afm*lKu(7,a,b)
-            lK(10,a,b) = lK(10,a,b) + afm*lKu(8,a,b)
-            lK(11,a,b) = lK(11,a,b) + afm*lKu(9,a,b)
-
-!           dC/dV_j + (af*gam*dt/am)*dC/dU_j
-            lK(13,a,b) = lK(13,a,b) + afm*lKu(10,a,b)
-            lK(14,a,b) = lK(14,a,b) + afm*lKu(11,a,b)
-            lK(15,a,b) = lK(15,a,b) + afm*lKu(12,a,b)
-         END DO
-      END DO
-
-      RETURN
-      END SUBROUTINE IFEM_CALCSTK3D
-!--------------------------------------------------------------------
-!     Compute the 2D elasticity tensor and update LHS
-      SUBROUTINE IFEM_CALCSTK2D(eNoN, nFn, w, Nx, ul, fN, lKu, lK)
-      USE COMMOD
-      USE ALLFUN
-      IMPLICIT NONE
-      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
-      REAL(KIND=RKIND), INTENT(IN) :: w, Nx(2,eNoN), ul(2,eNoN),
-     2   fN(2,nFn)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lKu(6,eNoN,eNoN),
-     2   lK(9,eNoN,eNoN)
-
-      INTEGER(KIND=IKIND) a, b, iEq, iDmn
-      REAL(KIND=RKIND) wl, afm, Jac, rtmp, Fi(2,2), F(2,2), Nbx(2,eNoN),
-     2   S(2,2), Dm(3,3), Bm(3,2,eNoN), DBm(3,2), BtDB, NxSNx
-
-      iEq     = ifem%cEq
-      iDmn    = ifem%cDmn
-
-      wl      = w * eq(iEq)%af * eq(iEq)%gam * dt
-      afm     = wl / eq(iEq)%am / w
-
-!     Inverse of the deformation gradient tensor
-      Fi      = 0._RKIND
-      Fi(1,1) = 1._RKIND
-      Fi(2,2) = 1._RKIND
-      DO a=1, eNoN
-!        Deformation tensor inverse, Fi_{Ii} = I_{Ii} - u_I,i
-!        Here the shape function derivatives are in spatial coords
-         Fi(1,1) = Fi(1,1) - Nx(1,a)*ul(1,a)
-         Fi(1,2) = Fi(1,2) - Nx(2,a)*ul(1,a)
-
-         Fi(2,1) = Fi(2,1) - Nx(1,a)*ul(2,a)
-         Fi(2,2) = Fi(2,2) - Nx(2,a)*ul(2,a)
-      END DO
-      F   = MAT_INV(Fi, 2)
-      Jac = F(1,1)*F(2,2) - F(1,2)*F(2,1)
-
-      DO a=1, eNoN
-         Nbx(1,a) = Nx(1,a)*F(1,1) + Nx(2,a)*F(2,1)
-         Nbx(2,a) = Nx(2,a)*F(1,2) + Nx(2,a)*F(2,2)
-      END DO
-
-!     Solid internal stresses and stabilization parameters
-      IF (ifem%mthd .EQ. ibMthd_IFEM) THEN
-!        2nd Piola-Kirchhoff stress (S) and material stiffness in Voigt
-!        notation (Dm). Note that S = Siso + Svol. For incompressible
-!        solids, Svol = 0. For compressible solids, Svol = J*p*Cinv
-!        where p is computed based on the dilational penalty model
-         CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S, Dm)
-
-      ELSE IF (ifem%mthd .EQ. ibMthd_FEIBs) THEN
-!        Isochoric 2nd Piola-Kirchhoff stress (Siso) and stiffness in
-!        Voigt notation (Dm)
-         CALL GETPK2CCdev(eq(iEq)%dmnIB(iDmn), F, nFn, fN, 0._RKIND, S,
-     2      Dm, rtmp)
-
-      END IF
-
-      DO a=1, eNoN
-         Bm(1,1,a) = Nbx(1,a)*F(1,1)
-         Bm(1,2,a) = Nbx(1,a)*F(2,1)
-
-         Bm(2,1,a) = Nbx(2,a)*F(1,2)
-         Bm(2,2,a) = Nbx(2,a)*F(2,2)
-
-         Bm(3,1,a) = (Nbx(1,a)*F(1,2) + F(1,1)*Nbx(2,a))
-         Bm(3,2,a) = (Nbx(1,a)*F(2,2) + F(2,1)*Nbx(2,a))
-      END DO
-
-      DO b=1, eNoN
-         DO a=1, eNoN
-            NxSNx = Nbx(1,a)*S(1,1)*Nbx(1,b) + Nbx(1,a)*S(1,2)*Nbx(2,b)
-     2            + Nbx(2,a)*S(2,1)*Nbx(1,b) + Nbx(2,a)*S(2,2)*Nbx(2,b)
-
-            DBm(1,1) = Dm(1,1)*Bm(1,1,b) + Dm(1,2)*Bm(2,1,b)
-     2               + Dm(1,3)*Bm(3,1,b)
-            DBm(1,2) = Dm(1,1)*Bm(1,2,b) + Dm(1,2)*Bm(2,2,b)
-     2               + Dm(1,3)*Bm(3,2,b)
-
-            DBm(2,1) = Dm(2,1)*Bm(1,1,b) + Dm(2,2)*Bm(2,1,b)
-     2               + Dm(2,3)*Bm(3,1,b)
-            DBm(2,2) = Dm(2,1)*Bm(1,2,b) + Dm(2,2)*Bm(2,2,b)
-     2               + Dm(2,3)*Bm(3,2,b)
-
-            DBm(3,1) = Dm(3,1)*Bm(1,1,b) + Dm(3,2)*Bm(2,1,b)
-     2               + Dm(3,3)*Bm(3,1,b)
-            DBm(3,2) = Dm(3,1)*Bm(1,2,b) + Dm(3,2)*Bm(2,2,b)
-     2               + Dm(3,3)*Bm(3,2,b)
-
-!           Compute elastic tensor (material and geometric stiffnesses)
-!           dM_1/dU_1
-            BtDB = Bm(1,1,a)*DBm(1,1) + Bm(2,1,a)*DBm(2,1)
-     2           + Bm(3,1,a)*DBm(3,1)
-            lKu(1,a,b) = lKu(1,a,b) + wl*(BtDB + NxSNx)
-
-!           dM_1/dU_2
-            BtDB = Bm(1,1,a)*DBm(1,2) + Bm(2,1,a)*DBm(2,2)
-     2           + Bm(3,1,a)*DBm(3,2)
-            lKu(2,a,b) = lKu(2,a,b) + wl*BtDB
-
-!           dM_2/dU_1
-            BtDB = Bm(1,2,a)*DBm(1,1) + Bm(2,2,a)*DBm(2,1)
-     2           + Bm(3,2,a)*DBm(3,1)
-            lKu(3,a,b) = lKu(3,a,b) + wl*BtDB
-
-!           dM_2/dU_2
-            BtDB = Bm(1,2,a)*DBm(1,2) + Bm(2,2,a)*DBm(2,2)
-     2           + Bm(3,2,a)*DBm(3,2)
-            lKu(4,a,b) = lKu(4,a,b) + wl*(BtDB + NxSNx)
-
-!           Now update full stiffness tensor
-!           dM_i/dV_j + (af*gam*dt/am)*dM_i/dU_j
-            lK(1,a,b) = lK(1,a,b) + afm*lKu(1,a,b)
-            lK(2,a,b) = lK(2,a,b) + afm*lKu(2,a,b)
-
-            lK(4,a,b) = lK(4,a,b) + afm*lKu(3,a,b)
-            lK(5,a,b) = lK(5,a,b) + afm*lKu(4,a,b)
-
-!           dC/dV_j + (af*gam*dt/am)*dC/dU_j
-            lK(7,a,b) = lK(7,a,b) + afm*lKu(5,a,b)
-            lK(8,a,b) = lK(8,a,b) + afm*lKu(6,a,b)
-         END DO
-      END DO
-
-      RETURN
-      END SUBROUTINE IFEM_CALCSTK2D
 !####################################################################
       SUBROUTINE IFEM_DOASSEM(eNoN, ptr, lKu, lK)
       USE TYPEMOD
@@ -5150,16 +4213,155 @@ C       END DO
       RETURN
       END SUBROUTINE IFEM_RHSUpdate
 !####################################################################
-!     Add contribution from IFEM to the residue (RHS)
+!     Add contribution from IFEM to the residue (RHS) via MLS
+!     We suppose for the moment that the fluid mesh is static
       SUBROUTINE IFEM_CONSTRUCT()
       USE COMMOD
+      USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) a
+      INTEGER(KIND=IKIND) a, is, iM, mnS, idFCls, nbrSN, idFStc, nd
 
-      DO a=1, tnNo
-         R(1:nsd+1,a) = R(1:nsd+1,a) + ifem%R(:,a)
+      REAL(KIND=RKIND), ALLOCATABLE :: Amls(:,:), Bmls(:,:), Wmls(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: Pmls(:,:), PPt(:,:), q(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:), Ai(:,:), qt(:,:)
+      REAL(KIND=RKIND) :: xlf(nsd), xls(nsd), rnorm, wfunc, sum
+      REAL(KIND=RKIND) :: Aaux(1,nsd+1)
+
+      ALLOCATE(Amls(nsd+1,nsd+1), Pmls(nsd+1,1), PPt(nsd+1,nsd+1), 
+     2         Ai(nsd+1,nsd+1))
+
+      mnS = SIZE(msh(1)%stn%ndStn,2)
+      ALLOCATE(QMLS(mnS,ifem%tnNo))
+      QMLS = 0._RKIND
+
+      ifem%Rfluid = 0._RKIND
+!     Loop over the nbr of solid meshes 
+      DO iM=1, nMsh
+         write(*,*)"inside loop mesh"
+!        Compute mesh space discr param if not computed yet         
+         CALL GETMESHDIAM(msh(iM))
+         write(*,*)"diam computed"
+
+!        Loop over the solid nodes 
+         DO a=1, ifem%tnNo
+            write(*,*)"inside loop solid node"
+!           Global id closest fluid node
+            idFCls = ifem%clsFNd(a)  
+!           Nbr of node in stencil
+            nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+!           Update current solid node coord
+            xls = ifem%x(:,a) + ifem%Ubo(:,a)
+
+            write(*,*)"solid coord:", xls
+            write(*,*)"if closest point :", idFCls
+            write(*,*)"nmb stencil node", nbrSN
+
+            ALLOCATE(Bmls(nsd+1,nbrSN))
+            ALLOCATE(q(1,nbrSN))
+            ALLOCATE(qt(nbrSN,1))
+            ALLOCATE(Wmls(nbrSN))
+
+            Amls = 0._RKIND
+            Bmls = 0._RKIND
+
+            sum = 0._RKIND
+!           Loop over the stencil 
+            DO is = 1, nbrSN
+               write(*,*) "inside loop stencil"
+!              Extract fluid coordinates xlf
+               idFStc = msh(iM)%stn%ndStn(idFCls,is)
+               xlf = x(:,idFStc)
+
+               write(*,*)"idFStc = ", idFStc
+               write(*,*)"xlf = ", xlf
+
+               Pmls(1,1) = 1._RKIND
+               Pmls(2,1) = xlf(1)
+               Pmls(3,1) = xlf(2)
+
+               write(*,*)" Pmls ", Pmls
+               
+!              Compute cubic spline value
+               rnorm = msh(iM)%diam*1.15
+               Wmls(is) = WHTFUNC(xls,xlf,rnorm)
+!              Check that rnorm is good 
+               rnorm = DIST(xls,xlf)
+               rnorm = rnorm / (msh(iM)%diam*1.15)
+               write(*,*)"rnorm is ", rnorm
+               write(*,*)"Wmls is ", Wmls(is)
+
+
+               PPt = Wmls(is)*MATMUL(Pmls, TRANSPOSE(Pmls))
+               write(*,*)"PPt = ",PPt
+
+               Amls = Amls + PPt
+               write(*,*)"Matrix A inside is ",Amls
+
+               Bmls(:,is) = Wmls(is)*Pmls(:,1)
+
+               sum = sum + Wmls(is)
+            END DO
+
+            write(*,*)"Sum W = ", sum
+            nd = nsd+1
+            write(*,*)"Matrix A is ", Amls
+            write(*,*) ""//""
+            Ai = MAT_INV(Amls,nd)
+
+            Pmls(1,1) = 1._RKIND
+            Pmls(2,1) = xls(1)
+            Pmls(3,1) = xls(2)
+
+            Aaux = MATMUL(TRANSPOSE(Pmls),Ai)
+            q = MATMUL(Aaux,Bmls)
+            qt = TRANSPOSE(q)
+
+            QMLS(1:nbrSN,a) = qt(:,1)
+            
+            DEALLOCATE(Bmls)
+            DEALLOCATE(q)
+            DEALLOCATE(qt)
+            DEALLOCATE(Wmls)
+
+            write(*,*) ""//""
+            write(*,*) ""//""
+            write(*,*) ""//""
+
+         END DO
       END DO
+
+      write(*,*)"QMLS = ", QMLS
+      write(*,*)"ifem%Rsolid = ", ifem%Rsolid
+
+!     TODO for multiple fluid mesh
+      iM = 1
+!        Loop over the solid nodes 
+         DO a=1, ifem%tnNo
+            write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+!           Global id closest fluid node
+            idFCls = ifem%clsFNd(a) 
+!           Nbr of node in stencil
+            nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+!           Loop over the stencil 
+            DO is = 1, nbrSN
+               write(*,*) "inside loop stencil"
+!              Extract fluid coordinates xlf
+               idFStc = msh(iM)%stn%ndStn(idFCls,is)
+
+               ifem%Rfluid(:,idFStc) = ifem%Rfluid(:,idFStc) + 
+     2                                     QMLS(is,a)*ifem%Rsolid(:,a)
+            END DO
+         END DO
+
+      write(*,*)"Rfluid built done"
+
+!     Final residual assembly 
+      DO a=1, tnNo
+         R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
+      END DO
+
+      DEALLOCATE(Amls, Pmls, PPt, Ai, QMLS)
 
       RETURN
       END SUBROUTINE IFEM_CONSTRUCT
@@ -5173,10 +4375,14 @@ C       END DO
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER a, i, is, ie
-      REAL(KIND=RKIND) tt
-
+      REAL(KIND=RKIND) :: tt
+      INTEGER(KIND=IKIND) :: a, is, ie, i
       REAL(KIND=RKIND), ALLOCATABLE :: Yl(:,:)
+
+!     For the moment we are using only Yn, the displacement in case 
+!     of ALE will be consider in the future
+
+      write(*,*)"Inside IFEM_INTERPVEL"
 
       tt = CPUT()
       is = eq(ifem%cEq)%s
@@ -5184,46 +4390,85 @@ C       END DO
 
       ALLOCATE(Yl(nsd+1,tnNo))
       DO a=1, tnNo
-         Yl(:,a) = Yg(is:ie,a)
+         Yl(:,a) = Yg(is:ie,a) ! keeping only the fluid vel and pressure 
       END DO
 
-      CALL IFEM_INTERP(nsd+1, Yl, Dg, ifem%Yb)
+      write(*,*)"calling IFEM_FINDSOLVEL"
+      CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
       DEALLOCATE(Yl)
+      write(*,*)"done calling IFEM_FINDSOLVEL"
 
-      IF (ifem%cpld .EQ. ibCpld_E) THEN
-         DO a=1, ifem%tnNo
-            DO i=1, nsd
-               ifem%Ubo(i,a) = ifem%Ubo(i,a) + ifem%Yb(i,a)*dt
-            END DO
+
+!     Computing new solid location using A-B scheme given the new interpolated 
+!     fluid velocity   
+      DO a=1, ifem%tnNo
+         DO i=1, nsd
+            ifem%xCu(i,a) = ifem%xCuo(i,a)
+     2                 + dt*( 3._RKIND/2._RKIND * ifem%Yb(i,a) 
+     3                 - 0.5_RKIND*ifem%Auo(i,a) )
          END DO
-      END IF
+      END DO
+
+      write(*,*)"Done AB scheme"
+
+!     Update old displacement and solid velocity 
+      ifem%Ubo = ifem%xCu - ifem%x
+      ifem%Auo = ifem%Yb
+
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
       RETURN
       END SUBROUTINE IFEM_INTERPVEL
 !####################################################################
-!     Interpolate data at IFEM nodes from background mesh
-!     1: interpolation is performed directly at the IFEM nodes
-!     2: interpolation is performed at the integration points using a
-!        lumped L2 projection is used to transfer data to nodes
-      SUBROUTINE IFEM_INTERP(m, Ug, Dg, Ub)
+!     Interpolate data at IFEM nodes from background mesh using fem
+!     nodal function 
+      SUBROUTINE IFEM_FINDSOLVEL(m, Ug, Dg, Ub)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       INTEGER, INTENT(IN) :: m
       REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
-      REAL(KIND=RKIND), INTENT(OUT) :: Ub(m,ifem%tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
 
-      IF (ifem%intrp .EQ. ibIntrp_DI) THEN
-         CALL IFEM_INTERPND(m, Ug, Dg, Ub)
+      REAL(KIND=RKIND) :: xi(nsd), up(m)
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:), Nx(:,:), xl(:,:), ul(:,:)
+      INTEGER(KIND=IKIND) :: a, jM, Ac, e, eNoN, idFEl
 
-      ELSE IF (ifem%intrp .EQ. ibIntrp_L2) THEN
-         CALL IFEM_INTERPGP(m, Ug, Dg, Ub)
+      jM = 1
 
-      END IF
+      DO e=1, ifem%tnNo
+!        Find fluid elem in which is it in the def config 
+         idFEl = ifem%clsFElm(e)
+         
+         eNoN = msh(jM)%eNoN
+         ALLOCATE(N(eNoN), Nx(nsd,eNoN), xl(nsd,eNoN), ul(nsd,eNoN))
+         
+         ul = 0._RKIND
+         DO a=1, eNoN
+            Ac = msh(jM)%IEN(a,idFEl)
+            ul(:,a) = Ug(1:nsd,Ac)
+            xl(:,a) = x(:,Ac)
+C             IF (mvMsh) xl(:,a) = xl(:,a) + Dg(nsd+2:2*nsd+1,Ac)
+         END DO
+
+!        Find shape functions and derivatives on the background mesh
+!        at the IFEM node
+         xi = ifem%x(:,e)
+         CALL GETGNN(nsd, msh(jM)%eType, eNoN, xi, N, Nx)
+
+!           Use computed shape functions to interpolate flow variables
+         up = 0._RKIND
+         DO a=1, eNoN
+            up = up + N(a)*ul(:,a)
+         END DO
+
+         Ub(:,e) = Ub(:,e) + up(:)
+
+         DEALLOCATE(N, Nx, xl, ul)
+      END DO
 
       RETURN
-      END SUBROUTINE IFEM_INTERP
+      END SUBROUTINE IFEM_FINDSOLVEL
 !--------------------------------------------------------------------
       SUBROUTINE IFEM_INTERPND(m, Ug, Dg, Ub)
       USE COMMOD
