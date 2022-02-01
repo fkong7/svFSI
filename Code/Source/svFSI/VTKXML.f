@@ -433,7 +433,10 @@
 
       a  = SUM(iblank(:))
       a  = cm%reduce(a)
-      IF (a .GT. 0) lIbl = .TRUE.
+      IF ((a .GT. 0) .AND. ibFlag) THEN 
+         lIbl = .TRUE.
+         write(*,*)"    !!!!! WHY THE HELL iblank is active !!!!!"
+      END IF
 
       DO iEq=1, nEq
          IF (eq(iEq)%phys .EQ. phys_CMM .AND. ALLOCATED(Dinit)) THEN

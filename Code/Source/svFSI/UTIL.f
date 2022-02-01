@@ -323,7 +323,7 @@
 
    !        test dot product between P-P1 and the normals
             dotP = N(1)*(P(1)-P1(1,i)) + N(2)*(P(2)-P1(2,i)) 
-            IF( dotP .LT. 0._RKIND ) THEN 
+            IF( dotP .LT. -1.E-10_RKIND ) THEN 
                flag = .FALSE.
 C                EXIT
             END IF

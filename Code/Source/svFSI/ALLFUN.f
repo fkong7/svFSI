@@ -244,7 +244,10 @@ C             END IF
 
       isIfem = .FALSE.
       IF (ifemFlag) THEN
-         IF (nNo .EQ. ifem%tnNo) isIfem = .TRUE.
+         IF (nNo .EQ. ifem%tnNo) THEN 
+            isIfem = .TRUE.
+            write(*,*)"isIfem = .TRUE."
+         END IF
       END IF
 
       IntegV = 0._RKIND
@@ -263,6 +266,7 @@ C             END IF
                CALL GNNIB(lFa, e, g, n)
             ELSEIF(isIfem) THEN
                CALL GNNIFEM(lFa, e, g, n)
+               write(*,*)"calling GNNIFEM"
             ELSE
                CALL GNNB(lFa, e, g, nsd-1, lFa%eNoN, lFa%Nx(:,:,g), n)               
             END IF
@@ -348,13 +352,15 @@ C             END IF
       LOGICAL, INTENT(IN), OPTIONAL :: pFlag
       REAL(KIND=RKIND) vInteg
 
-      LOGICAL isIB, flag
+      LOGICAL isIB, isIFEM, flag
       INTEGER(KIND=IKIND) a, e, g, Ac, iM, eNoN, insd, ibl, nNo
       REAL(KIND=RKIND) Jac, nV(nsd), sHat, tmp(nsd,nsd)
       TYPE(fsType) :: fs
 
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), sl(:), Nxi(:,:),
      2   Nx(:,:), tmps(:,:)
+
+      write(*,*)"WE are in vInteg "
 
       nNo = SIZE(s,2)
       IF (nNo .NE. tnNo) THEN
@@ -381,8 +387,13 @@ C             END IF
          IF (nNo .EQ. ib%tnNo) isIB = .TRUE.
       END IF
 
+      isIFEM = .FALSE.
+      IF (ifemFlag) THEN
+         IF (nNo .EQ. ifem%tnNo) isIFEM = .TRUE.
+      END IF
+
       vInteg = 0._RKIND
-      IF (.NOT.isIB) THEN
+      IF ((.NOT.isIB) .AND. (.NOT.isIFEM)) THEN
          DO iM=1, nMsh
             insd = nsd
             IF (msh(iM)%lShl) insd = nsd-1
@@ -469,7 +480,7 @@ C             END IF
             DEALLOCATE(xl, Nxi, Nx, sl, tmps)
             CALL DESTROY(fs)
          END DO
-      ELSE
+      ELSE IF (isIB) THEN
          DO iM=1, ib%nMsh
             eNoN = ib%msh(iM)%eNoN
             insd = nsd
@@ -513,9 +524,56 @@ C             END IF
 
             DEALLOCATE(xl, Nxi, Nx, sl, tmps)
          END DO
+      ELSE 
+
+
+         DO iM=1, ifem%nMsh
+            eNoN = ifem%msh(iM)%eNoN
+            insd = nsd
+
+            ALLOCATE(xl(nsd,eNoN), Nxi(insd,eNoN), Nx(insd,eNoN),
+     2         sl(eNoN), tmps(nsd,insd))
+
+            DO e=1, ifem%msh(iM)%nEl
+               IF (dId.GT.0 .AND. ALLOCATED(ifem%msh(iM)%eId)) THEN
+                  IF (.NOT.BTEST(ifem%msh(iM)%eId(e),dId)) CYCLE
+               END IF
+
+!           Updating the shape functions, if this is a NURB
+               IF (ifem%msh(iM)%eType .EQ. eType_NRB)
+     2            CALL NRBNNX(ifem%msh(iM), e)
+               DO a=1, eNoN
+                  Ac      = ifem%msh(iM)%IEN(a,e)
+                  xl(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
+                  IF (l .EQ. u) THEN
+                     sl(a) = s(l,Ac)
+                   ELSE
+                     sl(a) = SQRT(NORM(s(l:u,Ac)))
+                  END IF
+               END DO
+
+               DO g=1, ifem%msh(iM)%nG
+                  Nxi(:,:) = ifem%msh(iM)%Nx(:,:,g)
+                  IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
+                     CALL GNN(eNoN, insd, Nxi, xl, Nx, Jac, tmp)
+                  END IF
+                  IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+
+                  sHat = 0._RKIND
+                  DO a=1, eNoN
+                     Ac = ifem%msh(iM)%IEN(a,e)
+                     sHat = sHat + sl(a)*ifem%msh(iM)%N(a,g)
+                  END DO
+                  vInteg = vInteg + ifem%msh(iM)%w(g)*Jac*sHat
+               END DO
+            END DO
+
+            DEALLOCATE(xl, Nxi, Nx, sl, tmps)
+         END DO
+
       END IF
 
-      IF (cm%seq() .OR. isIB) RETURN
+      IF (cm%seq() .OR. isIB .OR. isIFEM) RETURN
       vInteg = cm%reduce(vInteg)
 
       RETURN
@@ -1923,6 +1981,7 @@ C             END IF
 !####################################################################
 !     Find nodal stencil/adjacency of a given mesh.  ?? TODO
 !     Computes list of all nodes (just IDs) around a given node of a mesh.
+!     For fsi with IFEM lM is the fluid mesh 
       SUBROUTINE GETNSTENCIL(lM)
       USE COMMOD
       IMPLICIT NONE
@@ -1998,6 +2057,8 @@ C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
             IdElmF = stcElm(e,a) ! Id fluid element
          
             DO i=1, lM%eNoN
+               flag = .FALSE.
+
                ! TODO FOR PARALLEL VERSION
                Ac = lM%IEN(i,IdElmF)
 !              Ac = lM%lN(Ac) 
@@ -2017,10 +2078,9 @@ C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
                END IF
             END DO
 
-            flag = .FALSE.
+            
          END DO
 
-         flag = .FALSE.
       END DO
 
       DO e=1, lM%nNo
@@ -2039,15 +2099,22 @@ C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
       lm%stn%ndStn = 0
       ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
 
+
+
       lm%stn%ndStn(:,1:maxAdj+1) = stcNd
       DO a=1, lM%nNo
          lm%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
       END DO
       lm%stn%elmStn = stcElm
 
-C       DO a=1, lM%nNo
-C          write(*,*)"lm%stn%ndStn(A,:) = ", lm%stn%ndStn(a,:) 
-C       END DO
+      DO a=1, lM%nNo
+         write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
+      END DO 
+
+      DO a=1, lM%nNo
+         write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
+     2       " = ", lm%stn%ndStn(a,:) 
+      END DO
       
 
       DEALLOCATE(incNd)

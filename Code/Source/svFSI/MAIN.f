@@ -120,11 +120,17 @@
             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
 
+            write(*,*)"ifem%Auo", ifem%Auo
+            write(*,*)"ifem%Ubo", ifem%Ubo
+
             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
             write(*,*)"ifem%Auo", ifem%Auo
             write(*,*)"ifem%Ubo", ifem%Ubo
             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+
+            write(*,*)"calling IFEM_CONSTRUCT"
+            CALL IFEM_CONSTRUCT()
          END IF
 
          write(*,*)"Beginning inner loop"
@@ -198,10 +204,10 @@
             END IF
 
 !        IFEM: adding the FSI force to the Fluid residue 
-            write(*,*)"calling IFEM_CONSTRUCT"
-            IF (ifemFlag) THEN
-               CALL IFEM_CONSTRUCT()
-            END IF
+C             write(*,*)"calling IFEM_RASSEMBLY"
+C             IF (ifemFlag) THEN
+C                CALL IFEM_RASSEMBLY()
+C             END IF
 
             incL = 0
             IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
@@ -244,14 +250,25 @@
 !     fluid velocity, using Adams-Bashforth scheme 
          IF (ifemFlag) THEN
 !           Find new solid velocity
+
+            write(*,*)"Yn ", Yn
+            write(*,*)"Dn ", Dn
+
             CALL IFEM_INTERPVEL(Yn, Dn) 
+
 !           Update IB location and tracers
 !           Search for the new closest point looking in the fluid neighbors 
-            CALL IFEM_UPDATE(Do)            
+            CALL IFEM_UPDATE(Do)    
+            
+            write(*,*)"ifem%Auo", ifem%Auo
+            write(*,*)"ifem%Ubo", ifem%Ubo
+
+            write(*,*)"update ifem done"       
          END IF
 
 !     Saving the TXT files containing average and fluxes
          CALL TXT(.FALSE.)
+         write(*,*)"call txt done"
 
          IF (rmsh%isReqd) THEN
             l1 = MOD(cTS,rmsh%cpVar) .EQ. 0
@@ -290,7 +307,11 @@
                CALL OUTRESULT(timeP, 3, iEqOld)
                CALL WRITEVTUS(An, Yn, Dn, .FALSE.)
                IF (ibFlag) CALL IB_WRITEVTUS(ib%Yb, ib%Ubo)
-               IF (ifemFlag) CALL IFEM_WRITEVTUS(ib%Yb, ib%Ubo)
+               IF (ifemFlag) THEN 
+                  write(*,*)"::: call IFEM_WRITEVTUS ", ifem%nMsh 
+                  CALL IFEM_WRITEVTUS(ifem%Yb, ifem%Ubo)
+                  write(*,*)"::: call IFEM_WRITEVTUS done"
+               END IF
             ELSE
                CALL OUTRESULT(timeP, 2, iEqOld)
             END IF
@@ -300,7 +321,10 @@
          IF (pstEq) CALL OUTDNORM()
 
          IF (ibFlag) CALL IB_OUTCPUT()
-         IF (ifemFlag) CALL IFEM_OUTCPUT()
+         IF (ifemFlag) THEN 
+            CALL IFEM_OUTCPUT()
+            write(*,*)"::: call IFEM_OUTCPUT done"
+         END IF
 
 !     Exiting outer loop if l1
          IF (l1) EXIT

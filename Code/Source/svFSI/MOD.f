@@ -849,9 +849,9 @@
 !        IFEM meshes
          TYPE(mshType), ALLOCATABLE :: msh(:)
 !        Closest fluid node for each solid node, in the loc elem ordering
-         REAL(KIND=RKIND), ALLOCATABLE :: clsFNd(:)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: clsFNd(:)
 !        List of fluid element that contains each solid node 
-         REAL(KIND=RKIND), ALLOCATABLE :: clsFElm(:)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: clsFElm(:)
 !        IB communicator
          TYPE(ibCommType) :: cm
 

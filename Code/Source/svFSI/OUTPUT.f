@@ -152,7 +152,7 @@
       CALL cm%bcast(fid)
 
       OPEN(fid, FILE=TRIM(fName), ACCESS='DIRECT', RECL=recLn)
-      IF (.NOT.ibFlag) THEN
+      IF ((.NOT.ibFlag) .AND. (.NOT. ifemFlag)) THEN
          IF (dFlag) THEN
 !           USTRUCT
             IF (sstEq) THEN
@@ -196,7 +196,7 @@
      2            eq%iNorm, cplBC%xn, Yn, An
             END IF
          END IF
-      ELSE
+      ELSE IF(ibFlag) THEN
          IF (dFlag) THEN
             IF (pstEq) THEN
                WRITE(fid, REC=myID) stamp, cTS, time, CPUT()-timeP(1),
@@ -210,6 +210,23 @@
             WRITE(fid, REC=myID) stamp, cTS, time, CPUT()-timeP(1),
      2         eq%iNorm, cplBC%xn, Yn, An, ib%Yb, ib%Auo, ib%Ubo
          END IF
+
+      ELSE
+
+         IF (dFlag) THEN
+            IF (pstEq) THEN
+               WRITE(fid, REC=myID) stamp, cTS, time, CPUT()-timeP(1),
+     2            eq%iNorm, cplBC%xn, Yn, An, Dn, pS0, ifem%Yb, 
+     3            ifem%Auo, ifem%Ubo
+            ELSE
+               WRITE(fid, REC=myID) stamp, cTS, time, CPUT()-timeP(1),
+     2      eq%iNorm, cplBC%xn, Yn, An, Dn, ifem%Yb, ifem%Auo, ifem%Ubo
+            END IF
+         ELSE
+            WRITE(fid, REC=myID) stamp, cTS, time, CPUT()-timeP(1),
+     2         eq%iNorm, cplBC%xn, Yn, An, ifem%Yb, ifem%Auo, ifem%Ubo
+         END IF
+
       END IF
       CLOSE(fid)
 
