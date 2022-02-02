@@ -435,6 +435,7 @@
       IF (ifemFlag) THEN
          ifem%Yb  = 0._RKIND
          ifem%Auo = 0._RKIND
+         ifem%Auoo = 0._RKIND
          ifem%Ubo = 0._RKIND
       END IF
 
@@ -734,6 +735,7 @@
          IF (ALLOCATED(ifem%xCuo))     DEALLOCATE(ifem%xCuo)
          IF (ALLOCATED(ifem%Yb))       DEALLOCATE(ifem%Yb)
          IF (ALLOCATED(ifem%Auo))      DEALLOCATE(ifem%Auo)
+         IF (ALLOCATED(ifem%Auoo))     DEALLOCATE(ifem%Auoo)
          IF (ALLOCATED(ifem%Ubo))      DEALLOCATE(ifem%Ubo)
          IF (ALLOCATED(ifem%Rfluid))   DEALLOCATE(ifem%Rfluid)
          IF (ALLOCATED(ifem%R))        DEALLOCATE(ifem%R)

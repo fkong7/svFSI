@@ -246,7 +246,6 @@ C             END IF
       IF (ifemFlag) THEN
          IF (nNo .EQ. ifem%tnNo) THEN 
             isIfem = .TRUE.
-            write(*,*)"isIfem = .TRUE."
          END IF
       END IF
 
@@ -266,7 +265,7 @@ C             END IF
                CALL GNNIB(lFa, e, g, n)
             ELSEIF(isIfem) THEN
                CALL GNNIFEM(lFa, e, g, n)
-               write(*,*)"calling GNNIFEM"
+C                write(*,*)"calling GNNIFEM"
             ELSE
                CALL GNNB(lFa, e, g, nsd-1, lFa%eNoN, lFa%Nx(:,:,g), n)               
             END IF
@@ -359,8 +358,6 @@ C             END IF
 
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), sl(:), Nxi(:,:),
      2   Nx(:,:), tmps(:,:)
-
-      write(*,*)"WE are in vInteg "
 
       nNo = SIZE(s,2)
       IF (nNo .NE. tnNo) THEN
@@ -1909,9 +1906,9 @@ C             END IF
          END DO
       END DO
 
-      DO a=1, lM%nNo
-         write(*,*) "node ", a, " in ", incNd(Ac), " elements"
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*) "node ", a, " in ", incNd(Ac), " elements"
+C       END DO
 
       maxAdj = MAXVAL(incNd)
       ALLOCATE(adjL(maxAdj, lM%nNo))
@@ -2042,10 +2039,10 @@ C       END DO
          END DO
       END DO
 
-      DO e=1, lM%nNo
-         a = incNd(e)
+C       DO e=1, lM%nNo
+C          a = incNd(e)
 C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
-      END DO
+C       END DO
 
 !     Filling stcNd
       idxInsrt = 1
@@ -2107,14 +2104,14 @@ C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
       END DO
       lm%stn%elmStn = stcElm
 
-      DO a=1, lM%nNo
-         write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
-      END DO 
+C       DO a=1, lM%nNo
+C          write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
+C       END DO 
 
-      DO a=1, lM%nNo
-         write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
-     2       " = ", lm%stn%ndStn(a,:) 
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
+C      2       " = ", lm%stn%ndStn(a,:) 
+C       END DO
       
 
       DEALLOCATE(incNd)
@@ -2156,7 +2153,6 @@ C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
             IF(diam .GT. maxDist) maxDist = diam
 
          END DO
-         write(*,*)"diam is ", maxDist
          lM%diam = maxDist
 
       END IF 

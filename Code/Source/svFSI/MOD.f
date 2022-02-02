@@ -836,6 +836,8 @@
          REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
 !        Time derivative of displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Auo(:,:)
+!        Time derivative of displacement (old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Auoo(:,:)
 !        Displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Ubo(:,:)
 !

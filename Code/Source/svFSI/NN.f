@@ -1965,11 +1965,8 @@ c        N(8) = lx*my*0.5_RKIND
 !     Changing the sign if neccessary. a locates on the face and b
 !     outside of the face, in the parent element
       a = ptr(1)
-      write(*,*)"a = ", a
       b = ptr(lFa%eNoN+1)
-      write(*,*)"b = ", b
       v = lX(:,a) - lX(:,b)
-      write(*,*)"v = ", v
       IF (NORM(n,v) .LT. 0._RKIND) n = -n
 
       RETURN

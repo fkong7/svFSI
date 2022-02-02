@@ -536,8 +536,6 @@ C       END SUBROUTINE IFEM_READOPTS
       INTEGER(KIND=IKIND), INTENT(OUT) :: iM, iFa
       CHARACTER(LEN=stdL) :: faName
 
-      write(*,*) "inside IFEM_FINDFACE"
-
       iFa = 0
       MY_LOOP : DO iM=1, ifem%nMsh
          IF (ifem%msh(iM)%lShl) THEN
@@ -804,6 +802,7 @@ C       END SUBROUTINE IFEM_READOPTS
 ! ?? TODO
       ALLOCATE(ifem%Yb(nsd,ifem%tnNo)) ! ?? why nsd+1
       ALLOCATE(ifem%Auo(nsd,ifem%tnNo))
+      ALLOCATE(ifem%Auoo(nsd,ifem%tnNo))
       ALLOCATE(ifem%Ubo(nsd,ifem%tnNo))
       ALLOCATE(ifem%Rfluid(nsd,tnNo))
       ALLOCATE(ifem%Rsolid(nsd,ifem%tnNo))
@@ -861,7 +860,6 @@ C       END IF
 !     Initialize function spaces
       DO iM=1, ifem%nMsh
          CALL INITFSMSH(ifem%msh(iM))
-         write(*,*)"ifem%msh(iM)%nFa = ", ifem%msh(iM)%nFa
          DO iFa=1, ifem%msh(iM)%nFa
             CALL INITFSFACE(ifem%msh(iM), ifem%msh(iM)%fa(iFa))
          END DO
@@ -872,7 +870,6 @@ C       END IF
       s = 1._RKIND
       DO iEq=1, nEq
          DO iDmn=1, eq(iEq)%nDmnIB
-            write(*,*)"eq(iEq)%dmnIB(iDmn)%Id = ",eq(iEq)%dmnIB(iDmn)%Id
             eq(iEq)%dmnIB(iDmn)%v =
      2         Integ(eq(iEq)%dmnIB(iDmn)%Id, s, 1, 1)
             std = " Volume of domain IFEM "//STR(eq(iEq)%dmnIB(iDmn)%v)
@@ -953,7 +950,6 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
       ifem%callD = 0._RKIND
       tt = CPUT()
 
-      write(*,*)"inside IFEM_UPDATE, mvMsh = ", mvMsh
       ALLOCATE(lD(nsd,tnNo))
       lD = 0._RKIND
       IF (mvMsh) THEN
@@ -1687,12 +1683,12 @@ C                      EXIT
       ifem%clsFNd = nodeF
       ifem%clsFElm = elmF
 
-      DO a=1, lM%nNo
-         e = a+1595
-         write(*,*)"closest solid id (mergefile notation)", e,  
-     2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
-     3    ifem%clsFElm(a)
-      END DO
+C       DO a=1, lM%nNo
+C          e = a+1595
+C          write(*,*)"closest solid id (mergefile notation)", e,  
+C      2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
+C      3    ifem%clsFElm(a)
+C       END DO
 
 C       write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
 C       write(*,*) "closest local id is : ", ifem%clsFNd
@@ -1714,7 +1710,7 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
       TYPE(mshType), INTENT(INOUT) :: lM ! ifem mesh 
       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
 
-      INTEGER(KIND=IKIND) :: snd, a, js, iM, Ac
+      INTEGER(KIND=IKIND) :: snd, a, js, iM, Ac, jf
       REAL(KIND=RKIND), ALLOCATABLE :: poly(:,:)
 
       REAL(KIND=RKIND) :: xs(nsd)
@@ -1744,16 +1740,16 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
 !        Get solid node coord in the current config
          xs = ifem%xCu(:,snd)
          find = IN_POLY(xs,poly)
-         write(*,*) "find node solid ", snd, " is ", find
+C          write(*,*) "find node solid ", snd, " is ", find
 
 !        Is the solid node in this fluis element? yes, nothing to do
          IF (.NOT. find) THEN 
 !           Search in the elm stencil of idFEl   
             nbSE = SIZE(msh(iM)%stn%elmStn,2)
-            write(*,*)"Begin search neigh" , nbSE
+C             write(*,*)"Begin search neigh" , nbSE
             
             DO js = 1, nbSE
-               write(*,*)" id neigh is ", msh(iM)%stn%elmStn(idFNd,:)
+C                write(*,*)" id neigh is ", msh(iM)%stn%elmStn(idFNd,:)
                idNFEl = msh(iM)%stn%elmStn(idFNd,js)
 
                IF (idNFEl .EQ. 0) EXIT
@@ -1766,7 +1762,7 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
                find = IN_POLY(xs,poly)
 
                IF (find) THEN
-                  write(*,*)"Find node in elem ", idNFEl
+C                   write(*,*)"Find node in elem ", idNFEl
                   ifem%clsFElm(snd) = idNFEl
 
                   nodeF = CLOSEST_POINT(xs,poly) 
@@ -1774,6 +1770,28 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
                   EXIT
                END IF   
             END DO
+
+            IF (.NOT. find) THEN 
+               ! loop over all the fluid elem 
+               DO idNFEl = 1, msh(iM)%nEl
+
+                  DO a=1, msh(iM)%eNoN
+                     Ac = msh(iM)%IEN(a,idNFEl)
+                     poly(:,a) = x(:,Ac) + lD(:,Ac)
+                  END DO 
+
+                  find = IN_POLY(xs,poly)
+
+                  IF (find) THEN
+C                      write(*,*)"Find node in elem ", idNFEl
+                     ifem%clsFElm(snd) = idNFEl
+
+                     nodeF = CLOSEST_POINT(xs,poly) 
+                     ifem%clsFNd(snd) = msh(iM)%IEN(nodeF,idNFEl) 
+                     EXIT
+                  END IF   
+               END DO
+            END IF
 
             IF (.NOT. find) THEN 
                write(*,*)"ERROR FIND CLSEST PNT NEIGH" 
@@ -3324,8 +3342,6 @@ c      END DO
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
       CHARACTER(LEN=stdL), ALLOCATABLE :: outNames(:)
 
-      write(*,*)"here -3 ok"
-
       IF (cm%slv()) THEN
          ifem%savedOnce = .TRUE.
          RETURN
@@ -3355,8 +3371,6 @@ c      END DO
          IF (ifem%msh(iM)%eType .EQ. eType_NRB) err =
      2      " Outputs for NURBS data is under development"
 
-         write(*,*)"here -2 ok"
-
          d(iM)%nNo     = ifem%msh(iM)%nNo
          d(iM)%nEl     = ifem%msh(iM)%nEl
          d(iM)%eNoN    = ifem%msh(iM)%eNoN
@@ -3372,8 +3386,6 @@ c      END DO
          DO e=1, ifem%msh(iM)%nEl
             d(iM)%IEN(:,e) = ifem%msh(iM)%IEN(:,e)
          END DO
-
-         write(*,*)"here -1 ok"
 
          DO iEq=1, nEq
             DO iOut=1, eq(iEq)%nOutIB
@@ -3423,8 +3435,6 @@ c      END DO
 
       ALLOCATE(tmpV(maxnsd,nNo))
 
-      write(*,*)"here ok"
-
 !     Writing to vtu file (master only)
       IF (cTS .GE. 1000) THEN
          fName = STR(cTS)
@@ -3452,8 +3462,6 @@ c      END DO
       END DO
       CALL putVTK_pointCoords(vtu, tmpV(1:nsd,:), iStat)
       IF (iStat .LT. 0) err = "VTU file write error (coords)"
-
-      write(*,*)"here 2 ok"
 
 !     Writing the connectivity data
       nSh = -1
@@ -3486,8 +3494,6 @@ c      END DO
          IF (iStat .LT. 0) err = "VTU file write error (point data)"
       END DO
 
-      write(*,*)"here 3 ok"
-
 !     Write element-based variables
       IF (.NOT.savedOnce .OR. mvMsh) THEN
          ifem%savedOnce = .TRUE.
@@ -3505,7 +3511,6 @@ c      END DO
             IF (iStat .LT. 0) err = "VTU file write error (dom id)"
          END IF
 
-      write(*,*)"here 4 ok"
 !     Write the mesh ID
          IF (ifem%nMsh .GT. 1) THEN
             Ec = 0
@@ -3987,17 +3992,17 @@ c      END DO
  
 
       tt(1) = CPUT()
-C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
+C     cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
 !     Initialize residues to 0
       ifem%Rsolid = 0._RKIND
-      write(*,*)"Beginning IFEM_CALCFFSI "
+      write(*,*)" Beginning IFEM_CALCFFSI "
 
 
 !     We compute the fluid-structure interaction force on the solid initial 
 !     domain
 !     Loop over all IFEM mesh
-      write(*,*)"Beginning loop over nmb of meshes "
+C       write(*,*)"Beginning loop over nmb of meshes "
       DO iM=1, ifem%nMsh
    !     Loop over all elements of mesh
          eNoN = ifem%msh(iM)%eNoN
@@ -4006,7 +4011,7 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
          ALLOCATE(xbl(nsd,eNoN), aul(nsd,eNoN), ubl(nsd,eNoN), 
      2            fN(nsd,nFn), N(eNoN), Nx(nsd,eNoN), lR(nsd,eNoN))
          
-         write(*,*)"Beginning loop over elemtn mesh "
+C          write(*,*)"Beginning loop over elemtn mesh "
          DO e=1, ifem%msh(iM)%nEl
 
             ifem%cDmn = IB_DOMAIN(ifem%msh(iM), ifem%cEq, e)
@@ -4030,10 +4035,12 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
                END IF
             END DO
 
-            write(*,*)"Beginning loop over gauss point "
+C             write(*,*) " Beginning loop over gauss point "
    !        Gauss integration
-            lR = 0._RKIND
+C             lR = 0._RKIND
             DO g=1, ifem%msh(iM)%nG
+               lR = 0._RKIND
+
                IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
                   CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xbl, Nx, 
      2                              Jac, ksix)
@@ -4042,7 +4049,7 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
                w = ifem%msh(iM)%w(g) * Jac
                N = ifem%msh(iM)%N(:,g)
 
-               write(*,*)"Calling local force assembly"
+C                write(*,*)"Calling local force assembly"
                IF (nsd .EQ. 3) THEN
                   CALL IFEM_CALCLFFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
      2                fN, lR)
@@ -4052,12 +4059,12 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
      2                fN, lR)
                END IF
 
-               write(*,*)"End call local assembly"
+C                write(*,*)"End call local assembly"
 
 !              Assemble to ifem global residue
                DO a=1, eNoN
-                  Ac = msh(iM)%IEN(a,e)
-                  DO j=1, nsd+1
+                  Ac = ifem%msh(iM)%IEN(a,e)
+                  DO j=1, nsd ! TODO nsd+1 ??
                      ifem%Rsolid(j,Ac) = ifem%Rsolid(j,Ac) + lR(j,a)
                   END DO
                END DO
@@ -4148,7 +4155,7 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
       REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
      2   aul(2,eNoN), ubl(2,eNoN), fN(2,nFn)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lR(3,eNoN)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(2,eNoN)
 
       INTEGER(KIND=IKIND) :: a, iEq, iDmn, i, j
       REAL(KIND=RKIND) :: Jac, ya_g
@@ -4157,8 +4164,8 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
       iEq     = ifem%cEq
       iDmn    = ifem%cDmn
-      write(*,*)"iEq = ", iEq
-      write(*,*)"iDmn = ", iDmn
+C       write(*,*)"iEq = ", iEq
+C       write(*,*)"iDmn = ", iDmn
 
       F      = 0._RKIND
       F(1,1) = 1._RKIND
@@ -4174,29 +4181,29 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
          F(2,2)  = F(2,2)  + Nx(2,a)*ubl(j,a)
       END DO
 
-      write(*,*)"F computed"
+C       write(*,*)"F computed"
 
       Jac = MAT_DET(F, 2)
       Fi  = MAT_INV(F, 2)
 
-      write(*,*)"test Id = ", eq(iEq)%dmnIB(iDmn)%Id
+C       write(*,*)"test Id = ", eq(iEq)%dmnIB(iDmn)%Id
       test = eq(iEq)%dmnIB(iDmn)
-      write(*,*)"this is ok "
-      write(*,*)"Calling GETPK2CC"
+C       write(*,*)"this is ok "
+C       write(*,*)"Calling GETPK2CC"
 !     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
 !     Voigt notation
 
-      write(*,*)""//""
+C       write(*,*)""//""
       CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
-      write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
-      write(*,*)"F", F, "nFn", nFn,"fN",fN,"ya_g",ya_g,"S",S,"Dm",Dm
+C       write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
+C       write(*,*)"F", F, "nFn", nFn,"fN",fN,"ya_g",ya_g,"S",S,"Dm",Dm
 
-      write(*,*)" GETPK2CC done"
+C       write(*,*)" GETPK2CC done"
 !     1st Piola-Kirchhoff tensor (P)
       P = MATMUL(F, S)
 
-      write(*,*)"adding to local residue"
+C       write(*,*)"adding to local residue"
 !     Local residue
       DO a=1, eNoN
          lR(1,a) = lR(1,a) + w*(Nx(1,a)*P(1,1) + Nx(2,a)*P(1,2))
@@ -4355,16 +4362,14 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
       ifem%Rfluid = 0._RKIND
 !     Loop over the nbr of solid meshes 
       DO iM=1, nMsh
-         write(*,*)"inside loop mesh"
+C          write(*,*)"inside loop mesh"
 !        Compute mesh space discr param if not computed yet         
          CALL GETMESHDIAM(msh(iM))
-         write(*,*)"diam computed"
+C          write(*,*)"diam computed"
 
 !        Loop over the solid nodes 
-         write(*,*)"ifem%tnNo = ", ifem%tnNo
-         write(*,*)"ifem mesh nNo = ", ifem%msh(1)%nNo
          DO a=1, ifem%tnNo
-            write(*,*)"inside loop solid node"
+C             write(*,*)"inside loop solid node"
 !           Global id closest fluid node
             idFCls = ifem%clsFNd(a)  
 !           Nbr of node in stencil
@@ -4372,9 +4377,9 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 !           Update current solid node coord
             xls = ifem%x(:,a) + ifem%Ubo(:,a)
 
-            write(*,*)"solid coord:", xls
-            write(*,*)"if closest point :", idFCls
-            write(*,*)"nmb stencil node", nbrSN
+C             write(*,*)"solid coord:", xls
+C             write(*,*)"if closest point :", idFCls
+C             write(*,*)"nmb stencil node", nbrSN
 
             ALLOCATE(Bmls(nsd+1,nbrSN))
             ALLOCATE(q(1,nbrSN))
@@ -4387,19 +4392,19 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
             sum = 0._RKIND
 !           Loop over the stencil 
             DO is = 1, nbrSN
-               write(*,*) "inside loop stencil"
+C                write(*,*) "inside loop stencil"
 !              Extract fluid coordinates xlf
                idFStc = msh(iM)%stn%ndStn(idFCls,is)
                xlf = x(:,idFStc)
 
-               write(*,*)"idFStc = ", idFStc
-               write(*,*)"xlf = ", xlf
+C                write(*,*)"idFStc = ", idFStc
+C                write(*,*)"xlf = ", xlf
 
                Pmls(1,1) = 1._RKIND
                Pmls(2,1) = xlf(1)
                Pmls(3,1) = xlf(2)
 
-               write(*,*)" Pmls ", Pmls
+C                write(*,*)" Pmls ", Pmls
                
 !              Compute cubic spline value
                rnorm = msh(iM)%diam*1.15
@@ -4407,25 +4412,25 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 !              Check that rnorm is good 
                rnorm = DIST(xls,xlf)
                rnorm = rnorm / (msh(iM)%diam*1.15)
-               write(*,*)"rnorm is ", rnorm
-               write(*,*)"Wmls is ", Wmls(is)
+C                write(*,*)"rnorm is ", rnorm
+C                write(*,*)"Wmls is ", Wmls(is)
 
 
                PPt = Wmls(is)*MATMUL(Pmls, TRANSPOSE(Pmls))
-               write(*,*)"PPt = ",PPt
+C                write(*,*)"PPt = ",PPt
 
                Amls = Amls + PPt
-               write(*,*)"Matrix A inside is ",Amls
+C                write(*,*)"Matrix A inside is ",Amls
 
                Bmls(:,is) = Wmls(is)*Pmls(:,1)
 
                sum = sum + Wmls(is)
             END DO
 
-            write(*,*)"Sum W = ", sum
+C             write(*,*)"Sum W = ", sum
             nd = nsd+1
-            write(*,*)"Matrix A is ", Amls
-            write(*,*) ""//""
+C             write(*,*)"Matrix A is ", Amls
+C             write(*,*) ""//""
             Ai = MAT_INV(Amls,nd)
 
             Pmls(1,1) = 1._RKIND
@@ -4443,36 +4448,36 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
             DEALLOCATE(qt)
             DEALLOCATE(Wmls)
 
-            write(*,*) ""//""
-            write(*,*) ""//""
-            write(*,*) ""//""
+C             write(*,*) ""//""
+C             write(*,*) ""//""
+C             write(*,*) ""//""
 
          END DO
       END DO
 
-      write(*,*)"QMLS = ", QMLS
-      write(*,*)"ifem%Rsolid = ", ifem%Rsolid
-      write(*,*)"ifem%Rfluid = ", ifem%Rfluid
+C       write(*,*)"QMLS = ", QMLS
+C       write(*,*)"ifem%Rsolid = ", ifem%Rsolid
+C       write(*,*)"ifem%Rfluid = ", ifem%Rfluid
 
 !     TODO for multiple fluid mesh
       iM = 1
-!        Loop over the solid nodes 
-         DO a=1, ifem%tnNo
-            write(*,*)"inside loop solid node IFEM_CONSTRUCT"
-!           Global id closest fluid node
-            idFCls = ifem%clsFNd(a) 
-!           Nbr of node in stencil
-            nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
-!           Loop over the stencil 
-            DO is = 1, nbrSN
-               write(*,*) "inside loop stencil"
-!              Extract fluid coordinates xlf
-               idFStc = msh(iM)%stn%ndStn(idFCls,is)
+!     Loop over the solid nodes 
+      DO a=1, ifem%tnNo
+C          write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+!        Global id closest fluid node
+         idFCls = ifem%clsFNd(a) 
+!        Nbr of node in stencil
+         nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+!        Loop over the stencil 
+         DO is = 1, nbrSN
+C             write(*,*) "inside loop stencil"
+!           Extract fluid coordinates xlf
+            idFStc = msh(iM)%stn%ndStn(idFCls,is)
 
-               ifem%Rfluid(:,idFStc) = ifem%Rfluid(:,idFStc) + 
+            ifem%Rfluid(:,idFStc) = ifem%Rfluid(:,idFStc) + 
      2                                     QMLS(is,a)*ifem%Rsolid(:,a)
-            END DO
          END DO
+      END DO
 
       write(*,*)"Rfluid built done"
 
@@ -4501,11 +4506,12 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 !     Interpolate flow velocity and pressure at IFEM nodes from background
 !     mesh. Use IFEM velocity to compute IFEM displacement (for explicit
 !     coupling)
-      SUBROUTINE IFEM_INTERPVEL(Yg, Dg)
+      SUBROUTINE IFEM_INTERPVEL(Yg, Dg, iT)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND) :: iT
 
       REAL(KIND=RKIND) :: tt
       INTEGER(KIND=IKIND) :: a, is, ie, i
@@ -4520,36 +4526,85 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
       is = eq(ifem%cEq)%s
       ie = eq(ifem%cEq)%e
 
+C       write(*,*)"is = ", is, ", ie = ", ie
+
       ALLOCATE(Yl(nsd+1,tnNo))
       DO a=1, tnNo
          Yl(:,a) = Yg(is:ie,a) ! keeping only the fluid vel and pressure 
       END DO
 
-      write(*,*)"calling IFEM_FINDSOLVEL"
+C       write(*,*)"calling IFEM_FINDSOLVEL"
       CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
       DEALLOCATE(Yl)
-      write(*,*)"done calling IFEM_FINDSOLVEL"
+C       write(*,*)"done calling IFEM_FINDSOLVEL"
 
 
 !     Computing new solid location using A-B scheme given the new interpolated 
 !     fluid velocity   
-      DO a=1, ifem%tnNo
-         DO i=1, nsd
-            ifem%xCu(i,a) = ifem%xCuo(i,a)
-     2                 + dt*( 3._RKIND/2._RKIND * ifem%Yb(i,a) 
-     3                 - 0.5_RKIND*ifem%Auo(i,a) )
-            IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-               write(*,*)"OHHH NOOOO, out of fluid !"
-               CALL EXIT(1)
-            END IF
+
+C       write(*,*)"ifem%xCuo ", ifem%xCuo
+C       write(*,*)""//""
+C       write(*,*)"ifem%xCu", ifem%xCu
+C       write(*,*)""//""
+      
+!     Solid update location via coordinates       
+C       DO a=1, ifem%tnNo
+C          DO i=1, nsd
+C             ifem%xCu(i,a) = ifem%xCuo(i,a)
+C      2                 + dt*( 3._RKIND/2._RKIND * ifem%Yb(i,a) 
+C      3                 - 0.5_RKIND*ifem%Auo(i,a) )
+C             IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
+C                write(*,*)"OHHH NOOOO, out of fluid !"
+C                CALL EXIT(1)
+C             END IF
+C          END DO
+C       END DO
+C       write(*,*)"Done AB scheme"
+C !     Update old displacement and solid velocity 
+C       ifem%Ubo = ifem%xCu - ifem%x
+C       ifem%Auo = ifem%Yb
+
+
+
+!     Solid update location via displacement   
+      IF(iT .GE. 3) THEN 
+         DO a=1, ifem%tnNo
+            DO i=1, nsd
+               ifem%Ubo(i,a) = ifem%Ubo(i,a)
+     2                 + dt*( 3._RKIND/2._RKIND * ifem%Auo(i,a) 
+     3                 - 0.5_RKIND*ifem%Auoo(i,a) )
+
+               ifem%xCu(i,a) = ifem%x(i,a) + ifem%Ubo(i,a)
+               IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
+                  write(*,*)"OHHH NOOOO, out of fluid !"
+                  CALL EXIT(1)
+               END IF
+            END DO
          END DO
-      END DO
+      ELSE 
+         DO a=1, ifem%tnNo
+            DO i=1, nsd
+               ifem%Ubo(i,a) = ifem%Ubo(i,a) + dt*ifem%Yb(i,a)
 
-      write(*,*)"Done AB scheme"
-
-!     Update old displacement and solid velocity 
-      ifem%Ubo = ifem%xCu - ifem%x
+               ifem%xCu(i,a) = ifem%x(i,a) + ifem%Ubo(i,a)
+               IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
+                  write(*,*)"OHHH NOOOO, out of fluid !"
+                  CALL EXIT(1)
+               END IF
+            END DO
+         END DO
+      END IF
+      write(*,*)"Done AB scheme" 
+      ifem%Auoo = ifem%Auo
       ifem%Auo = ifem%Yb
+
+
+
+
+
+
+
+
 
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
@@ -4566,11 +4621,13 @@ C       cDmn = DOMAIN(msh(1), ifem%cEq, 1)
       REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
       REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
 
-      REAL(KIND=RKIND) :: xi(nsd), up(m)
+      REAL(KIND=RKIND) :: xi(nsd), up(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: N(:), Nx(:,:), xl(:,:), ul(:,:)
       INTEGER(KIND=IKIND) :: a, jM, Ac, e, eNoN, idFEl
 
       jM = 1
+
+      Ub = 0._RKIND
 
       DO e=1, ifem%tnNo ! maybe just nNo
 !        Find fluid elem in which is it in the def config 

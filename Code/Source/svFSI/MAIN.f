@@ -120,13 +120,13 @@
             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
 
-            write(*,*)"ifem%Auo", ifem%Auo
-            write(*,*)"ifem%Ubo", ifem%Ubo
+C             write(*,*)"ifem%Auo", ifem%Auo
+C             write(*,*)"ifem%Ubo", ifem%Ubo
 
             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
-            write(*,*)"ifem%Auo", ifem%Auo
-            write(*,*)"ifem%Ubo", ifem%Ubo
+C             write(*,*)"ifem%Auo", ifem%Auo
+C             write(*,*)"ifem%Ubo", ifem%Ubo
             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
 
             write(*,*)"calling IFEM_CONSTRUCT"
@@ -251,24 +251,24 @@ C             END IF
          IF (ifemFlag) THEN
 !           Find new solid velocity
 
-            write(*,*)"Yn ", Yn
-            write(*,*)"Dn ", Dn
+C             write(*,*)"Yn ", Yn
+C             write(*,*)"Dn ", Dn
 
-            CALL IFEM_INTERPVEL(Yn, Dn) 
+            CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
 
 !           Update IB location and tracers
 !           Search for the new closest point looking in the fluid neighbors 
             CALL IFEM_UPDATE(Do)    
             
-            write(*,*)"ifem%Auo", ifem%Auo
-            write(*,*)"ifem%Ubo", ifem%Ubo
+C             write(*,*)"ifem%Auo", ifem%Auo
+C             write(*,*)"ifem%Ubo", ifem%Ubo
 
-            write(*,*)"update ifem done"       
+C             write(*,*)"update ifem done"       
          END IF
 
 !     Saving the TXT files containing average and fluxes
          CALL TXT(.FALSE.)
-         write(*,*)"call txt done"
+C          write(*,*)"call txt done"
 
          IF (rmsh%isReqd) THEN
             l1 = MOD(cTS,rmsh%cpVar) .EQ. 0
