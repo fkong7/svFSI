@@ -120,9 +120,6 @@
             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
 
-C             write(*,*)"ifem%Auo", ifem%Auo
-C             write(*,*)"ifem%Ubo", ifem%Ubo
-
             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
 C             write(*,*)"ifem%Auo", ifem%Auo
@@ -204,10 +201,10 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
             END IF
 
 !        IFEM: adding the FSI force to the Fluid residue 
-C             write(*,*)"calling IFEM_RASSEMBLY"
-C             IF (ifemFlag) THEN
-C                CALL IFEM_RASSEMBLY()
-C             END IF
+            write(*,*)"calling IFEM_RASSEMBLY"
+            IF (ifemFlag) THEN
+               CALL IFEM_RASSEMBLY()
+            END IF
 
             incL = 0
             IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1

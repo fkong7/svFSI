@@ -1259,83 +1259,6 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
       RETURN
       END SUBROUTINE IFEM_BCINI
 !####################################################################
-!     Form the LHS sparse data structures for immersed bodies 
-!     ?? why do we need this and where do we use them?  
-C       SUBROUTINE IFEM_LHSA(nnz)
-C       USE COMMOD
-C       USE ALLFUN
-C       IMPLICIT NONE
-C       INTEGER(KIND=IKIND), INTENT(OUT) :: nnz
-
-C       INTEGER(KIND=IKIND) i, j, a, b, e, mnnzeic, rowN, colN, iM
-
-C       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
-
-C       mnnzeic = 10*MAXVAL(ifem%msh(:)%eNoN)
-C  003  mnnzeic = mnnzeic + MAX(5,mnnzeic/5)
-
-C       IF (ALLOCATED(uInd)) DEALLOCATE(uInd)
-C       ALLOCATE (uInd(mnnzeic,ifem%tnNo))
-C       uInd = 0
-C       DO iM=1, ifem%nMsh
-C          DO e=1, ifem%msh(iM)%nEl
-C             DO a=1, ifem%msh(iM)%eNoN
-C                rowN = ifem%msh(iM)%IEN(a,e)
-C                DO b=1, ifem%msh(iM)%eNoN
-C                   colN = ifem%msh(iM)%IEN(b,e)
-C                   DO i=1, mnnzeic
-C                      IF (uInd(i,rowN) .EQ. 0) THEN
-C                         uInd(i,rowN) = colN
-C                         EXIT
-C                      END IF
-C                      IF (colN .GT. uInd(i,rowN)) CYCLE
-C                      IF (colN .EQ. uInd(i,rowN)) EXIT
-C                      IF (uInd(mnnzeic,rowN) .NE. 0) GOTO 003
-C                      DO j=mnnzeic, i+1, -1
-C                         uInd(j,rowN) = uInd(j-1,rowN)
-C                      END DO
-C                      uInd(i,rowN) = colN
-C                      EXIT
-C                   END DO
-C                   IF (i .GT. mnnzeic) GOTO 003
-C                END DO
-C             END DO
-C          END DO
-C       END DO
-
-C !--------------------------------------------------------------------
-C !     Finding number of non-zeros in colPtr vector
-C       nnz = 0
-C       DO rowN=1, ifem%tnNo
-C          IF (uInd(1,rowN) .EQ. 0) THEN
-C             err = "Node "//rowN//" is isolated"
-C          END IF
-C          DO i = 1, mnnzeic
-C             IF (uInd(i,rowN) .NE. 0) THEN
-C                nnz = nnz + 1
-C             END IF
-C          END DO
-C       END DO
-
-C !--------------------------------------------------------------------
-C !     Now constructing compact form of rowPtr and colPtr
-C       ALLOCATE (ifem%colPtr(nnz), ifem%rowPtr(ifem%tnNo+1))
-C       j  = 1
-C       ifem%rowPtr(1) = 1
-C       DO rowN=1, ifem%tnNo
-C          DO i=1, mnnzeic
-C             IF (uInd(i,rowN) .NE. 0) THEN
-C                ifem%colPtr(j) = uInd(i,rowN)
-C                j = j + 1
-C             END IF
-C          END DO
-C          ifem%rowPtr(rowN+1) = j
-C       END DO
-C       DEALLOCATE (uInd)
-
-C       RETURN
-C       END SUBROUTINE IFEM_LHSA
-!####################################################################
 !     Set iblank field
 !        iblank is set only immersed solids and not set for thin shells
 !        iblank(A) = 1   =>   node A is inside the immersed solid
@@ -1571,7 +1494,8 @@ C       END SUBROUTINE IFEM_LHSA
       DO a=1, lM%nNo
          Ac = lM%gN(a)
          ! ?? check this for parallel 
-         xSCur(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
+C          xSCur(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
+         xSCur(:,a) = ifem%x(:,a) + ifem%Ubo(:,a)
       END DO
 
 C       write(*,*)"The solid ifem%Ubo is: ", ifem%Ubo
@@ -1658,6 +1582,7 @@ C                   write(*,*) poly(:,a)
 
                DO a=1, lM%nNo
                   xs = xSCur(:,a)
+
                   find = IN_POLY(xs,poly)
 C                   write(*,*)"find node solid ", a, " is ", find
 
@@ -4160,12 +4085,9 @@ C                write(*,*)"End call local assembly"
       INTEGER(KIND=IKIND) :: a, iEq, iDmn, i, j
       REAL(KIND=RKIND) :: Jac, ya_g
       REAL(KIND=RKIND) :: Dm(3,3), F(2,2), Fi(2,2), S(2,2), P(2,2)
-      TYPE(dmnType) :: test
 
       iEq     = ifem%cEq
       iDmn    = ifem%cDmn
-C       write(*,*)"iEq = ", iEq
-C       write(*,*)"iDmn = ", iDmn
 
       F      = 0._RKIND
       F(1,1) = 1._RKIND
@@ -4181,23 +4103,20 @@ C       write(*,*)"iDmn = ", iDmn
          F(2,2)  = F(2,2)  + Nx(2,a)*ubl(j,a)
       END DO
 
-C       write(*,*)"F computed"
+      write(*,*)"ubl = ", ubl
+C       write(*,*)"F = ", F
 
       Jac = MAT_DET(F, 2)
       Fi  = MAT_INV(F, 2)
 
-C       write(*,*)"test Id = ", eq(iEq)%dmnIB(iDmn)%Id
-      test = eq(iEq)%dmnIB(iDmn)
-C       write(*,*)"this is ok "
-C       write(*,*)"Calling GETPK2CC"
+      write(*,*)"Jac = ", Jac
+
 !     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
 !     Voigt notation
-
-C       write(*,*)""//""
       CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
 C       write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
-C       write(*,*)"F", F, "nFn", nFn,"fN",fN,"ya_g",ya_g,"S",S,"Dm",Dm
+      write(*,*)" S = ", S
 
 C       write(*,*)" GETPK2CC done"
 !     1st Piola-Kirchhoff tensor (P)
@@ -4209,6 +4128,8 @@ C       write(*,*)"adding to local residue"
          lR(1,a) = lR(1,a) + w*(Nx(1,a)*P(1,1) + Nx(2,a)*P(1,2))
          lR(2,a) = lR(2,a) + w*(Nx(1,a)*P(2,1) + Nx(2,a)*P(2,2))
       END DO
+
+      write(*,*)"lR = ", lR
 
       RETURN
       END SUBROUTINE IFEM_CALCLFFSI2D
@@ -4407,7 +4328,7 @@ C                write(*,*)"xlf = ", xlf
 C                write(*,*)" Pmls ", Pmls
                
 !              Compute cubic spline value
-               rnorm = msh(iM)%diam*1.15
+               rnorm = msh(iM)%diam
                Wmls(is) = WHTFUNC(xls,xlf,rnorm)
 !              Check that rnorm is good 
                rnorm = DIST(xls,xlf)
@@ -4535,6 +4456,7 @@ C       write(*,*)"is = ", is, ", ie = ", ie
 
 C       write(*,*)"calling IFEM_FINDSOLVEL"
       CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
+
       DEALLOCATE(Yl)
 C       write(*,*)"done calling IFEM_FINDSOLVEL"
 
@@ -4547,32 +4469,13 @@ C       write(*,*)""//""
 C       write(*,*)"ifem%xCu", ifem%xCu
 C       write(*,*)""//""
       
-!     Solid update location via coordinates       
-C       DO a=1, ifem%tnNo
-C          DO i=1, nsd
-C             ifem%xCu(i,a) = ifem%xCuo(i,a)
-C      2                 + dt*( 3._RKIND/2._RKIND * ifem%Yb(i,a) 
-C      3                 - 0.5_RKIND*ifem%Auo(i,a) )
-C             IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-C                write(*,*)"OHHH NOOOO, out of fluid !"
-C                CALL EXIT(1)
-C             END IF
-C          END DO
-C       END DO
-C       write(*,*)"Done AB scheme"
-C !     Update old displacement and solid velocity 
-C       ifem%Ubo = ifem%xCu - ifem%x
-C       ifem%Auo = ifem%Yb
-
-
-
 !     Solid update location via displacement   
       IF(iT .GE. 3) THEN 
          DO a=1, ifem%tnNo
             DO i=1, nsd
                ifem%Ubo(i,a) = ifem%Ubo(i,a)
-     2                 + dt*( 3._RKIND/2._RKIND * ifem%Auo(i,a) 
-     3                 - 0.5_RKIND*ifem%Auoo(i,a) )
+     2                 + dt*0.5_RKIND*( 3._RKIND * ifem%Auo(i,a) 
+     3                 - ifem%Auoo(i,a) )
 
                ifem%xCu(i,a) = ifem%x(i,a) + ifem%Ubo(i,a)
                IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 

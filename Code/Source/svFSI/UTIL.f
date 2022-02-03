@@ -323,7 +323,7 @@
 
    !        test dot product between P-P1 and the normals
             dotP = N(1)*(P(1)-P1(1,i)) + N(2)*(P(2)-P1(2,i)) 
-            IF( dotP .LT. -1.E-10_RKIND ) THEN 
+            IF( dotP .LT. 0._RKIND ) THEN 
                flag = .FALSE.
 C                EXIT
             END IF
@@ -331,6 +331,9 @@ C                EXIT
 !      ELSE 
 !         write(*,*)" 3D still to implement"
 !      END IF
+
+!      if the probe is along the tangent, perform sign check with one
+!      of the vertices of the closest node instead of the centroid
 
       IF(flag) IN_POLY = 1
 
