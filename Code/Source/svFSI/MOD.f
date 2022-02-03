@@ -856,6 +856,10 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: clsFElm(:)
 !        IB communicator
          TYPE(ibCommType) :: cm
+!        Needed for MLS 
+         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)    
+         INTEGER(KIND=IKIND) :: maxNbrST = 0
+
 
 
 

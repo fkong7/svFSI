@@ -4103,20 +4103,20 @@ C                write(*,*)"End call local assembly"
          F(2,2)  = F(2,2)  + Nx(2,a)*ubl(j,a)
       END DO
 
-      write(*,*)"ubl = ", ubl
+C       write(*,*)"ubl = ", ubl
 C       write(*,*)"F = ", F
 
       Jac = MAT_DET(F, 2)
       Fi  = MAT_INV(F, 2)
 
-      write(*,*)"Jac = ", Jac
+C       write(*,*)"Jac = ", Jac
 
 !     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
 !     Voigt notation
       CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
 C       write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
-      write(*,*)" S = ", S
+C       write(*,*)" S = ", S
 
 C       write(*,*)" GETPK2CC done"
 !     1st Piola-Kirchhoff tensor (P)
@@ -4129,7 +4129,7 @@ C       write(*,*)"adding to local residue"
          lR(2,a) = lR(2,a) + w*(Nx(1,a)*P(2,1) + Nx(2,a)*P(2,2))
       END DO
 
-      write(*,*)"lR = ", lR
+C       write(*,*)"lR = ", lR
 
       RETURN
       END SUBROUTINE IFEM_CALCLFFSI2D
@@ -4277,6 +4277,7 @@ C       write(*,*)"adding to local residue"
      2         Ai(nsd+1,nsd+1))
 
       mnS = SIZE(msh(1)%stn%ndStn,2)
+      ifem%maxNbrST = mnS
       ALLOCATE(QMLS(mnS,ifem%tnNo))
       QMLS = 0._RKIND
 
@@ -4402,6 +4403,10 @@ C             write(*,*) "inside loop stencil"
 
       write(*,*)"Rfluid built done"
 
+      IF(.NOT.ALLOCATED(ifem%QMLS)) ALLOCATE(ifem%QMLS(mnS,ifem%tnNo))
+      ifem%QMLS = QMLS
+
+
 
       DEALLOCATE(Amls, Pmls, PPt, Ai, QMLS)
 
@@ -4455,7 +4460,9 @@ C       write(*,*)"is = ", is, ", ie = ", ie
       END DO
 
 C       write(*,*)"calling IFEM_FINDSOLVEL"
-      CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
+!      CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
+
+      CALL IFEM_FINDSOLVEL_MLS(nsd+1, Yl, Dg, ifem%Yb)
 
       DEALLOCATE(Yl)
 C       write(*,*)"done calling IFEM_FINDSOLVEL"
@@ -4565,6 +4572,43 @@ C             IF (mvMsh) xl(:,a) = xl(:,a) + Dg(nsd+2:2*nsd+1,Ac)
 
       RETURN
       END SUBROUTINE IFEM_FINDSOLVEL
+!####################################################################
+!     Interpolate data at IFEM nodes from background mesh using fem
+!     nodal function 
+      SUBROUTINE IFEM_FINDSOLVEL_MLS(m, Ug, Dg, Ub)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: m
+      REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
+
+      INTEGER(KIND=IKIND) :: a, iM, idFCls, nbrSN, idFStc, is
+
+      Ub = 0._RKIND
+
+      !     TODO for multiple fluid mesh
+      iM = 1
+!     Loop over the solid nodes 
+      DO a=1, ifem%tnNo
+C          write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+!        Global id closest fluid node
+         idFCls = ifem%clsFNd(a) 
+!        Nbr of node in stencil
+         nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+!        Loop over the stencil 
+         DO is = 1, nbrSN
+C             write(*,*) "inside loop stencil"
+!           Extract fluid coordinates xlf
+            idFStc = msh(iM)%stn%ndStn(idFCls,is)
+
+            Ub(:,a) = Ub(:,a) + ifem%QMLS(is,a)*Ug(1:nsd,idFStc)
+
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_FINDSOLVEL_MLS
 !--------------------------------------------------------------------
       SUBROUTINE IFEM_INTERPND(m, Ug, Dg, Ub)
       USE COMMOD
