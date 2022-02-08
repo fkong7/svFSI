@@ -830,17 +830,22 @@
 !        IB Domain ID
          INTEGER(KIND=IKIND), ALLOCATABLE :: dmnID(:)
 !         
-!        Displacement (new) ?? Need to be deleted
+!        Displacement (new) 
          REAL(KIND=RKIND), ALLOCATABLE :: Ubn(:,:)
-!        Velocity (new)
+!        Displacement (old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Ubo(:,:)
+!        Intermediate Displacement 
+         REAL(KIND=RKIND), ALLOCATABLE :: Ubg(:,:)
+
+!        Velocity interpolated from fluid (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
 !        Time derivative of displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Auo(:,:)
 !        Time derivative of displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Auoo(:,:)
-!        Displacement (old)
-         REAL(KIND=RKIND), ALLOCATABLE :: Ubo(:,:)
-!
+!        Velocity  (old)
+         REAL(KIND=RKIND), ALLOCATABLE :: Aug(:,:)
+
 !        Residue (FSI force)
          REAL(KIND=RKIND), ALLOCATABLE :: Rfluid(:,:) !R
          REAL(KIND=RKIND), ALLOCATABLE :: R(:,:) !nned to be deleted

@@ -43,7 +43,7 @@
 
       LOGICAL l1, l2, l3, ifemImp
       INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS
-      REAL(KIND=RKIND) timeP(3)
+      REAL(KIND=RKIND) timeP(3), coef, coeff(4)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
       REAL(KIND=RKIND), ALLOCATABLE :: Ag(:,:), Yg(:,:), Dg(:,:), res(:)
@@ -55,8 +55,8 @@
       l1 = .FALSE.
       l2 = .FALSE.
       l3 = .FALSE.
-      ifemImp = .FALSE.
-C       ifemImp = .TRUE.
+C       ifemImp = .FALSE.
+      ifemImp = .TRUE.
 
       savedOnce = .FALSE.
       CALL MPI_INIT(i)
@@ -130,6 +130,14 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 
             write(*,*)"calling IFEM_CONSTRUCT"
             CALL IFEM_CONSTRUCT()
+
+            IF(ifemImp) THEN 
+!           Predictor stage ifem
+               coef = (eq(1)%gam - 1._RKIND)/eq(1)%gam
+               ifem%Aun = coef*ifem%Auo
+               ifem%Ubn = ifem%Ubo
+            END IF
+
          END IF
 
          write(*,*)"Beginning inner loop"
@@ -147,6 +155,17 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
             IF (ALLOCATED(Rd)) THEN
                Rd = 0._RKIND
                Kd = 0._RKIND
+            END IF
+
+            IF(ifemImp) THEN 
+!           Predictor stage ifem
+               coeff(1) = 1._RKIND - eq(i)%am
+               coeff(2) = eq(i)%am
+               coeff(3) = 1._RKIND - eq(i)%af
+               coeff(4) = eq(i)%af
+         
+               ifem%Aug = ifem%Auo*coeff(1) + ifem%Aun*coeff(2)
+               ifem%Ubg = ifem%Ubo*coeff(3) + ifem%Ubn*coeff(4)
             END IF
 
             dbg = 'Allocating the RHS and LHS'
@@ -209,17 +228,17 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
                IF (ifemImp) THEN
 !                 Set IB Dirichlet BCs
                   write(*,*)"Call IFEM_SETBCDIR inner"
-                  CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+                  CALL IFEM_SETBCDIR(ifem%Aug, ifem%Ubg)
 
                   write(*,*)"Call IFEM_CALCFFSI inner"
 !                 FSI forcing for immersed bodies (explicit coupling)
-                  CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+                  CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Aug, ifem%Ubg)
 
                   write(*,*)"calling IFEM_CONSTRUCT"
                   CALL IFEM_CONSTRUCT()
                END IF
 
-               CALL IFEM_RASSEMBLY()
+!               CALL IFEM_RASSEMBLY()
             END IF
 
             incL = 0
@@ -239,6 +258,10 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 !        Solution is obtained, now updating (Corrector)
             CALL PICC
 
+            IF(ifemImp) THEN 
+               CALL IFEM_PICC(Do,Yn)
+            END IF
+            
 !        Checking for exceptions
             CALL EXCEPTIONS
 
@@ -246,10 +269,10 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
             IF (ALL(eq%ok)) EXIT
             CALL OUTRESULT(timeP, 2, iEqOld)
 
-            IF (ifemFlag .AND. ifemImp) THEN
-!              Find new solid velocity
-               CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
-            END IF
+C             IF (ifemFlag .AND. ifemImp) THEN
+C !              Find new solid velocity
+C                CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
+C             END IF
 
          END DO
 !     End of inner loop
@@ -272,8 +295,12 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 
 C             write(*,*)"Yn ", Yn
 C             write(*,*)"Dn ", Dn
-
-            CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
+            IF (.NOT. ifemImp) THEN
+               CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
+            ELSE 
+               ifem%Auo = ifem%Aun
+               ifem%Ubo = ifem%Ubn
+            END IF
 
 !           Update IB location and tracers
 !           Search for the new closest point looking in the fluid neighbors 
@@ -327,8 +354,11 @@ C          write(*,*)"call txt done"
                CALL WRITEVTUS(An, Yn, Dn, .FALSE.)
                IF (ibFlag) CALL IB_WRITEVTUS(ib%Yb, ib%Ubo)
                IF (ifemFlag) THEN 
-                  write(*,*)"::: call IFEM_WRITEVTUS ", ifem%nMsh 
-                  CALL IFEM_WRITEVTUS(ifem%Yb, ifem%Ubo)
+                  IF(.NOT.ifemImp) THEN
+                     CALL IFEM_WRITEVTUS(ifem%Yb, ifem%Ubo)
+                  ELSE 
+                     CALL IFEM_WRITEVTUS(ifem%Aun, ifem%Ubn)
+                  END IF
                   write(*,*)"::: call IFEM_WRITEVTUS done"
                END IF
             ELSE

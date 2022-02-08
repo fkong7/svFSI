@@ -802,8 +802,14 @@ C       END SUBROUTINE IFEM_READOPTS
 ! ?? TODO
       ALLOCATE(ifem%Yb(nsd,ifem%tnNo)) ! ?? why nsd+1
       ALLOCATE(ifem%Auo(nsd,ifem%tnNo))
+      ALLOCATE(ifem%Aug(nsd,ifem%tnNo))
+      ALLOCATE(ifem%Aun(nsd,ifem%tnNo))
       ALLOCATE(ifem%Auoo(nsd,ifem%tnNo))
+
       ALLOCATE(ifem%Ubo(nsd,ifem%tnNo))
+      ALLOCATE(ifem%Ubg(nsd,ifem%tnNo))
+      ALLOCATE(ifem%Ubn(nsd,ifem%tnNo))
+
       ALLOCATE(ifem%Rfluid(nsd,tnNo))
       ALLOCATE(ifem%Rsolid(nsd,ifem%tnNo))
 
@@ -1608,11 +1614,11 @@ C                      EXIT
       ifem%clsFNd = nodeF
       ifem%clsFElm = elmF
 
-      DO a=1, lM%nNo
-         write(*,*)"closest solid id (mergefile notation)", a,  
-     2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
-     3    ifem%clsFElm(a)
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*)"closest solid id (mergefile notation)", a,  
+C      2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
+C      3    ifem%clsFElm(a)
+C       END DO
 
 C       write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
 C       write(*,*) "closest local id is : ", ifem%clsFNd
@@ -4139,10 +4145,10 @@ C       write(*,*)"Jac = ", Jac
 
 !     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
 !     Voigt notation 
-      write(*,*)" Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
-      eq(iEq)%dmnIB(iDmn)%stM%Kpen = 
-     2                       eq(iEq)%dmnIB(iDmn)%stM%C10/10._RKIND
-      write(*,*)" new Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
+C       write(*,*)" Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
+!       eq(iEq)%dmnIB(iDmn)%stM%Kpen = 
+!     2                       eq(iEq)%dmnIB(iDmn)%stM%C10/10._RKIND
+C       write(*,*)" new Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
 
       CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
@@ -4453,7 +4459,7 @@ C             write(*,*) "inside loop stencil"
 
 !     Final residual assembly 
       DO a=1, tnNo
-         R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
+         R(1:nsd,a) = R(1:nsd,a) - ifem%Rfluid(:,a)
       END DO
 
 
@@ -4541,18 +4547,45 @@ C                END IF
       ifem%Auoo = ifem%Auo
       ifem%Auo = ifem%Yb
 
-
-
-
-
-
-
-
-
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
       RETURN
       END SUBROUTINE IFEM_INTERPVEL
+!####################################################################
+!     Corrector step for implicit ifem 
+      SUBROUTINE IFEM_PICC(Dg,Yg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo), Yg(tDof,tnNo)
+
+!     Compute the MLS velocity increment 
+      REAL(KIND=RKIND) :: coeff, dAl(nsd,ifem%tnNo), dUl(nsd,ifem%tnNo)
+
+C       coeff = eq(1)%gam*dt
+
+C !     Extract accelaration increment and compute MLS increment evaluation
+C       CALL IFEM_FINDSOLVEL_MLS(dof, R, Dg, dAl)
+
+C !     find delta U
+C       dUl = coeff * dAl
+C !     Update Aun, Ubn 
+C       ifem%Aun = ifem%Aun - dUl
+C       ifem%Ubn = ifem%Ubn - coeff*dUl
+
+!     Using MLS for projection of the fluid velocity to the solid vel
+      coeff = eq(1)%gam*dt
+
+!     Extract accelaration increment and compute MLS increment evaluation
+      CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, ifem%Aun)
+
+!     find delta U
+      dAl = ifem%Aun - ifem%Auo
+!     Update Aun, Ubn 
+      ifem%Ubn = ifem%Ubo + coeff*dAl
+
+      RETURN
+      END SUBROUTINE IFEM_PICC
 !####################################################################
 !     Interpolate data at IFEM nodes from background mesh using fem
 !     nodal function 

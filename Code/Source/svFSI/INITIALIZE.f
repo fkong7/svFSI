@@ -435,8 +435,12 @@
       IF (ifemFlag) THEN
          ifem%Yb  = 0._RKIND
          ifem%Auo = 0._RKIND
+         ifem%Aun = 0._RKIND
+         ifem%Aug = 0._RKIND
          ifem%Auoo = 0._RKIND
          ifem%Ubo = 0._RKIND
+         ifem%Ubn = 0._RKIND
+         ifem%Ubg = 0._RKIND
       END IF
 
 !     Load any explicitly provided solution variables
@@ -735,8 +739,12 @@
          IF (ALLOCATED(ifem%xCuo))     DEALLOCATE(ifem%xCuo)
          IF (ALLOCATED(ifem%Yb))       DEALLOCATE(ifem%Yb)
          IF (ALLOCATED(ifem%Auo))      DEALLOCATE(ifem%Auo)
+         IF (ALLOCATED(ifem%Aun))      DEALLOCATE(ifem%Aun)
+         IF (ALLOCATED(ifem%Aug))      DEALLOCATE(ifem%Aug)
          IF (ALLOCATED(ifem%Auoo))     DEALLOCATE(ifem%Auoo)
          IF (ALLOCATED(ifem%Ubo))      DEALLOCATE(ifem%Ubo)
+         IF (ALLOCATED(ifem%Ubn))      DEALLOCATE(ifem%Ubn)
+         IF (ALLOCATED(ifem%Ubg))      DEALLOCATE(ifem%Ubg)
          IF (ALLOCATED(ifem%Rfluid))   DEALLOCATE(ifem%Rfluid)
          IF (ALLOCATED(ifem%R))        DEALLOCATE(ifem%R)
          IF (ALLOCATED(ifem%Rsolid))   DEALLOCATE(ifem%Rsolid)
