@@ -904,7 +904,7 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
 
 !     Set IFEM Dirichlet BCs
       write(*,*) "::: Calling IFEM_SETBCDIR :::"
-      CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+      CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
 !     Compute the nodal stencil/adjacency for each fluid node 
       DO iM=1, nMsh
@@ -1608,12 +1608,11 @@ C                      EXIT
       ifem%clsFNd = nodeF
       ifem%clsFElm = elmF
 
-C       DO a=1, lM%nNo
-C          e = a+1595
-C          write(*,*)"closest solid id (mergefile notation)", e,  
-C      2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
-C      3    ifem%clsFElm(a)
-C       END DO
+      DO a=1, lM%nNo
+         write(*,*)"closest solid id (mergefile notation)", a,  
+     2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ", 
+     3    ifem%clsFElm(a)
+      END DO
 
 C       write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
 C       write(*,*) "closest local id is : ", ifem%clsFNd
@@ -1669,6 +1668,10 @@ C          write(*,*) "find node solid ", snd, " is ", find
 
 !        Is the solid node in this fluis element? yes, nothing to do
          IF (.NOT. find) THEN 
+            write(*,*)"* ATTENTION THAT SOLID NODE ",snd+msh(iM)%gnNo,
+     2        " changes stc"
+            write(*,*)"Search in stencil elm = ",
+     2                             msh(iM)%stn%elmStn(idFNd,:)
 !           Search in the elm stencil of idFEl   
             nbSE = SIZE(msh(iM)%stn%elmStn,2)
 C             write(*,*)"Begin search neigh" , nbSE
@@ -1692,12 +1695,16 @@ C                   write(*,*)"Find node in elem ", idNFEl
 
                   nodeF = CLOSEST_POINT(xs,poly) 
                   ifem%clsFNd(snd) = msh(iM)%IEN(nodeF,idNFEl) 
+                  write(*,*)"  New closest point is ", ifem%clsFNd(snd)
+                  write(*,*)"  New stencil is ", 
+     2             msh(iM)%stn%ndStn(ifem%clsFNd(snd),:)
                   EXIT
                END IF   
             END DO
 
             IF (.NOT. find) THEN 
                ! loop over all the fluid elem 
+               write(*,*)"* closent not in stencil, loop over whole msh"
                DO idNFEl = 1, msh(iM)%nEl
 
                   DO a=1, msh(iM)%eNoN
@@ -1719,9 +1726,9 @@ C                      write(*,*)"Find node in elem ", idNFEl
             END IF
 
             IF (.NOT. find) THEN 
-               write(*,*)"ERROR FIND CLSEST PNT NEIGH" 
-               write(*,*)"OHHH NOOOO!"
-               CALL EXIT(1)
+               write(*,*)"ERROR FIND CLSEST PNT NEIGH solid id ", snd 
+               write(*,*)"!!!!!!!    OHHH NOOOO!    !!!!!!! "
+!               CALL EXIT(1)
             END IF
 
          END IF
@@ -3598,7 +3605,7 @@ c      END DO
       SUBROUTINE IFEM_SETBCDIR(Yb, Ub) !**! STILL TO CHECK
       USE COMMOD
       IMPLICIT NONE
-      REAL(KIND=RKIND), INTENT(INOUT) :: Yb(nsd+1,ifem%tnNo),
+      REAL(KIND=RKIND), INTENT(INOUT) :: Yb(nsd,ifem%tnNo),
      2   Ub(nsd,ifem%tnNo)
 
       LOGICAL :: eDir(maxnsd)
@@ -3610,6 +3617,8 @@ c      END DO
       iEq = ifem%cEq
       IF (iEq .EQ. 0) RETURN
 
+!     Search for the direction to impose the BC, Direction vector 
+!     to set up the local dof
       DO iBc=1, eq(iEq)%nBcIB
          IF (.NOT.BTEST(eq(iEq)%bcIB(iBc)%bType,bType_Dir)) CYCLE
          eDir = .FALSE.
@@ -3625,6 +3634,9 @@ c      END DO
          iFa = eq(iEq)%bcIB(iBc)%iFa
          iM  = eq(iEq)%bcIB(iBc)%iM
 
+         write(*,*)"IFEM BC lDof = ", lDof
+!     Since we are using struct, we have that bType_impD = true
+
 !     Prepare a pointer list and normals for a face or a shell
          nNo = ifem%msh(iM)%fa(iFa)%nNo
          ALLOCATE(ptr(nNo), nV(nsd,nNo))
@@ -3634,7 +3646,10 @@ c      END DO
             nV(:,a) = ifem%msh(iM)%fa(iFa)%nV(:,a)
          END DO
 
+C          write(*,*)"Temp A , Y , lDof= ", lDof, ", nNo = ", nNo
          ALLOCATE(tmpA(lDof,nNo), tmpY(lDof,nNo))
+         tmpA = 0._RKIND
+         tmpY = 0._RKIND
          CALL IFEM_SETBCDIRL(eq(iEq)%bcIB(iBc),nNo,lDof,nV,tmpA,tmpY)
 
          IF (ANY(eDir)) THEN
@@ -3647,6 +3662,8 @@ c      END DO
                         lDof = lDof + 1
                         Yb(i,Ac) = tmpA(lDof,a)
                         Ub(i,Ac) = tmpY(lDof,a)
+                        write(*,*)"  Yb(i,Ac)  = ", Yb(i,Ac) 
+                        write(*,*)"  Ub(i,Ac)  = ", Ub(i,Ac) 
                      END IF
                   END DO
                ELSE
@@ -3661,6 +3678,7 @@ c      END DO
                END IF
             END DO
          ELSE
+C             write(*,*)"We are here 2 "
             DO a=1, nNo
                Ac = ptr(a)
                IF (BTEST(eq(iEq)%bcIB(iBc)%bType,bType_impD)) THEN
@@ -3700,15 +3718,22 @@ c      END DO
       ELSE IF (BTEST(lBc%bType,bType_ustd)) THEN
          CALL IFFT(lBc%gt, dirY, dirA)
       ELSE ! std / cpl
+C          write(*,*)" not  bType_gen or  bType_ustd"
          dirA = 0._RKIND
          dirY = lBc%g
+C          write(*,*)" g per dirY = ", lBc%g
       END IF
 
       IF (lDof .EQ. nsd) THEN
          DO a=1, nNo
             nV      = nvL(:,a)
+C             write(*,*)" nV = ", nV
+C             write(*,*)" lBc%gx(a) = ", lBc%gx(a)
+
             lA(:,a) = dirA*lBc%gx(a)*nV
             lY(:,a) = dirY*lBc%gx(a)*nV
+C             write(*,*)" lA = ", lA
+C             write(*,*)" lY = ", lY
          END DO
       ELSE
          DO a=1, nNo
@@ -3962,9 +3987,10 @@ C          write(*,*)"Beginning loop over elemtn mesh "
 
 C             write(*,*) " Beginning loop over gauss point "
    !        Gauss integration
-C             lR = 0._RKIND
+            lR = 0._RKIND
+            
             DO g=1, ifem%msh(iM)%nG
-               lR = 0._RKIND
+C                lR = 0._RKIND
 
                IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
                   CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xbl, Nx, 
@@ -3985,13 +4011,13 @@ C                write(*,*)"Calling local force assembly"
                END IF
 
 C                write(*,*)"End call local assembly"
+            END DO
 
 !              Assemble to ifem global residue
-               DO a=1, eNoN
-                  Ac = ifem%msh(iM)%IEN(a,e)
-                  DO j=1, nsd ! TODO nsd+1 ??
-                     ifem%Rsolid(j,Ac) = ifem%Rsolid(j,Ac) + lR(j,a)
-                  END DO
+            DO a=1, eNoN
+               Ac = ifem%msh(iM)%IEN(a,e)
+               DO j=1, nsd ! TODO nsd+1 ??
+                  ifem%Rsolid(j,Ac) = ifem%Rsolid(j,Ac) + lR(j,a)
                END DO
             END DO
          
@@ -4112,7 +4138,12 @@ C       write(*,*)"F = ", F
 C       write(*,*)"Jac = ", Jac
 
 !     2nd Piola-Kirchhoff tensor (S) and material stiffness tensor in
-!     Voigt notation
+!     Voigt notation 
+      write(*,*)" Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
+      eq(iEq)%dmnIB(iDmn)%stM%Kpen = 
+     2                       eq(iEq)%dmnIB(iDmn)%stM%C10/10._RKIND
+      write(*,*)" new Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
+
       CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
 C       write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
@@ -4329,7 +4360,7 @@ C                write(*,*)"xlf = ", xlf
 C                write(*,*)" Pmls ", Pmls
                
 !              Compute cubic spline value
-               rnorm = msh(iM)%diam
+               rnorm = msh(iM)%diam*1.12
                Wmls(is) = WHTFUNC(xls,xlf,rnorm)
 !              Check that rnorm is good 
                rnorm = DIST(xls,xlf)
@@ -4461,7 +4492,6 @@ C       write(*,*)"is = ", is, ", ie = ", ie
 
 C       write(*,*)"calling IFEM_FINDSOLVEL"
 !      CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
-
       CALL IFEM_FINDSOLVEL_MLS(nsd+1, Yl, Dg, ifem%Yb)
 
       DEALLOCATE(Yl)
@@ -4484,11 +4514,10 @@ C       write(*,*)""//""
      2                 + dt*0.5_RKIND*( 3._RKIND * ifem%Auo(i,a) 
      3                 - ifem%Auoo(i,a) )
 
-               ifem%xCu(i,a) = ifem%x(i,a) + ifem%Ubo(i,a)
-               IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-                  write(*,*)"OHHH NOOOO, out of fluid !"
-                  CALL EXIT(1)
-               END IF
+C                IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
+C                   write(*,*)"OHHH NOOOO, out of fluid !"
+C                   CALL EXIT(1)
+C                END IF
             END DO
          END DO
       ELSE 
@@ -4496,14 +4525,18 @@ C       write(*,*)""//""
             DO i=1, nsd
                ifem%Ubo(i,a) = ifem%Ubo(i,a) + dt*ifem%Yb(i,a)
 
-               ifem%xCu(i,a) = ifem%x(i,a) + ifem%Ubo(i,a)
-               IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-                  write(*,*)"OHHH NOOOO, out of fluid !"
-                  CALL EXIT(1)
-               END IF
+C                IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
+C                   write(*,*)"OHHH NOOOO, out of fluid !"
+C                   CALL EXIT(1)
+C                END IF
             END DO
          END DO
       END IF
+
+      CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+
+      ifem%xCu = ifem%x + ifem%Ubo
+
       write(*,*)"Done AB scheme" 
       ifem%Auoo = ifem%Auo
       ifem%Auo = ifem%Yb

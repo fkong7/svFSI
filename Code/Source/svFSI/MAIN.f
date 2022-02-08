@@ -41,7 +41,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      LOGICAL l1, l2, l3
+      LOGICAL l1, l2, l3, ifemImp
       INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS
       REAL(KIND=RKIND) timeP(3)
 
@@ -55,6 +55,8 @@
       l1 = .FALSE.
       l2 = .FALSE.
       l3 = .FALSE.
+      ifemImp = .FALSE.
+C       ifemImp = .TRUE.
 
       savedOnce = .FALSE.
       CALL MPI_INIT(i)
@@ -118,7 +120,7 @@
          IF (ifemFlag) THEN
 !           Set IB Dirichlet BCs
             write(*,*)"Call IFEM_SETBCDIR after PICP"
-            CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+            CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
@@ -203,6 +205,20 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 !        IFEM: adding the FSI force to the Fluid residue 
             write(*,*)"calling IFEM_RASSEMBLY"
             IF (ifemFlag) THEN
+
+               IF (ifemImp) THEN
+!                 Set IB Dirichlet BCs
+                  write(*,*)"Call IFEM_SETBCDIR inner"
+                  CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+
+                  write(*,*)"Call IFEM_CALCFFSI inner"
+!                 FSI forcing for immersed bodies (explicit coupling)
+                  CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+
+                  write(*,*)"calling IFEM_CONSTRUCT"
+                  CALL IFEM_CONSTRUCT()
+               END IF
+
                CALL IFEM_RASSEMBLY()
             END IF
 
@@ -229,6 +245,12 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 !        Writing out the time passed, residual, and etc.
             IF (ALL(eq%ok)) EXIT
             CALL OUTRESULT(timeP, 2, iEqOld)
+
+            IF (ifemFlag .AND. ifemImp) THEN
+!              Find new solid velocity
+               CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
+            END IF
+
          END DO
 !     End of inner loop
 
