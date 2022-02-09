@@ -238,7 +238,7 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
                   CALL IFEM_CONSTRUCT()
                END IF
 
-!               CALL IFEM_RASSEMBLY()
+               CALL IFEM_RASSEMBLY()
             END IF
 
             incL = 0

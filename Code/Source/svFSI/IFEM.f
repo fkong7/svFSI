@@ -4561,6 +4561,7 @@ C                END IF
 
 !     Compute the MLS velocity increment 
       REAL(KIND=RKIND) :: coeff, dAl(nsd,ifem%tnNo), dUl(nsd,ifem%tnNo)
+      REAL(KIND=RKIND) :: Aun(nsd,ifem%tnNo)
 
 C       coeff = eq(1)%gam*dt
 
@@ -4577,12 +4578,14 @@ C       ifem%Ubn = ifem%Ubn - coeff*dUl
       coeff = eq(1)%gam*dt
 
 !     Extract accelaration increment and compute MLS increment evaluation
-      CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, ifem%Aun)
+      CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, Aun)
 
 !     find delta U
-      dAl = ifem%Aun - ifem%Auo
+      dAl = Aun - ifem%Aun
+      ifem%Aun = Aun 
+
 !     Update Aun, Ubn 
-      ifem%Ubn = ifem%Ubo + coeff*dAl
+      ifem%Ubn = ifem%Ubn + coeff*dAl
 
       RETURN
       END SUBROUTINE IFEM_PICC
