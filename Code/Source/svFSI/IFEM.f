@@ -4459,7 +4459,7 @@ C             write(*,*) "inside loop stencil"
 
 !     Final residual assembly 
       DO a=1, tnNo
-         R(1:nsd,a) = R(1:nsd,a) - ifem%Rfluid(:,a)
+         R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
       END DO
 
 
