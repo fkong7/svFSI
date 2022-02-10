@@ -427,6 +427,75 @@
             END DO
             s(Ac) = 1._RKIND - NORM(nV)/NORM(sV(:,i))
          END DO
+      ELSE IF (BTEST(lBc%bType,bType_paraH)) THEN
+!     Here is the method that is used for imposing half parabolic profile:
+!     1- Find the coordinate of the points on the boundary 2- find unit
+!     vector from center to each of points on the boundary: ew
+!     3- maximize ew(i).e where e is the unit vector from current
+!     point to the center 4- Use the point i as the diam here
+         DO i=1, nsd
+            center(i) = 2._RKIND*Integ(lFa, x, i)/lFa%area
+         END DO
+         ALLOCATE(gNodes(tnNo), sVl(nsd,lFa%nNo), sV(nsd,tnNo))
+!     gNodes is one if a node located on the boundary (beside iFa)
+         gNodes = 0
+         DO jFa=1, msh(iM)%nFa
+            IF (jFa .EQ. iFa) CYCLE
+            DO a=1, msh(iM)%fa(jFa)%nNo
+               Ac         = msh(iM)%fa(jFa)%gN(a)
+               gNodes(Ac) = 1
+            END DO
+         END DO
+!     "j" is a counter for the number of nodes that are located on the
+!     boundary of lFa and sVl contains the list of their coordinates
+         j   = 0
+         sVl = 0._RKIND
+         DO a=1, lFa%nNo
+            Ac = lFa%gN(a)
+            IF (gNodes(Ac) .EQ. 1) THEN
+               j = j + 1
+               sVl(:,j) = x(:,Ac)
+            END IF
+         END DO
+         IF (.NOT.cm%seq()) THEN
+!     Getting the length data that is going to be received at each proc
+            i = j*nsd
+            CALL MPI_ALLGATHER(i, 1, mpint, sCount, 1, mpint, cm%com(),
+     2         ierr)
+            disp(1) = 0
+            DO i=2, cm%np()
+               disp(i) = disp(i-1) + sCount(i-1)
+            END DO
+            CALL MPI_ALLGATHERV(sVl, j*nsd, mpreal, sV, sCount, disp,
+     2         mpreal, cm%com(), ierr)
+            j = SUM(sCount)/nsd
+         ELSE
+            sV(:,1:j) = sVl(:,1:j)
+         END IF
+         IF (cm%mas() .AND. j.EQ.0) err = "No perimeter"//
+     2      " found for face "//lFa%name
+!     sVl will keep the normal unit vector from center to perimeter
+         DEALLOCATE(sVl)
+         ALLOCATE(sVl(nsd,j))
+         DO a=1, j
+            sV(:,a)  = sV(:,a) - center
+            sVl(:,a) = sV(:,a)/SQRT(NORM(sV(:,a)))
+         END DO
+!     "s" is going to keep the ew.e value
+         DO a=1, lFa%nNo
+            Ac = lFa%gN(a)
+            nV = x(:,Ac) - center
+            maxN = NORM(nV, sVl(:,1))
+            i = 1
+            DO b=2, j
+               tmp = NORM(nV, sVl(:,b))
+               IF (tmp .GT. maxN) THEN
+                  maxN = tmp
+                  i = b
+               END IF
+            END DO
+            s(Ac) = 1._RKIND - NORM(nV)/NORM(sV(:,i))
+         END DO
       ELSE IF (BTEST(lBc%bType,bType_ud)) THEN
          DO a=1, lFa%nNo
             Ac    = lFa%gN(a)

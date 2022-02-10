@@ -135,7 +135,7 @@
      4   bType_flx = 10, bType_zp = 11, bType_impD = 12, bType_flat =13,
      5   bType_para = 14, bType_ud = 15, bType_bfs = 16, bType_fix = 17,
      6   bType_hing = 18, bType_free = 19, bType_symm = 20,
-     7   bType_undefNeu = 21, bType_RCR = 22
+     7   bType_undefNeu = 21, bType_RCR = 22, bType_paraH = 23
 !--------------------------------------------------------------------
 !     Body force types: volumetric (default), traction, Neumann
 !     (pressure based), time dependence (steady, unsteady, spatially
