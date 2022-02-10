@@ -561,7 +561,7 @@
      2            eq%iNorm, cplBC%xo, Yo, Ao
             END IF
          END IF
-      ELSE
+      ELSE IF(ibFlag) THEN
          IF (dFlag) THEN
             IF (pstEq) THEN
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
@@ -579,6 +579,26 @@
             ib%Aun = ib%Auo
             ib%Ubn = ib%Ubo
          END IF
+      ELSE IF(ifemFlag) THEN 
+
+         IF (dFlag) THEN
+            IF (pstEq) THEN
+               READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, pS0, ifem%Yb, 
+     3            ifem%Auo, ifem%Ubo
+            ELSE
+               READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, ifem%Yb, ifem%Auo, 
+     3            ifem%Ubo
+            END IF
+         ELSE
+            READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1), eq%iNorm,
+     2         cplBC%xo, Yo, Ao, ifem%Yb, ifem%Auo, ifem%Ubo
+         END IF
+
+         ifem%Aun = ifem%Auo
+         ifem%Ubn = ifem%Ubo
+
       END IF
       CLOSE(fid)
 
@@ -735,7 +755,7 @@
          IF (ALLOCATED(ifem%rowPtr))   DEALLOCATE(ifem%rowPtr)
          IF (ALLOCATED(ifem%colPtr))   DEALLOCATE(ifem%colPtr)
          IF (ALLOCATED(ifem%x))        DEALLOCATE(ifem%x)
-         IF (ALLOCATED(ifem%xCu))     DEALLOCATE(ifem%xCu)
+         IF (ALLOCATED(ifem%xCu))      DEALLOCATE(ifem%xCu)
          IF (ALLOCATED(ifem%xCuo))     DEALLOCATE(ifem%xCuo)
          IF (ALLOCATED(ifem%Yb))       DEALLOCATE(ifem%Yb)
          IF (ALLOCATED(ifem%Auo))      DEALLOCATE(ifem%Auo)

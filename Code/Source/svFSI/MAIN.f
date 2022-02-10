@@ -119,16 +119,16 @@ C       ifemImp = .FALSE.
 
          IF (ifemFlag) THEN
 !           Set IB Dirichlet BCs
-            write(*,*)"Call IFEM_SETBCDIR after PICP"
+C             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
-            write(*,*)"Call IFEM_CALCFFSI after PICP"
+C             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
 C             write(*,*)"ifem%Auo", ifem%Auo
 C             write(*,*)"ifem%Ubo", ifem%Ubo
             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
 
-            write(*,*)"calling IFEM_CONSTRUCT"
+C             write(*,*)"calling IFEM_CONSTRUCT"
             CALL IFEM_CONSTRUCT()
 
             IF(ifemImp) THEN 
@@ -140,7 +140,7 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 
          END IF
 
-         write(*,*)"Beginning inner loop"
+C          write(*,*)"Beginning inner loop"
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -157,7 +157,7 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
                Kd = 0._RKIND
             END IF
 
-            IF(ifemImp) THEN 
+            IF(ifemImp .AND. ifemFlag) THEN 
 !           Predictor stage ifem
                coeff(1) = 1._RKIND - eq(i)%am
                coeff(2) = eq(i)%am
@@ -222,19 +222,19 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
             END IF
 
 !        IFEM: adding the FSI force to the Fluid residue 
-            write(*,*)"calling IFEM_RASSEMBLY"
+C             write(*,*)"calling IFEM_RASSEMBLY"
             IF (ifemFlag) THEN
 
                IF (ifemImp) THEN
 !                 Set IB Dirichlet BCs
-                  write(*,*)"Call IFEM_SETBCDIR inner"
+C                   write(*,*)"Call IFEM_SETBCDIR inner"
                   CALL IFEM_SETBCDIR(ifem%Aug, ifem%Ubg)
 
-                  write(*,*)"Call IFEM_CALCFFSI inner"
+C                   write(*,*)"Call IFEM_CALCFFSI inner"
 !                 FSI forcing for immersed bodies (explicit coupling)
                   CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Aug, ifem%Ubg)
 
-                  write(*,*)"calling IFEM_CONSTRUCT"
+C                   write(*,*)"calling IFEM_CONSTRUCT"
                   CALL IFEM_CONSTRUCT()
                END IF
 
@@ -254,11 +254,12 @@ C             write(*,*)"ifem%Ubo", ifem%Ubo
 
             dbg = "Solving equation <"//eq(cEq)%sym//">"
             CALL LSSOLVE(eq(cEq), incL, res)
+            write(*,*)" solve fluid eq done "
 
 !        Solution is obtained, now updating (Corrector)
             CALL PICC
 
-            IF(ifemImp) THEN 
+            IF(ifemImp .AND. ifemFlag) THEN 
                CALL IFEM_PICC(Do,Yn)
             END IF
             
@@ -300,6 +301,7 @@ C             write(*,*)"Dn ", Dn
             ELSE 
                ifem%Auo = ifem%Aun
                ifem%Ubo = ifem%Ubn
+               ifem%xCu = ifem%x + ifem%Ubo
             END IF
 
 !           Update IB location and tracers
@@ -359,7 +361,7 @@ C          write(*,*)"call txt done"
                   ELSE 
                      CALL IFEM_WRITEVTUS(ifem%Aun, ifem%Ubn)
                   END IF
-                  write(*,*)"::: call IFEM_WRITEVTUS done"
+C                   write(*,*)"::: call IFEM_WRITEVTUS done"
                END IF
             ELSE
                CALL OUTRESULT(timeP, 2, iEqOld)
@@ -372,7 +374,7 @@ C          write(*,*)"call txt done"
          IF (ibFlag) CALL IB_OUTCPUT()
          IF (ifemFlag) THEN 
             CALL IFEM_OUTCPUT()
-            write(*,*)"::: call IFEM_OUTCPUT done"
+C             write(*,*)"::: call IFEM_OUTCPUT done"
          END IF
 
 !     Exiting outer loop if l1

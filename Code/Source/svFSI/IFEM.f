@@ -885,7 +885,7 @@ C       END IF
       END DO
 
 !     Initialize IFEM face normals
-      write(*,*) "::: Calling IFEM_FACEINI :::"
+C       write(*,*) "::: Calling IFEM_FACEINI :::"
       DO iM=1, ifem%nMsh
          DO iFa=1, ifem%msh(iM)%nFa
             ifem%msh(iM)%fa(iFa)%iM = iM
@@ -894,7 +894,7 @@ C       END IF
       END DO
 
 !     Initialize IFEM face BC profile
-      write(*,*) "::: Calling IFEM_BCINI :::"
+C       write(*,*) "::: Calling IFEM_BCINI :::"
       DO iEq=1, nEq
          DO iBc=1, eq(iEq)%nBcIB
             iFa = eq(iEq)%bcIB(iBc)%iFa
@@ -909,13 +909,13 @@ C       CALL IFEM_LHSA(nnz)
 C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
 
 !     Set IFEM Dirichlet BCs
-      write(*,*) "::: Calling IFEM_SETBCDIR :::"
+C       write(*,*) "::: Calling IFEM_SETBCDIR :::"
       CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
 !     Compute the nodal stencil/adjacency for each fluid node 
       DO iM=1, nMsh
          msh(iM)%iGC = 0
-         write(*,*) "::: Calling GETNSTENCIL :::"
+C          write(*,*) "::: Calling GETNSTENCIL :::"
          CALL GETNSTENCIL(msh(iM))
       END DO
 
@@ -981,7 +981,7 @@ C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
          CALL IFEM_UPDATECLS(ifem%msh(iM), lD)
       END DO
 
-      write(*,*)"END IFEM_UPDATECLS "
+C       write(*,*)"END IFEM_UPDATECLS "
 
       ifem%callD(2) = CPUT() - tt
       ifem%callD(4) = ifem%callD(3)
@@ -1672,12 +1672,23 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
          find = IN_POLY(xs,poly)
 C          write(*,*) "find node solid ", snd, " is ", find
 
+         IF (find) THEN
+            nodeF = CLOSEST_POINT(xs,poly)
+            IF (ifem%clsFNd(snd) .NE. msh(iM)%IEN(nodeF,idFEl) ) THEN
+               
+               write(*,*)"New closest point solid node ", snd, " is ", 
+     2                                          msh(iM)%IEN(nodeF,idFEl) 
+
+               ifem%clsFNd(snd) = msh(iM)%IEN(nodeF,idFEl) 
+            END IF
+         END IF
+
 !        Is the solid node in this fluis element? yes, nothing to do
          IF (.NOT. find) THEN 
-            write(*,*)"* ATTENTION THAT SOLID NODE ",snd+msh(iM)%gnNo,
+            write(*,*)"** ATTENTION THAT SOLID NODE ",snd+msh(iM)%gnNo,
      2        " changes stc"
-            write(*,*)"Search in stencil elm = ",
-     2                             msh(iM)%stn%elmStn(idFNd,:)
+C             write(*,*)"Search in stencil elm = ",
+C      2                             msh(iM)%stn%elmStn(idFNd,:)
 !           Search in the elm stencil of idFEl   
             nbSE = SIZE(msh(iM)%stn%elmStn,2)
 C             write(*,*)"Begin search neigh" , nbSE
@@ -1702,15 +1713,15 @@ C                   write(*,*)"Find node in elem ", idNFEl
                   nodeF = CLOSEST_POINT(xs,poly) 
                   ifem%clsFNd(snd) = msh(iM)%IEN(nodeF,idNFEl) 
                   write(*,*)"  New closest point is ", ifem%clsFNd(snd)
-                  write(*,*)"  New stencil is ", 
-     2             msh(iM)%stn%ndStn(ifem%clsFNd(snd),:)
+C                   write(*,*)"  New stencil is ", 
+C      2             msh(iM)%stn%ndStn(ifem%clsFNd(snd),:)
                   EXIT
                END IF   
             END DO
 
             IF (.NOT. find) THEN 
                ! loop over all the fluid elem 
-               write(*,*)"* closent not in stencil, loop over whole msh"
+C                write(*,*)"* closent not in stencil, loop over whole msh"
                DO idNFEl = 1, msh(iM)%nEl
 
                   DO a=1, msh(iM)%eNoN
@@ -1726,6 +1737,9 @@ C                      write(*,*)"Find node in elem ", idNFEl
 
                      nodeF = CLOSEST_POINT(xs,poly) 
                      ifem%clsFNd(snd) = msh(iM)%IEN(nodeF,idNFEl) 
+                  write(*,*)"  New closest point is ", ifem%clsFNd(snd)
+C                      write(*,*)"  New stencil is ", 
+C      2                          msh(iM)%stn%ndStn(ifem%clsFNd(snd),:)
                      EXIT
                   END IF   
                END DO
@@ -1734,7 +1748,8 @@ C                      write(*,*)"Find node in elem ", idNFEl
             IF (.NOT. find) THEN 
                write(*,*)"ERROR FIND CLSEST PNT NEIGH solid id ", snd 
                write(*,*)"!!!!!!!    OHHH NOOOO!    !!!!!!! "
-!               CALL EXIT(1)
+C                write(*,*)"( ",ifem%xCu(1,snd)," , ",ifem%xCu(2,snd)," )"
+               CALL EXIT(1)
             END IF
 
          END IF
@@ -3640,7 +3655,7 @@ c      END DO
          iFa = eq(iEq)%bcIB(iBc)%iFa
          iM  = eq(iEq)%bcIB(iBc)%iM
 
-         write(*,*)"IFEM BC lDof = ", lDof
+C          write(*,*)"IFEM BC lDof = ", lDof
 !     Since we are using struct, we have that bType_impD = true
 
 !     Prepare a pointer list and normals for a face or a shell
@@ -3952,7 +3967,7 @@ C     cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
 !     Initialize residues to 0
       ifem%Rsolid = 0._RKIND
-      write(*,*)" Beginning IFEM_CALCFFSI "
+C       write(*,*)" Beginning IFEM_CALCFFSI "
 
 
 !     We compute the fluid-structure interaction force on the solid initial 
@@ -4366,7 +4381,7 @@ C                write(*,*)"xlf = ", xlf
 C                write(*,*)" Pmls ", Pmls
                
 !              Compute cubic spline value
-               rnorm = msh(iM)%diam*1.12
+               rnorm = msh(iM)%diam*1.5
                Wmls(is) = WHTFUNC(xls,xlf,rnorm)
 !              Check that rnorm is good 
                rnorm = DIST(xls,xlf)
@@ -4438,7 +4453,7 @@ C             write(*,*) "inside loop stencil"
          END DO
       END DO
 
-      write(*,*)"Rfluid built done"
+C       write(*,*)"Rfluid built done"
 
       IF(.NOT.ALLOCATED(ifem%QMLS)) ALLOCATE(ifem%QMLS(mnS,ifem%tnNo))
       ifem%QMLS = QMLS
@@ -4586,6 +4601,8 @@ C       ifem%Ubn = ifem%Ubn - coeff*dUl
 
 !     Update Aun, Ubn 
       ifem%Ubn = ifem%Ubn + coeff*dAl
+
+      CALL IFEM_SETBCDIR(ifem%Aun, ifem%Ubn)
 
       RETURN
       END SUBROUTINE IFEM_PICC
