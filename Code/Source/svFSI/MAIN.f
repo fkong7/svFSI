@@ -138,8 +138,6 @@ C             write(*,*)"calling IFEM_CONSTRUCT"
                ifem%Ubn = ifem%Ubo
             END IF
 
-            CALL IFEM_BUILDIntFluElm()
-
          END IF
 
 C          write(*,*)"Beginning inner loop"
