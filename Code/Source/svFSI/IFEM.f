@@ -4480,6 +4480,30 @@ C       write(*,*)"Rfluid built done"
 
       RETURN
       END SUBROUTINE IFEM_RASSEMBLY
+
+!####################################################################
+      SUBROUTINE IFEM_BUILDIntFluElm()
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND) :: iM, snd, idFElm
+      iM = 1
+      
+      ! loop iM 
+
+      IF(.NOT.ALLOCATED(ifem%lstIntFElm)) THEN 
+         ALLOCATE(ifem%lstIntFElm(msh(iM)%nEl))
+      END IF
+
+      ifem%lstIntFElm = 0
+      DO snd=1, ifem%tnNo
+         idFElm = ifem%clsFElm(snd)
+         ifem%lstIntFElm(idFElm) = 1
+      END DO
+
+      END SUBROUTINE IFEM_BUILDIntFluElm
+
 !####################################################################
 !     Interpolate flow velocity and pressure at IFEM nodes from background
 !     mesh. Use IFEM velocity to compute IFEM displacement (for explicit
