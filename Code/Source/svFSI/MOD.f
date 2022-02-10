@@ -859,6 +859,8 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: clsFNd(:)
 !        List of fluid element that contains each solid node 
          INTEGER(KIND=IKIND), ALLOCATABLE :: clsFElm(:)
+!        List of all fluid elem, 1 if they are intersected from solid
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lstIntFElm(:)
 !        IB communicator
          TYPE(ibCommType) :: cm
 !        Needed for MLS 
