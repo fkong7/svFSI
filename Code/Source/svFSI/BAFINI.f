@@ -450,6 +450,7 @@
 !     boundary of lFa and sVl contains the list of their coordinates
          j   = 0
          sVl = 0._RKIND
+         sV  = 0._RKIND
          DO a=1, lFa%nNo
             Ac = lFa%gN(a)
             IF (gNodes(Ac) .EQ. 1) THEN
@@ -457,6 +458,7 @@
                sVl(:,j) = x(:,Ac)
             END IF
          END DO
+
          IF (.NOT.cm%seq()) THEN
 !     Getting the length data that is going to be received at each proc
             i = j*nsd
@@ -496,6 +498,8 @@
             END DO
             s(Ac) = 1._RKIND - NORM(nV)/NORM(sV(:,i))
          END DO
+
+!     Now for bType_ud 
       ELSE IF (BTEST(lBc%bType,bType_ud)) THEN
          DO a=1, lFa%nNo
             Ac    = lFa%gN(a)
