@@ -44,7 +44,7 @@
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo)
 
-      LOGICAL :: vmsStab
+      LOGICAL :: vmsStab, vmsIFEMStab
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys
       REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
       TYPE(fsType) :: fs(2)
@@ -63,6 +63,8 @@
          vmsStab = .FALSE.
       END IF
 
+      vmsIFEMStab = .FALSE.
+
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
 
@@ -72,6 +74,12 @@
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
+
+!         IF (ifemFlag) THEN
+!             IF ( ifem%lstIntFElm(e) .EQ. 1 ) THEN 
+!                vmsIFEMStab = .TRUE.
+!             END IF 
+!         END IF
 !        Update domain and proceed if domain phys and eqn phys match
          cDmn  = DOMAIN(lM, cEq, e)
          cPhys = eq(cEq)%dmn(cDmn)%phys
@@ -133,7 +141,7 @@
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+     3            bfl, lR, lK, vmsIFEMStab)
             END IF
          END DO ! g: loop
 
@@ -163,7 +171,7 @@
             ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+     3            bfl, lR, lK, vmsIFEMStab)
             END IF
          END DO ! g: loop
 
@@ -560,11 +568,11 @@
       END SUBROUTINE FLUID3D_M
 !--------------------------------------------------------------------
       SUBROUTINE FLUID2D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, vmsIFEMStab)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      LOGICAL, INTENT(IN) :: vmsFlag
+      LOGICAL, INTENT(IN) :: vmsFlag, vmsIFEMStab
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
@@ -695,7 +703,11 @@
      2   + Kxi(1,2)*Kxi(1,2) + Kxi(2,2)*Kxi(2,2)
       kS = ctC * kS * (mu/rho)**2._RKIND
 
-      tauM = 1._RKIND / (rho * SQRT( kT + kU + kS ))
+      IF ( ifemFlag .AND. vmsIFEMStab ) THEN 
+        tauM = 1._RKIND / (rho * SQRT( 1.E2_RKIND*(kT + kU + kS )))
+      ELSE 
+        tauM = 1._RKIND / (rho * SQRT( 1._RKIND*(kT + kU + kS )))
+      END IF 
 
       rV(1) = ud(1) + u(1)*ux(1,1) + u(2)*ux(2,1)
       rV(2) = ud(2) + u(1)*ux(1,2) + u(2)*ux(2,2)
@@ -1084,11 +1096,11 @@
       END SUBROUTINE FLUID3D_C
 !--------------------------------------------------------------------
       SUBROUTINE FLUID2D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, vmsIFEMStab)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      LOGICAL, INTENT(IN) :: vmsFlag
+      LOGICAL, INTENT(IN) :: vmsFlag, vmsIFEMStab
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
@@ -1215,7 +1227,12 @@
      2      + Kxi(1,2)*Kxi(1,2) + Kxi(2,2)*Kxi(2,2)
          kS = ctC * kS * (mu/rho)**2._RKIND
 
-         tauM = 1._RKIND / (rho * SQRT( kT + kU + kS ))
+         IF ( ifemFlag .AND. vmsIFEMStab ) THEN 
+            tauM = 1._RKIND / (rho * SQRT( 1.E2_RKIND*(kT + kU + kS )))
+         ELSE 
+            tauM = 1._RKIND / (rho * SQRT( 1._RKIND*(kT + kU + kS )))
+         END IF 
+
 
          rV(1) = ud(1) + u(1)*ux(1,1) + u(2)*ux(2,1)
          rV(2) = ud(2) + u(1)*ux(1,2) + u(2)*ux(2,2)

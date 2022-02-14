@@ -1775,7 +1775,7 @@
 
 !     To zero-out perimeter or not. Default is .true. for Dir/CMM
       ltmp = .FALSE.
-      IF (BTEST(lBc%bType,bType_Dir)) ltmp = .TRUE.
+      !IF (BTEST(lBc%bType,bType_Dir)) ltmp = .TRUE.
       lPtr => list%get(ltmp, "Zero out perimeter")
       lBc%bType = IBCLR(lBc%bType,bType_zp)
       IF (ltmp .OR. BTEST(lBc%bType,bType_CMM))

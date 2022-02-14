@@ -724,9 +724,9 @@ C       END SUBROUTINE IFEM_READOPTS
      2      " Unexpected type"
       END SELECT
 
-!     To zero-out perimeter or not. Default is .true. for Dir
+!     To zero-out perimeter or not. Default is .true. for Dir TODO remove
       ltmp = .FALSE.
-      IF (BTEST(lBc%bType,bType_Dir)) ltmp = .TRUE.
+      !IF (BTEST(lBc%bType,bType_Dir)) ltmp = .TRUE. HERE 
       lPtr => list%get(ltmp,"Zero out perimeter")
       lBc%bType = IBCLR(lBc%bType,bType_zp)
       IF (ltmp) lBc%bType = IBSET(lBc%bType,bType_zp)
@@ -4487,20 +4487,45 @@ C       write(*,*)"Rfluid built done"
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) :: iM, snd, idFElm
-      iM = 1
+      INTEGER(KIND=IKIND) :: iM, snd, idFElm, iFa, a
       
-      ! loop iM 
+      ! check if we have more meshes
+      iM = 1
 
       IF(.NOT.ALLOCATED(ifem%lstIntFElm)) THEN 
          ALLOCATE(ifem%lstIntFElm(msh(iM)%nEl))
       END IF
 
       ifem%lstIntFElm = 0
-      DO snd=1, ifem%tnNo
-         idFElm = ifem%clsFElm(snd)
-         ifem%lstIntFElm(idFElm) = 1
+
+!     Defining ifem%lstIntFElm only for the fluid elem intersected 
+!     from the solid boundary 
+C       DO iM=1, ifem%nMsh
+C          DO iFa=1, ifem%msh(iM)%nFa
+C             DO a=1, ifem%msh(iM)%fa(iFa)%nNo
+C                snd = ifem%msh(iM)%fa(iFa)%gN(a)
+C C                write(*,*)" solid node bnd is ", snd
+C                idFElm = ifem%clsFElm(snd) 
+C !              ifem%lstIntFElm(idFElm) = 1 if the fluid elem is int from sol bnd edge               
+C                ifem%lstIntFElm(idFElm) = 1
+C C                write(*,*)" fluid elem is ", idFElm
+C             END DO
+C          END DO
+C       END DO
+
+!     Defining ifem%lstIntFElm for the fluid elem intersected 
+!     from the solid boundary + internal nodes
+      DO iM=1, ifem%nMsh
+         DO snd=1, ifem%msh(iM)%nNo
+C             write(*,*)" solid node bnd is ", snd
+            idFElm = ifem%clsFElm(snd) 
+!              ifem%lstIntFElm(idFElm) = 1 if the fluid elem is under solid               
+            ifem%lstIntFElm(idFElm) = 1
+C             write(*,*)" fluid elem is ", idFElm
+         END DO
       END DO
+
+
 
       END SUBROUTINE IFEM_BUILDIntFluElm
 
