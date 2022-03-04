@@ -829,13 +829,15 @@
          INTEGER(KIND=IKIND) :: nMsh
 !        IB Domain ID
          INTEGER(KIND=IKIND), ALLOCATABLE :: dmnID(:)
-!         
+
+
 !        Displacement (new) 
          REAL(KIND=RKIND), ALLOCATABLE :: Ubn(:,:)
 !        Displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Ubo(:,:)
 !        Intermediate Displacement 
          REAL(KIND=RKIND), ALLOCATABLE :: Ubg(:,:)
+
 
 !        Velocity interpolated from fluid (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
@@ -846,12 +848,14 @@
 !        Velocity  (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Aug(:,:)
 
+
 !        Residue (FSI force)
          REAL(KIND=RKIND), ALLOCATABLE :: Rfluid(:,:) !R
          REAL(KIND=RKIND), ALLOCATABLE :: R(:,:) !nned to be deleted
 !        Residue (displacement, background mesh)
          REAL(KIND=RKIND), ALLOCATABLE :: Rsolid(:,:) !Ru
          REAL(KIND=RKIND), ALLOCATABLE :: Ru(:,:) !nned to be deleted 
+
 !        DERIVED TYPE VARIABLES
 !        IFEM meshes
          TYPE(mshType), ALLOCATABLE :: msh(:)
@@ -861,13 +865,13 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: clsFElm(:)
 !        List of all fluid elem, 1 if they are intersected from solid
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstIntFElm(:)
-!        IB communicator
+!        FEM communicator
          TYPE(ibCommType) :: cm
 !        Needed for MLS 
-         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)    
+         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)
+!        Weight of fem interpolation              
+         REAL(KIND=RKIND), ALLOCATABLE :: wFEM(:,:)    
          INTEGER(KIND=IKIND) :: maxNbrST = 0
-
-
 
 
 !        Whether any file being saved
@@ -876,8 +880,9 @@
          INTEGER(KIND=IKIND) :: mthd = ibMthd_NA
 !        IB coupling
          INTEGER(KIND=IKIND) :: cpld = ibCpld_NA
-!        IB interpolation method
-         INTEGER(KIND=IKIND) :: intrp = ibIntrp_NA
+
+!        IFEM interpolation method
+         INTEGER(KIND=IKIND) :: intrp = ifemIntrp_NA
 !        Current IB domain ID
          INTEGER(KIND=IKIND) :: cDmn
 !        Current equation

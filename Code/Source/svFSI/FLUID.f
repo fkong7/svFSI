@@ -75,11 +75,13 @@
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
 
+!     To decomment for activate stability relaxation near the solid bnd 
 !         IF (ifemFlag) THEN
 !             IF ( ifem%lstIntFElm(e) .EQ. 1 ) THEN 
 !                vmsIFEMStab = .TRUE.
 !             END IF 
 !         END IF
+
 !        Update domain and proceed if domain phys and eqn phys match
          cDmn  = DOMAIN(lM, cEq, e)
          cPhys = eq(cEq)%dmn(cDmn)%phys

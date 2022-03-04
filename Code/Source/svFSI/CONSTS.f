@@ -223,5 +223,9 @@
 !     IB interpolation: direct extraction / L2 projection
       INTEGER(KIND=IKIND), PARAMETER :: ibIntrp_NA = 900,
      2   ibIntrp_DI = 901, ibIntrp_L2 = 902
+
+!     IFEM interpolation: MLS / FEM 
+      INTEGER(KIND=IKIND), PARAMETER :: ifemIntrp_NA = 903,
+     2   ifemIntrp_FEM = 904, ifemIntrp_MLS = 905
 !--------------------------------------------------------------------
 !#######################################################################

@@ -223,13 +223,13 @@
          CALL IB_READOPTS(list)
       END IF
       
-      write(*,*) "call to IFEM_READMSH:"
+      write(*,*) "call to IFEM_READMSH and OPT:"
       i = list%srch("Add IFEM")
       IF (i .GT. 0) THEN
          ifemFlag = .TRUE.
          ALLOCATE(ifem)
          CALL IFEM_READMSH(list)
-!        CALL IFEM_READOPTS(list)
+         CALL IFEM_READOPTS(list)
       END IF
 
 !--------------------------------------------------------------------
