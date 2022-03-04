@@ -111,7 +111,7 @@ C       ifemImp = .FALSE.
             IF (resetSim) EXIT
          END IF
 
-!     Predictor step, ifemFlag call to update stencil and force computation
+!     Predictor step 
          CALL PICP
 
 !     Apply Dirichlet BCs strongly
@@ -119,17 +119,16 @@ C       ifemImp = .FALSE.
 
          IF (ifemFlag) THEN
 !           Set IB Dirichlet BCs
-C             write(*,*)"Call IFEM_SETBCDIR after PICP"
             CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
-C             write(*,*)"Call IFEM_CALCFFSI after PICP"
 !           FSI forcing for immersed bodies (explicit coupling)
-C             write(*,*)"ifem%Auo", ifem%Auo
-C             write(*,*)"ifem%Ubo", ifem%Ubo
             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
 
-C             write(*,*)"calling IFEM_CONSTRUCT"
-            CALL IFEM_CONSTRUCT()
+!           Better to split this function and call the part for the 
+!           compuatation of the MLS terms during the initialization 
+!           without assembly the Rfluid, bur just add it immediatedlu 
+!           to the big fluid res immediately 
+!            CALL IFEM_CONSTRUCT()
 
             IF(ifemImp) THEN 
 !           Predictor stage ifem
@@ -138,11 +137,12 @@ C             write(*,*)"calling IFEM_CONSTRUCT"
                ifem%Ubn = ifem%Ubo
             END IF
 
+!           Call to subroutine which builds the structure to change 
+!           the fluid stabilization below/near the solid mesh 
             CALL IFEM_BUILDIntFluElm()
 
          END IF
 
-C          write(*,*)"Beginning inner loop"
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -224,20 +224,15 @@ C          write(*,*)"Beginning inner loop"
             END IF
 
 !        IFEM: adding the FSI force to the Fluid residue 
-C             write(*,*)"calling IFEM_RASSEMBLY"
             IF (ifemFlag) THEN
 
                IF (ifemImp) THEN
 !                 Set IB Dirichlet BCs
-C                   write(*,*)"Call IFEM_SETBCDIR inner"
                   CALL IFEM_SETBCDIR(ifem%Aug, ifem%Ubg)
 
-C                   write(*,*)"Call IFEM_CALCFFSI inner"
 !                 FSI forcing for immersed bodies (explicit coupling)
                   CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Aug, ifem%Ubg)
 
-C                   write(*,*)"calling IFEM_CONSTRUCT"
-                  CALL IFEM_CONSTRUCT()
                END IF
 
                CALL IFEM_RASSEMBLY()
@@ -272,11 +267,6 @@ C                   write(*,*)"calling IFEM_CONSTRUCT"
             IF (ALL(eq%ok)) EXIT
             CALL OUTRESULT(timeP, 2, iEqOld)
 
-C             IF (ifemFlag .AND. ifemImp) THEN
-C !              Find new solid velocity
-C                CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
-C             END IF
-
          END DO
 !     End of inner loop
 
@@ -296,8 +286,6 @@ C             END IF
          IF (ifemFlag) THEN
 !           Find new solid velocity
 
-C             write(*,*)"Yn ", Yn
-C             write(*,*)"Dn ", Dn
             IF (.NOT. ifemImp) THEN
                CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
             ELSE 
@@ -308,17 +296,12 @@ C             write(*,*)"Dn ", Dn
 
 !           Update IB location and tracers
 !           Search for the new closest point looking in the fluid neighbors 
-            CALL IFEM_UPDATE(Do)    
-            
-C             write(*,*)"ifem%Auo", ifem%Auo
-C             write(*,*)"ifem%Ubo", ifem%Ubo
-
-C             write(*,*)"update ifem done"       
+            CALL IFEM_UPDATE(Do)
+               
          END IF
 
 !     Saving the TXT files containing average and fluxes
          CALL TXT(.FALSE.)
-C          write(*,*)"call txt done"
 
          IF (rmsh%isReqd) THEN
             l1 = MOD(cTS,rmsh%cpVar) .EQ. 0
@@ -363,7 +346,6 @@ C          write(*,*)"call txt done"
                   ELSE 
                      CALL IFEM_WRITEVTUS(ifem%Aun, ifem%Ubn)
                   END IF
-C                   write(*,*)"::: call IFEM_WRITEVTUS done"
                END IF
             ELSE
                CALL OUTRESULT(timeP, 2, iEqOld)
@@ -376,7 +358,6 @@ C                   write(*,*)"::: call IFEM_WRITEVTUS done"
          IF (ibFlag) CALL IB_OUTCPUT()
          IF (ifemFlag) THEN 
             CALL IFEM_OUTCPUT()
-C             write(*,*)"::: call IFEM_OUTCPUT done"
          END IF
 
 !     Exiting outer loop if l1

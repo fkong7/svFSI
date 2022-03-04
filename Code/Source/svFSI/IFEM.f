@@ -269,30 +269,31 @@ C          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
       END SUBROUTINE IFEM_READMSH
 !####################################################################
 !     This routine reads IFEM options
-C       SUBROUTINE IFEM_READOPTS(list)
-C       USE COMMOD
-C       USE LISTMOD
-C       IMPLICIT NONE
-C       TYPE(listType), INTENT(INOUT) :: list
+      SUBROUTINE IFEM_READOPTS(list)
+      USE COMMOD
+      USE LISTMOD
+      IMPLICIT NONE
+      TYPE(listType), INTENT(INOUT) :: list
 
-C       CHARACTER(LEN=stdL) :: ctmp
-C       TYPE(listType), POINTER :: lPtr
+      CHARACTER(LEN=stdL) :: ctmp
+      TYPE(listType), POINTER :: lPtr
 
-C       lPtr => list%get(ctmp, "IFEM interpolation method")
-C       CALL TO_LOWER(ctmp)
-C       SELECT CASE (ctmp)
-C       CASE ("direct", "nodal")
-C          ifem%intrp = ibIntrp_DI
-C          std = " IFEM interpolation method: "//CLR("Direct",3)
-C       CASE ("l2", "gauss")
-C          ifem%intrp = ibIntrp_L2
-C          std = " IFEM interpolation method: "//CLR("L2 projection",3)
-C       CASE DEFAULT
-C          err = " Invalid IFEM interpolation chosen"
-C       END SELECT
+      lPtr => list%get(ctmp, "IFEM interpolation method")
+      CALL TO_LOWER(ctmp)
+      SELECT CASE (ctmp)
+      CASE ("fem")
+         ifem%intrp = ifemIntrp_FEM
+         std = " IFEM interpolation method: "//CLR("Finite Element",3)
+      CASE ("mls")
+         ifem%intrp = ifemIntrp_MLS
+         std = " IFEM interpolation method: "
+     2                     //CLR("Moving Leas-squares",3)
+      CASE DEFAULT
+         err = " Invalid IFEM interpolation chosen"
+      END SELECT
 
-C       RETURN
-C       END SUBROUTINE IFEM_READOPTS
+      RETURN
+      END SUBROUTINE IFEM_READOPTS
 !####################################################################
 !     This routine reads IFEM domain properties and BCs in a given Eq
       SUBROUTINE IFEM_READEQ(lEq, list, eqName)
@@ -909,7 +910,7 @@ C       CALL IFEM_LHSA(nnz)
 C       std = "    Non-zeros in LHS matrix (IFEM): "//nnz
 
 !     Set IFEM Dirichlet BCs
-C       write(*,*) "::: Calling IFEM_SETBCDIR :::"
+C        write(*,*) "::: Calling IFEM_SETBCDIR :::"
       CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
 !     Compute the nodal stencil/adjacency for each fluid node 
@@ -917,15 +918,22 @@ C       write(*,*) "::: Calling IFEM_SETBCDIR :::"
          msh(iM)%iGC = 0
 C          write(*,*) "::: Calling GETNSTENCIL :::"
          CALL GETNSTENCIL(msh(iM))
-      END DO
-
-!     Find the closest fluid node for each solid node 
-!     and search in which fluid element the solid node belongs
-      DO iM=1, ifem%nMsh
+!        Find the closest fluid node for each solid node 
+!        and search in which fluid element the solid node belongs
+!        We do the search even in case of fem interpolation because we
+!        will use the closest point to speed up future search (when the solid moves)       
          CALL IFEM_FINDCLOSEST(ifem%msh(iM), lD)
       END DO
 
-!     DO something for paralle here??
+      IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN 
+         DO iM=1, ifem%nMsh
+            CALL IFEM_FINDINTP(ifem%msh(iM), lD)
+         END DO   
+      ELSE 
+         CALL IFEM_FINDMLSW()
+      END IF
+
+!     DO something for parallel here??
 !     Initialize IFEM communication structure
 !      CALL IFEM_SETCOMMU()
 
@@ -967,7 +975,7 @@ C          write(*,*) "::: Calling GETNSTENCIL :::"
 !     TO DO FOR PARALLEL Reset IFEM communicator
 !       CALL IFEM_SETCOMMU()
 
-!     Reompute the nodal stencil/adjacency for each fluid node 
+!     Recompute the nodal stencil/adjacency for each fluid node 
 !     in case of remeshing of the fluid mesh 
 !      DO iM=1, nMsh
 !         msh(iM)%iGC = 0
@@ -980,6 +988,14 @@ C          write(*,*) "::: Calling GETNSTENCIL :::"
       DO iM=1, ifem%nMsh
          CALL IFEM_UPDATECLS(ifem%msh(iM), lD)
       END DO
+
+      IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
+         DO iM=1, ifem%nMsh
+            CALL IFEM_FINDINTP(ifem%msh(iM),lD)
+         END DO   
+      ELSE 
+         CALL IFEM_FINDMLSW()
+      END IF
 
 C       write(*,*)"END IFEM_UPDATECLS "
 
@@ -1499,12 +1515,10 @@ C       write(*,*)"END IFEM_UPDATECLS "
 
       DO a=1, lM%nNo
          Ac = lM%gN(a)
-         ! ?? check this for parallel 
-C          xSCur(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
-         xSCur(:,a) = ifem%x(:,a) + ifem%Ubo(:,a)
+         xSCur(:,a) = ifem%x(:,Ac) + ifem%Ubo(:,Ac)
       END DO
 
-C       write(*,*)"The solid ifem%Ubo is: ", ifem%Ubo
+C        write(*,*)"The solid ifem%Ubo is: ", ifem%Ubo
 C       write(*,*)"The solid xSCur is: ", xSCur
 
       maxDist = TINY(maxDist)
@@ -1528,7 +1542,7 @@ C       write(*,*)"The solid xSCur is: ", xSCur
 
       END DO
 
-C       write(*,*)"The solid diameter is : ", maxDist
+C        write(*,*)"The solid diameter is : ", maxDist
 
 !     Create a bounding box around of the current solid location 
       minb = HUGE(minb)
@@ -1557,7 +1571,7 @@ C       END DO
 !     loop over the fluid element to search if any of the solid node is inside 
       DO iM=1, nMsh
          DO e=1, msh(iM)%nEl ! fluid elem id
-C             write(*,*)"Testing fluid element: ", e
+C              write(*,*)"Testing fluid element: ", e
             flag = .FALSE.
 
             DO a=1, msh(iM)%eNoN
@@ -1620,7 +1634,7 @@ C      2    " is fluid id ", ifem%clsFNd(a), " in fluid elem ",
 C      3    ifem%clsFElm(a)
 C       END DO
 
-C       write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
+C        write(*,*) "solid nodes are into flui elem: ", ifem%clsFElm 
 C       write(*,*) "closest local id is : ", ifem%clsFNd
 
       DEALLOCATE(xSCur)
@@ -1630,6 +1644,91 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
 
       RETURN
       END SUBROUTINE IFEM_FINDCLOSEST
+!####################################################################
+!     Define the finite element interpolation function for each fluid node 
+      SUBROUTINE IFEM_FINDINTP(lM, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lM ! ifem mesh 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+
+
+      INTEGER(KIND=IKIND) :: iM, idFEl, a, Ag, al, Ac
+      REAL(KIND=RKIND) :: Def(nsd,nsd)
+      REAL(KIND=RKIND) :: rhsD(nsd)
+      REAL(KIND=RKIND) :: xscoor(nsd)
+      REAL(KIND=RKIND) :: xsRef(nsd)
+      REAL(KIND=RKIND), ALLOCATABLE :: xfcoor(:,:), N(:), Nxi(:,:)
+
+!     Definition necessary variables
+
+!     DO iM=1, nMsh  
+!     For the moment we are not considering multiple fluid mesh, 
+!     this means that we could have multiple meshes with possibly 
+!     different elements 
+      iM = 1
+
+      ALLOCATE(xfcoor(nsd,msh(iM)%eNoN), N(msh(iM)%eNoN), 
+     2                                       Nxi(nsd,msh(iM)%eNoN))
+
+      IF(.NOT.ALLOCATED(ifem%wFEM)) 
+     2                   ALLOCATE(ifem%wFEM(msh(iM)%eNoN,ifem%tnNo))
+      ifem%wFEM = 0._RKIND
+
+!     Loop over the solid nodes 
+      DO a=1, lM%nNo 
+
+!        Select the fluid element that contains the solid node 
+         idFEl = ifem%clsFElm(a)
+
+!        solid node coordinates (current location)
+         Ag = lM%gN(a)
+         xscoor = ifem%xCu(:,Ag) 
+
+!        fluid nodes coordinates (current location)   
+         DO al=1, msh(iM)%eNoN
+            Ac = msh(iM)%IEN(al,idFEl)
+            xfcoor(:,al) = x(:,Ac) + lD(:,Ac)
+         END DO
+         write(*,*)" fluid coord elem = ", xfcoor
+
+!        Build deformation gradient ref to current fluid element 
+!        If we use triangular/tetrahedral mesh and linear element
+         IF (nsd .EQ. 2) THEN
+            Def(1,1) = xfcoor(1,2) - xfcoor(1,1) 
+            Def(1,2) = xfcoor(1,3) - xfcoor(1,1) 
+            Def(2,1) = xfcoor(2,2) - xfcoor(2,1) 
+            Def(2,2) = xfcoor(2,3) - xfcoor(2,1) 
+            rhsD(1) = xscoor(1) - xfcoor(1,1) 
+            rhsD(2) = xscoor(2) - xfcoor(2,1) 
+         ELSE 
+            write(*,*)"****** 3D implementation still TODO *****" 
+         END IF 
+
+!        Find the solid coordinates in the reference element 
+         Def = MAT_INV(Def, nsd)
+         xsRef = MATMUL(Def,rhsD)
+
+         write(*,*)" xs coord are ", xscoor
+         write(*,*)" xsRef coord are ", xsRef
+
+!        Evaluate the basis function on those ref coord to get the 
+!        fem projection weights
+         CALL GETGNN(nsd, msh(iM)%eType, msh(iM)%eNoN, xsRef, N, Nxi) 
+
+         write(*,*)"N (the weights) is/are = ", N
+         
+         DO al=1, msh(iM)%eNoN
+            ifem%wFEM(al,a) = N(al)
+         END DO
+   
+      END DO
+
+      DEALLOCATE(xfcoor, N, Nxi)
+
+      RETURN
+      END SUBROUTINE IFEM_FINDINTP
 !####################################################################
 !     Update closest fluid node for each solid node, searching between the 
 !     fluid elem's neighbors
@@ -4312,7 +4411,7 @@ C       write(*,*)"lR = ", lR
 !####################################################################
 !     Add contribution from IFEM to the residue (RHS) via MLS
 !     We suppose for the moment that the fluid mesh is static
-      SUBROUTINE IFEM_CONSTRUCT()
+      SUBROUTINE IFEM_FINDMLSW()
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -4324,6 +4423,11 @@ C       write(*,*)"lR = ", lR
       REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:), Ai(:,:), qt(:,:)
       REAL(KIND=RKIND) :: xlf(nsd), xls(nsd), rnorm, wfunc, sum
       REAL(KIND=RKIND) :: Aaux(1,nsd+1)
+
+!     We do that for the moment, but is definitively better to add each 
+!     local component instead to define a Res with the size of the 
+!     fluid nodes 
+
 
       ALLOCATE(Amls(nsd+1,nsd+1), Pmls(nsd+1,1), PPt(nsd+1,nsd+1), 
      2         Ai(nsd+1,nsd+1))
@@ -4429,38 +4533,40 @@ C             write(*,*) ""//""
          END DO
       END DO
 
-C       write(*,*)"QMLS = ", QMLS
-C       write(*,*)"ifem%Rsolid = ", ifem%Rsolid
-C       write(*,*)"ifem%Rfluid = ", ifem%Rfluid
+      IF(.NOT.ALLOCATED(ifem%QMLS)) ALLOCATE(ifem%QMLS(mnS,ifem%tnNo))
+      ifem%QMLS = QMLS
+
+      DEALLOCATE(Amls, Pmls, PPt, Ai, QMLS)
+
+      RETURN
+      END SUBROUTINE IFEM_FINDMLSW
+!####################################################################
+      SUBROUTINE IFEM_CONSTRUCT()
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND) a, is, iM, idFCls, nbrSN, idFStc
 
 !     TODO for multiple fluid mesh
       iM = 1
 !     Loop over the solid nodes 
       DO a=1, ifem%tnNo
-C          write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+C        write(*,*)"inside loop solid node IFEM_CONSTRUCT"
 !        Global id closest fluid node
          idFCls = ifem%clsFNd(a) 
 !        Nbr of node in stencil
          nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
 !        Loop over the stencil 
          DO is = 1, nbrSN
-C             write(*,*) "inside loop stencil"
+C           write(*,*) "inside loop stencil"
 !           Extract fluid coordinates xlf
             idFStc = msh(iM)%stn%ndStn(idFCls,is)
 
             ifem%Rfluid(:,idFStc) = ifem%Rfluid(:,idFStc) + 
-     2                                     QMLS(is,a)*ifem%Rsolid(:,a)
+     2                               ifem%QMLS(is,a)*ifem%Rsolid(:,a)
          END DO
       END DO
-
-C       write(*,*)"Rfluid built done"
-
-      IF(.NOT.ALLOCATED(ifem%QMLS)) ALLOCATE(ifem%QMLS(mnS,ifem%tnNo))
-      ifem%QMLS = QMLS
-
-
-
-      DEALLOCATE(Amls, Pmls, PPt, Ai, QMLS)
 
       RETURN
       END SUBROUTINE IFEM_CONSTRUCT
@@ -4470,13 +4576,52 @@ C       write(*,*)"Rfluid built done"
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) a
+      INTEGER(KIND=IKIND) a, is, iM, idFCls, nbrSN, idFStc
+      INTEGER(KIND=IKIND) idFEl, al, Ac
 
-!     Final residual assembly 
-      DO a=1, tnNo
-         R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
-      END DO
+!     TODO for multiple fluid mesh
+      iM = 1
 
+      IF ( ifem%intrp .EQ. ifemIntrp_MLS ) THEN 
+!        Loop over the solid nodes 
+         DO a=1, ifem%tnNo
+C           write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+!           Global id closest fluid node
+            idFCls = ifem%clsFNd(a) 
+!           Nbr of node in stencil
+            nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+!           Loop over the stencil 
+            DO is = 1, nbrSN
+C              write(*,*) "inside loop stencil"
+!              Extract fluid coordinates xlf
+               idFStc = msh(iM)%stn%ndStn(idFCls,is)
+
+               R(1:nsd,idFStc) = R(1:nsd,idFStc) + 
+     2                              ifem%QMLS(is,a)*ifem%Rsolid(:,a)
+
+            END DO
+         END DO
+      ELSE         
+!        Loop over the solid nodes 
+         DO a=1, ifem%tnNo
+
+!           Select the fluid element that contains the solid node 
+            idFEl = ifem%clsFElm(a)
+
+            DO al=1, msh(iM)%eNoN
+!              Get the global id of the al-th fluid local node                
+               Ac = msh(iM)%IEN(al,idFEl)
+
+               R(1:nsd,Ac) = R(1:nsd,Ac) + 
+     2                              ifem%wFEM(al,a)*ifem%Rsolid(:,a)
+            END DO
+         END DO
+      END IF
+
+!     OLD Final residual assembly 
+C       DO a=1, tnNo
+C          R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
+C       END DO
 
       RETURN
       END SUBROUTINE IFEM_RASSEMBLY
@@ -4560,12 +4705,13 @@ C       write(*,*)"is = ", is, ", ie = ", ie
          Yl(:,a) = Yg(is:ie,a) ! keeping only the fluid vel and pressure 
       END DO
 
-C       write(*,*)"calling IFEM_FINDSOLVEL"
-!      CALL IFEM_FINDSOLVEL(nsd+1, Yl, Dg, ifem%Yb)
-      CALL IFEM_FINDSOLVEL_MLS(nsd+1, Yl, Dg, ifem%Yb)
+      IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
+         CALL IFEM_FINDSOLVEL_FEM(nsd+1, Yl, Dg, ifem%Yb)
+      ELSE
+         CALL IFEM_FINDSOLVEL_MLS(nsd+1, Yl, Dg, ifem%Yb)
+      END IF
 
       DEALLOCATE(Yl)
-C       write(*,*)"done calling IFEM_FINDSOLVEL"
 
 
 !     Computing new solid location using A-B scheme given the new interpolated 
@@ -4638,11 +4784,15 @@ C !     Update Aun, Ubn
 C       ifem%Aun = ifem%Aun - dUl
 C       ifem%Ubn = ifem%Ubn - coeff*dUl
 
-!     Using MLS for projection of the fluid velocity to the solid vel
+!     Using MLS/FEM for projection of the fluid velocity to the solid vel
       coeff = eq(1)%gam*dt
 
-!     Extract accelaration increment and compute MLS increment evaluation
-      CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, Aun)
+!     Extract accelaration increment and compute MLS/FEM increment evaluation
+      IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
+         CALL IFEM_FINDSOLVEL_FEM(tDof, Yg, Dg, Aun)
+      ELSE
+         CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, Aun)
+      END IF
 
 !     find delta U
       dAl = Aun - ifem%Aun
@@ -4655,58 +4805,6 @@ C       ifem%Ubn = ifem%Ubn - coeff*dUl
 
       RETURN
       END SUBROUTINE IFEM_PICC
-!####################################################################
-!     Interpolate data at IFEM nodes from background mesh using fem
-!     nodal function 
-      SUBROUTINE IFEM_FINDSOLVEL(m, Ug, Dg, Ub)
-      USE COMMOD
-      USE ALLFUN
-      IMPLICIT NONE
-      INTEGER, INTENT(IN) :: m
-      REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
-      REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
-
-      REAL(KIND=RKIND) :: xi(nsd), up(nsd)
-      REAL(KIND=RKIND), ALLOCATABLE :: N(:), Nx(:,:), xl(:,:), ul(:,:)
-      INTEGER(KIND=IKIND) :: a, jM, Ac, e, eNoN, idFEl
-
-      jM = 1
-
-      Ub = 0._RKIND
-
-      DO e=1, ifem%tnNo ! maybe just nNo
-!        Find fluid elem in which is it in the def config 
-         idFEl = ifem%clsFElm(e)
-         
-         eNoN = msh(jM)%eNoN
-         ALLOCATE(N(eNoN), Nx(nsd,eNoN), xl(nsd,eNoN), ul(nsd,eNoN))
-         
-         ul = 0._RKIND
-         DO a=1, eNoN
-            Ac = msh(jM)%IEN(a,idFEl)
-            ul(:,a) = Ug(1:nsd,Ac)
-            xl(:,a) = x(:,Ac)
-C             IF (mvMsh) xl(:,a) = xl(:,a) + Dg(nsd+2:2*nsd+1,Ac)
-         END DO
-
-!        Find shape functions and derivatives on the background mesh
-!        at the IFEM node
-         xi = ifem%x(:,e)
-         CALL GETGNN(nsd, msh(jM)%eType, eNoN, xi, N, Nx)
-
-!           Use computed shape functions to interpolate flow variables
-         up = 0._RKIND
-         DO a=1, eNoN
-            up = up + N(a)*ul(:,a)
-         END DO
-
-         Ub(:,e) = Ub(:,e) + up(:)
-
-         DEALLOCATE(N, Nx, xl, ul)
-      END DO
-
-      RETURN
-      END SUBROUTINE IFEM_FINDSOLVEL
 !####################################################################
 !     Interpolate data at IFEM nodes from background mesh using fem
 !     nodal function 
@@ -4744,6 +4842,40 @@ C             write(*,*) "inside loop stencil"
 
       RETURN
       END SUBROUTINE IFEM_FINDSOLVEL_MLS
+!####################################################################
+!     Interpolate data at IFEM nodes from background mesh using fem
+!     nodal function 
+      SUBROUTINE IFEM_FINDSOLVEL_FEM(m, Ug, Dg, Ub)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: m
+      REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
+
+      INTEGER(KIND=IKIND) :: a, iM, idFEl, al, Ac
+
+      Ub = 0._RKIND
+
+      !     TODO for multiple fluid mesh
+      iM = 1
+
+!     Loop over the solid nodes 
+      DO a=1, ifem%tnNo
+!        Select the fluid element that contains the solid node 
+         idFEl = ifem%clsFElm(a)
+
+         DO al=1, msh(iM)%eNoN
+!           Get the global id of the al-th fluid local node                
+            Ac = msh(iM)%IEN(al,idFEl)
+
+!           Add contribution to solid velocity                
+            Ub(:,a) = Ub(:,a) + ifem%wFEM(al,a)*Ug(1:nsd,Ac)
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_FINDSOLVEL_FEM
 !--------------------------------------------------------------------
       SUBROUTINE IFEM_INTERPND(m, Ug, Dg, Ub)
       USE COMMOD

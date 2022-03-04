@@ -161,7 +161,6 @@
       i = IKIND*(1+SIZE(stamp)) + RKIND*(2+nEq+cplBC%nX+i*tnNo)
 
       IF (ibFlag) i = i + RKIND*(3*nsd+1)*ib%tnNo
-      write(*,*) "First call to ifemFlag?"
       IF (ifemFlag) i = i + RKIND*(3*nsd+1)*ifem%tnNo
       IF (cm%seq()) THEN
          recLn = i
@@ -773,6 +772,7 @@
          IF (ALLOCATED(ifem%clsFNd))       DEALLOCATE(ifem%clsFNd)
          IF (ALLOCATED(ifem%clsFElm))      DEALLOCATE(ifem%clsFElm)
          IF (ALLOCATED(ifem%QMLS))         DEALLOCATE(ifem%QMLS)
+         IF (ALLOCATED(ifem%wFEM))         DEALLOCATE(ifem%wFEM)
          IF (ALLOCATED(ifem%lstIntFElm))   DEALLOCATE(ifem%lstIntFElm)
 
          DO iM=1, ifem%nMsh
