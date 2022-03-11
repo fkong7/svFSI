@@ -47,6 +47,7 @@
       INTEGER(KIND=IKIND) :: iFa, e, a, Ac
       TYPE(listType), POINTER :: lPtr, lPBC
       TYPE(fileType) :: ftmp
+      LOGICAL :: ltmp
 
       lPtr => list%get(ftmp,"Mesh file path")
       IF (.NOT.ASSOCIATED(lPtr)) RETURN
@@ -56,6 +57,8 @@
       IF (ichckIEN) CALL CHECKIEN(lM)
 
       lM%nFa = list%srch("Add face")
+      lM%nNtsFa = 0
+
       IF (lM%lFib .AND. lM%nFa.GT.1) err =
      2   "More than one face is not allowed for 1D fiber-based mesh"
       std = " Number of available faces: "//lM%nFa
@@ -77,6 +80,12 @@
                      lM%fa(iFa)%IEN(a,e) = Ac
                   END DO
                END DO
+            END IF
+            lPtr => lPBC%get(ltmp,"Nitsche Boundary")
+            IF(ASSOCIATED(lPtr)) THEN 
+               lM%nNtsFa = lM%nNtsFa + 1
+               lM%fa(iFa)%isNts = ltmp
+               ntsFlag = .TRUE.
             END IF
          ELSE
             lPtr => lPBC%get(ftmp,"End nodes face file path")

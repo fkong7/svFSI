@@ -79,7 +79,8 @@
      2   solid_density = 2, solid_viscosity = 3, elasticity_modulus = 4,
      3   poisson_ratio = 5, conductivity = 6, f_x = 7, f_y = 8, f_z = 9,
      4   backflow_stab = 10, source_term = 11, damping = 12,
-     5   shell_thickness = 13, ctau_M = 14, ctau_C = 15
+     5   shell_thickness = 13, ctau_M = 14, ctau_C = 15, 
+     6   nitsche_param = 16
 !--------------------------------------------------------------------
 !     Types of accepted elements
 !     Point, Line (linear), Line (quadratic), Triangle (linear),

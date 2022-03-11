@@ -132,6 +132,7 @@ set(FSRCS TYPEMOD.f
          FLUID.f
          FS.f
          FSI.f
+         NITSCHE_FSI.f
          HEATF.f
          HEATS.f
          IB.f

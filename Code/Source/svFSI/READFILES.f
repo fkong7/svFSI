@@ -424,7 +424,12 @@
          propL(2,1) = backflow_stab
          propL(3,1) = f_x
          propL(4,1) = f_y
-         IF (nsd .EQ. 3) propL(5,1) = f_z
+         IF (nsd .EQ. 3) THEN 
+            propL(5,1) = f_z
+            propL(6,1) = nitsche_param
+         ELSE 
+            propL(5,1) = nitsche_param
+         END IF
          CALL READDOMAIN(lEq, propL, list)
 
          nDOP = (/11,2,3,0/)
@@ -722,7 +727,12 @@
          propL(2,1) = backflow_stab
          propL(3,1) = f_x
          propL(4,1) = f_y
-         IF (nsd .EQ. 3) propL(5,1) = f_z
+         IF (nsd .EQ. 3) THEN 
+            propL(5,1) = f_z
+            propL(6,1) = nitsche_param
+         ELSE 
+            propL(5,1) = nitsche_param
+         END IF
 
 !        struct properties
          propL(1,2) = solid_density
@@ -1065,6 +1075,8 @@
                lPtr => lPD%get(rtmp,
      2            "Continuity stabilization coefficient")
                IF (.NOT.ASSOCIATED(lPtr)) rtmp = 0._RKIND
+            CASE (nitsche_param)
+               lPtr => lPD%get(rtmp,"Nitsche Param",1,lb=0._RKIND)
             CASE DEFAULT
                err = "Undefined properties"
             END SELECT

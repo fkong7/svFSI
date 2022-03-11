@@ -362,6 +362,8 @@
          REAL(KIND=RKIND), ALLOCATABLE :: Nx(:,:,:)
 !        Second derivatives of shape functions - for shells & IGA
          REAL(KIND=RKIND), ALLOCATABLE :: Nxx(:,:,:)
+!        This is a Nitsche face for the FSI unfitted 
+         LOGICAL :: isNts = .FALSE.       
 !        Face name for flux files
          CHARACTER(LEN=stdL) name
 !        Face nodal adjacency
@@ -520,6 +522,8 @@
          INTEGER(KIND=IKIND) :: nEl = 0
 !        Number of faces
          INTEGER(KIND=IKIND) :: nFa = 0
+!        Number of Nitsche faces
+         INTEGER(KIND=IKIND) :: nNtsFa = 0
 !        Number of function spaces
          INTEGER(KIND=IKIND) :: nFs
 !        Number of Gauss points for integration
@@ -850,6 +854,8 @@
       LOGICAL iCntct
 !     Whether any Immersed Boundary (IB) treatment is required
       LOGICAL ibFlag
+!     Whether any Nitsche treatment is required for unfitted FSI
+      LOGICAL :: ntsFlag = .FALSE.
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
 

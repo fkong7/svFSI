@@ -186,7 +186,11 @@
       CALL TEN_INIT(nsd)
 
       std = " Constructing stiffness matrix sparse structure"
-      CALL LHSA(nnz)
+      IF (.NOT.ntsFlag) THEN
+         CALL LHSA(nnz)
+      ELSE 
+         CALL NTS_LHSA(nnz)
+      END IF
 
       gnnz = nnz
       CALL MPI_ALLREDUCE(nnz, gnnz, 1, mpint, MPI_SUM, cm%com(), ierr)
