@@ -187,7 +187,12 @@
       CALL TEN_INIT(nsd)
 
       std = " Constructing stiffness matrix sparse structure"
-      CALL LHSA(nnz)
+      IF (.NOT. ifemFlag) THEN
+         CALL LHSA(nnz)
+      ELSE 
+         CALL GETNSTENCIL(msh(1))
+         CALL IFEM_LHSA(nnz)
+      END IF
 
       gnnz = nnz
       CALL MPI_ALLREDUCE(nnz, gnnz, 1, mpint, MPI_SUM, cm%com(), ierr)
@@ -432,11 +437,9 @@
       END IF
 
       IF (ifemFlag) THEN
-         ifem%Yb  = 0._RKIND
          ifem%Auo = 0._RKIND
          ifem%Aun = 0._RKIND
          ifem%Aug = 0._RKIND
-         ifem%Auoo = 0._RKIND
          ifem%Ubo = 0._RKIND
          ifem%Ubn = 0._RKIND
          ifem%Ubg = 0._RKIND
@@ -583,16 +586,16 @@
          IF (dFlag) THEN
             IF (pstEq) THEN
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
-     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, pS0, ifem%Yb, 
+     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, pS0, ifem%Aun, 
      3            ifem%Auo, ifem%Ubo
             ELSE
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
-     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, ifem%Yb, ifem%Auo, 
+     2            eq%iNorm, cplBC%xo, Yo, Ao, Do, ifem%Aun, ifem%Auo, 
      3            ifem%Ubo
             END IF
          ELSE
             READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1), eq%iNorm,
-     2         cplBC%xo, Yo, Ao, ifem%Yb, ifem%Auo, ifem%Ubo
+     2         cplBC%xo, Yo, Ao, ifem%Aun, ifem%Auo, ifem%Ubo
          END IF
 
          ifem%Aun = ifem%Auo
@@ -756,11 +759,9 @@
          IF (ALLOCATED(ifem%x))            DEALLOCATE(ifem%x)
          IF (ALLOCATED(ifem%xCu))          DEALLOCATE(ifem%xCu)
          IF (ALLOCATED(ifem%xCuo))         DEALLOCATE(ifem%xCuo)
-         IF (ALLOCATED(ifem%Yb))           DEALLOCATE(ifem%Yb)
          IF (ALLOCATED(ifem%Auo))          DEALLOCATE(ifem%Auo)
          IF (ALLOCATED(ifem%Aun))          DEALLOCATE(ifem%Aun)
          IF (ALLOCATED(ifem%Aug))          DEALLOCATE(ifem%Aug)
-         IF (ALLOCATED(ifem%Auoo))         DEALLOCATE(ifem%Auoo)
          IF (ALLOCATED(ifem%Ubo))          DEALLOCATE(ifem%Ubo)
          IF (ALLOCATED(ifem%Ubn))          DEALLOCATE(ifem%Ubn)
          IF (ALLOCATED(ifem%Ubg))          DEALLOCATE(ifem%Ubg)

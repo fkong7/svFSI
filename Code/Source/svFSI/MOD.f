@@ -680,7 +680,7 @@
          TYPE(bcType), ALLOCATABLE :: bcIB(:)
 !        domains that this equation must be solved
          TYPE(dmnType), ALLOCATABLE :: dmn(:)
-!        IB: immersed domains that this equation must be solved
+!        IB/IFEM: immersed domains that this equation must be solved
          TYPE(dmnType), ALLOCATABLE :: dmnIB(:)
 !        Outputs
          TYPE(outputType), ALLOCATABLE :: output(:)
@@ -839,13 +839,15 @@
          REAL(KIND=RKIND), ALLOCATABLE :: Ubg(:,:)
 
 
+!        Velocity interpolated from fluid (new) ! TODO This need to be cleen up
+C          REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
 !        Velocity interpolated from fluid (new)
-         REAL(KIND=RKIND), ALLOCATABLE :: Yb(:,:)
+         REAL(KIND=RKIND), ALLOCATABLE :: Aun(:,:)
 !        Time derivative of displacement (old)
          REAL(KIND=RKIND), ALLOCATABLE :: Auo(:,:)
 !        Time derivative of displacement (old)
-         REAL(KIND=RKIND), ALLOCATABLE :: Auoo(:,:)
-!        Velocity  (old)
+C          REAL(KIND=RKIND), ALLOCATABLE :: Auoo(:,:)
+C !        Velocity computed in the previous inner time-loop 
          REAL(KIND=RKIND), ALLOCATABLE :: Aug(:,:)
 
 
@@ -896,8 +898,6 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: colPtr(:)
 
 !        THOSE NEED TO BE DELETED
-!        Time derivative of displacement (new)
-         REAL(KIND=RKIND), ALLOCATABLE :: Aun(:,:)
 !        Time derivative of displacement (n+am)
          REAL(KIND=RKIND), ALLOCATABLE :: Auk(:,:)
 

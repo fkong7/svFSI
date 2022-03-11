@@ -422,11 +422,8 @@ C          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
       DO iBc=1, lEq%nBcIB
          lPBC => list%get(ctmp,"Add BC (IFEM)",iBc)
          CALL IFEM_FINDFACE(ctmp, lEq%bcIB(iBc)%iM, lEq%bcIB(iBc)%iFa)
-         write(*,*) "IFEM_FINDFACE done"
          CALL IFEM_READBC(lEq%bcIB(iBc), lPBC)
       END DO
-
-      write(*,*) "IFEM_FINDFACE and IFEM_READBC done"
 
       RETURN
       END SUBROUTINE IFEM_READEQ
@@ -801,11 +798,9 @@ C          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
 !     Rfluid = FSI force spread to fluid mesh 
 !     Rsolid = whole FSI force  
 ! ?? TODO
-      ALLOCATE(ifem%Yb(nsd,ifem%tnNo)) ! ?? why nsd+1
       ALLOCATE(ifem%Auo(nsd,ifem%tnNo))
       ALLOCATE(ifem%Aug(nsd,ifem%tnNo))
       ALLOCATE(ifem%Aun(nsd,ifem%tnNo))
-      ALLOCATE(ifem%Auoo(nsd,ifem%tnNo))
 
       ALLOCATE(ifem%Ubo(nsd,ifem%tnNo))
       ALLOCATE(ifem%Ubg(nsd,ifem%tnNo))
@@ -813,18 +808,6 @@ C          lPtr => lPM%get(ifem%msh(iM)%dx,"Mesh global edge size",1)
 
       ALLOCATE(ifem%Rfluid(nsd,tnNo))
       ALLOCATE(ifem%Rsolid(nsd,ifem%tnNo))
-
-C       IF (ifem%cpld .EQ. ibCpld_I) THEN
-C          ALLOCATE(ifem%Aun(nsd,ifem%tnNo))
-C          ALLOCATE(ifem%Auk(nsd,ifem%tnNo))
-C          ALLOCATE(ifem%Ubn(nsd,ifem%tnNo))
-C          ALLOCATE(ifem%Ubk(nsd,ifem%tnNo))
-C          ALLOCATE(ifem%Uo(nsd,tnNo))
-C          ALLOCATE(ifem%Un(nsd,tnNo))
-C          ALLOCATE(ifem%Ru(nsd,tnNo))
-C          ALLOCATE(ifem%Rub(nsd,ifem%tnNo))
-C          ALLOCATE(ifem%Ku((nsd+1)*nsd,lhs%nnz))
-C       END IF
 
       RETURN
       END SUBROUTINE IFEM_MEMALLOC
@@ -917,7 +900,10 @@ C        write(*,*) "::: Calling IFEM_SETBCDIR :::"
       DO iM=1, nMsh
          msh(iM)%iGC = 0
 C          write(*,*) "::: Calling GETNSTENCIL :::"
-         CALL GETNSTENCIL(msh(iM))
+
+!        BEFORE WAS HERE, 
+!         CALL GETNSTENCIL(msh(iM))
+
 !        Find the closest fluid node for each solid node 
 !        and search in which fluid element the solid node belongs
 !        We do the search even in case of fem interpolation because we
@@ -1691,7 +1677,6 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
             Ac = msh(iM)%IEN(al,idFEl)
             xfcoor(:,al) = x(:,Ac) + lD(:,Ac)
          END DO
-         write(*,*)" fluid coord elem = ", xfcoor
 
 !        Build deformation gradient ref to current fluid element 
 !        If we use triangular/tetrahedral mesh and linear element
@@ -1710,14 +1695,9 @@ C       write(*,*) "closest local id is : ", ifem%clsFNd
          Def = MAT_INV(Def, nsd)
          xsRef = MATMUL(Def,rhsD)
 
-         write(*,*)" xs coord are ", xscoor
-         write(*,*)" xsRef coord are ", xsRef
-
 !        Evaluate the basis function on those ref coord to get the 
 !        fem projection weights
          CALL GETGNN(nsd, msh(iM)%eType, msh(iM)%eNoN, xsRef, N, Nxi) 
-
-         write(*,*)"N (the weights) is/are = ", N
          
          DO al=1, msh(iM)%eNoN
             ifem%wFEM(al,a) = N(al)
@@ -1784,7 +1764,7 @@ C          write(*,*) "find node solid ", snd, " is ", find
 
 !        Is the solid node in this fluis element? yes, nothing to do
          IF (.NOT. find) THEN 
-            write(*,*)"** ATTENTION THAT SOLID NODE ",snd+msh(iM)%gnNo,
+            write(*,*)"** ATTENTION THAT SOLID NODE ",snd,
      2        " changes stc"
 C             write(*,*)"Search in stencil elm = ",
 C      2                             msh(iM)%stn%elmStn(idFNd,:)
@@ -3991,74 +3971,74 @@ C             write(*,*)" lY = ", lY
       RETURN
       END SUBROUTINE IFEM_PRJCTU
 !####################################################################
-!     Predictor step (implicit)
-      SUBROUTINE IFEM_PICP()
-      USE COMMOD
-      IMPLICIT NONE
+!     Predictor step (implicit) never called 
+C       SUBROUTINE IFEM_PICP()
+C       USE COMMOD
+C       IMPLICIT NONE
 
-      INTEGER a
-      REAL(KIND=RKIND) coef, tt
+C       INTEGER a
+C       REAL(KIND=RKIND) coef, tt
 
-      tt = CPUT()
-      coef = (eq(ifem%cEq)%gam - 1._RKIND)/eq(ifem%cEq)%gam
+C       tt = CPUT()
+C       coef = (eq(ifem%cEq)%gam - 1._RKIND)/eq(ifem%cEq)%gam
 
-      DO a=1, ifem%tnNo
-         ifem%Aun(:,a) = ifem%Auo(:,a) * coef
-         ifem%Ubn(:,a) = ifem%Ubo(:,a)
-      END DO
+C       DO a=1, ifem%tnNo
+C          ifem%Aun(:,a) = ifem%Auo(:,a) * coef
+C          ifem%Ubn(:,a) = ifem%Ubo(:,a)
+C       END DO
 
-      DO a=1, tnNo
-         ifem%Uo(:,a) = ifem%Un(:,a)
-      END DO
+C       DO a=1, tnNo
+C          ifem%Uo(:,a) = ifem%Un(:,a)
+C       END DO
 
-      ifem%callD(1) = ifem%callD(1) + CPUT() - tt
+C       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
-      RETURN
-      END SUBROUTINE IFEM_PICP
+C       RETURN
+C       END SUBROUTINE IFEM_PICP
 !####################################################################
 !     Initiator step (implicit) - compute Au_(n+am) and Ub_(n+af)
-      SUBROUTINE IFEM_PICI()
-      USE COMMOD
-      IMPLICIT NONE
+C       SUBROUTINE IFEM_PICI()
+C       USE COMMOD
+C       IMPLICIT NONE
 
-      INTEGER a
-      REAL(KIND=8) :: coef(4), tt
+C       INTEGER a
+C       REAL(KIND=8) :: coef(4), tt
 
-      IF (ifem%cpld .NE. ibCpld_I) RETURN
-      tt = CPUT()
+C       IF (ifem%cpld .NE. ibCpld_I) RETURN
+C       tt = CPUT()
 
-      coef(1) = 1._RKIND - eq(ifem%cEq)%am
-      coef(2) = eq(ifem%cEq)%am
-      coef(3) = 1._RKIND - eq(ifem%cEq)%af
-      coef(4) = eq(ifem%cEq)%af
+C       coef(1) = 1._RKIND - eq(ifem%cEq)%am
+C       coef(2) = eq(ifem%cEq)%am
+C       coef(3) = 1._RKIND - eq(ifem%cEq)%af
+C       coef(4) = eq(ifem%cEq)%af
 
-      DO a=1, ifem%tnNo
-         ifem%Auk(:,a) = ifem%Auo(:,a)*coef(1) + ifem%Aun(:,a)*coef(2)
-         ifem%Ubk(:,a) = ifem%Ubo(:,a)*coef(3) + ifem%Ubn(:,a)*coef(4)
-      END DO
+C       DO a=1, ifem%tnNo
+C          ifem%Auk(:,a) = ifem%Auo(:,a)*coef(1) + ifem%Aun(:,a)*coef(2)
+C          ifem%Ubk(:,a) = ifem%Ubo(:,a)*coef(3) + ifem%Ubn(:,a)*coef(4)
+C       END DO
 
-      DO a=1, tnNo
-         ifem%Un(:,a) = ifem%Uo(:,a)*coef(3) + ifem%Un(:,a)*coef(4)
-      END DO
+C       DO a=1, tnNo
+C          ifem%Un(:,a) = ifem%Uo(:,a)*coef(3) + ifem%Un(:,a)*coef(4)
+C       END DO
 
-      ifem%callD(1) = ifem%callD(1) + CPUT() - tt
+C       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
-      RETURN
-      END SUBROUTINE IFEM_PICI
+C       RETURN
+C       END SUBROUTINE IFEM_PICI
 !####################################################################
 !     Compute FSI force on the immersed bodies
-      SUBROUTINE IFEM_CALCFFSI(Ag, Yg, Dg, Aug, Ubg)
+      SUBROUTINE IFEM_CALCFFSI(Ubo, Auo, Aug) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
-     2   Dg(tDof,tnNo), Aug(nsd,ifem%tnNo), Ubg(nsd,ifem%tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: Ubo(nsd,ifem%tnNo), 
+     2                           Auo(nsd,ifem%tnNo), Aug(nsd,ifem%tnNo)
 
       INTEGER(KIND=IKIND) a, e, g, Ac, eNoN, iFn, nFn, iM, j
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), tt(2)
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), tt(2), Jo
 
-      REAL(KIND=RKIND), ALLOCATABLE :: xbl(:,:), aul(:,:), ubl(:,:), 
-     2   fN(:,:), N(:), Nx(:,:), lR(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: xbl(:,:), xblCur(:,:), aul(:,:), 
+     2    ubl(:,:), au(:,:),fN(:,:), N(:), Nx(:,:), lR(:,:), lK(:,:,:)
  
 
       tt(1) = CPUT()
@@ -4066,6 +4046,7 @@ C     cDmn = DOMAIN(msh(1), ifem%cEq, 1)
 
 !     Initialize residues to 0
       ifem%Rsolid = 0._RKIND
+      Jo = 0._RKIND
 C       write(*,*)" Beginning IFEM_CALCFFSI "
 
 
@@ -4079,8 +4060,9 @@ C       write(*,*)"Beginning loop over nmb of meshes "
          nFn  = MAX(ifem%msh(iM)%nFn, 1)
 
          ALLOCATE(xbl(nsd,eNoN), aul(nsd,eNoN), ubl(nsd,eNoN), 
-     2            fN(nsd,nFn), N(eNoN), Nx(nsd,eNoN), lR(nsd,eNoN))
-         
+     2            au(nsd,eNoN), fN(nsd,nFn), N(eNoN), Nx(nsd,eNoN), 
+     3            lR(nsd,eNoN), lK(nsd,eNoN,eNoN), xblCur(nsd,eNoN))
+
 C          write(*,*)"Beginning loop over elemtn mesh "
          DO e=1, ifem%msh(iM)%nEl
 
@@ -4096,8 +4078,11 @@ C          write(*,*)"Beginning loop over elemtn mesh "
             DO a=1, eNoN
                Ac = ifem%msh(iM)%IEN(a,e)
                xbl(:,a) = ifem%x(:,Ac)
-               ubl(:,a) = Ubg(:,Ac)
-               aul(:,a) = Aug(:,Ac)
+               xblCur(:,a) = ifem%xCu(:,Ac)
+               ubl(:,a) = Ubo(:,Ac) ! previous disp
+               aul(:,a) = Auo(:,Ac) ! previous solid vel
+               au(:,a)  = Aug(:,Ac) ! solid vel initiator stage
+
                IF (ALLOCATED(ifem%msh(iM)%fN)) THEN
                   DO j=1, nFn
                      fN(:,j) = ifem%msh(iM)%fN((j-1)*nsd+1:j*nsd,e)
@@ -4105,12 +4090,12 @@ C          write(*,*)"Beginning loop over elemtn mesh "
                END IF
             END DO
 
-C             write(*,*) " Beginning loop over gauss point "
-   !        Gauss integration
+!           Gauss integration   
             lR = 0._RKIND
-            
+            lK = 0._RKIND
+
+!           Integrals over the reference Lag configuration          
             DO g=1, ifem%msh(iM)%nG
-C                lR = 0._RKIND
 
                IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
                   CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xbl, Nx, 
@@ -4120,30 +4105,81 @@ C                lR = 0._RKIND
                w = ifem%msh(iM)%w(g) * Jac
                N = ifem%msh(iM)%N(:,g)
 
-C                write(*,*)"Calling local force assembly"
+!              Compute local Residual vector lR
                IF (nsd .EQ. 3) THEN
                   CALL IFEM_CALCLFFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
      2                fN, lR)
 
                ELSE IF (nsd .EQ. 2) THEN
-                  CALL IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, aul, ubl, 
-     2                fN, lR)
+                  CALL IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, ubl, aul, 
+     2                au, fN, lR, Jo)
                END IF
 
-C                write(*,*)"End call local assembly"
-            END DO
 
-!              Assemble to ifem global residue
+!              Compute local velocity Matrix lK
+               IF (nsd .EQ. 3) THEN
+                  CALL IFEM_CALCLKFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
+     2                fN, lK)
+
+               ELSE IF (nsd .EQ. 2) THEN
+                  CALL IFEM_CALCLKFSI2D(eNoN, nFn, w, N, Nx, ubl, aul, 
+     2                au, fN, lK)
+               END IF
+
+            END DO ! end loop Gauss points 
+
+!           Integrals over the reference Lag configuration          
+            DO g=1, ifem%msh(iM)%nG
+
+               IF (g.EQ.1 .OR. .NOT.ifem%msh(iM)%lShpF) THEN
+                  CALL GNN(eNoN, nsd, ifem%msh(iM)%Nx(:,:,g), xblCur,  
+     2                           Nx, Jac, ksix)
+                  IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+               END IF
+               w = ifem%msh(iM)%w(g) * Jac
+               N = ifem%msh(iM)%N(:,g)
+
+!              Compute local Residual vector lR
+               IF (nsd .EQ. 3) THEN
+                  CALL IFEM_CALCLFFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
+     2                fN, lR)
+
+               ELSE IF (nsd .EQ. 2) THEN
+                  CALL IFEM_CALCLFFSI2D_CUR(eNoN, nFn, w, N, Nx, ubl,  
+     2                aul, au, fN, lR, Jo)
+               END IF
+
+
+C !              Compute local velocity Matrix lK
+C                IF (nsd .EQ. 3) THEN
+C                   CALL IFEM_CALCLKFSI3D(eNoN, nFn, w, N, Nx, aul, ubl, 
+C      2                fN, lK)
+
+C                ELSE IF (nsd .EQ. 2) THEN
+C                   CALL IFEM_CALCLKFSI2D(eNoN, nFn, w, N, Nx, ubl, aul, 
+C      2                au, fN, lK)
+C                END IF
+
+            END DO ! end loop Gauss points 
+
+!           Assemble local K matrix into fluid lhs      
+            IF ( ifem%intrp .EQ. ifemIntrp_MLS ) THEN 
+               CALL KASSEMBLY_MLS(eNoN, lK, e)  
+            ELSE 
+               CALL KASSEMBLY_FEM(eNoN, lK, e)  
+            END IF
+
+!           Add the local Residual vector to IFEM global residual
             DO a=1, eNoN
                Ac = ifem%msh(iM)%IEN(a,e)
-               DO j=1, nsd ! TODO nsd+1 ??
+               DO j=1, nsd 
                   ifem%Rsolid(j,Ac) = ifem%Rsolid(j,Ac) + lR(j,a)
                END DO
             END DO
          
-         END DO
+         END DO ! end loop solid elements 
 
-         DEALLOCATE(xbl, aul, ubl, fN, N, Nx, lR)
+         DEALLOCATE(xbl, aul, ubl, au, fN, N, Nx, lR, xblCur)
 
       END DO
 
@@ -4219,21 +4255,25 @@ C                write(*,*)"End call local assembly"
       END SUBROUTINE IFEM_CALCLFFSI3D
 !--------------------------------------------------------------------
 !     Compute the 2D FSI force due to IFEM on the background fluid
-      SUBROUTINE IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, aul, ubl, fN, lR)
+      SUBROUTINE IFEM_CALCLFFSI2D(eNoN, nFn, w, N, Nx, ubl, aul, au, fN, 
+     2                                                       lR, Jo )
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
       REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
-     2   aul(2,eNoN), ubl(2,eNoN), fN(2,nFn)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lR(2,eNoN)
+     2   aul(2,eNoN), au(2,eNoN), ubl(2,eNoN), fN(2,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(2,eNoN), Jo
 
       INTEGER(KIND=IKIND) :: a, iEq, iDmn, i, j
-      REAL(KIND=RKIND) :: Jac, ya_g
+      REAL(KIND=RKIND) :: Jac, ya_g, mus, must
       REAL(KIND=RKIND) :: Dm(3,3), F(2,2), Fi(2,2), S(2,2), P(2,2)
 
-      iEq     = ifem%cEq
-      iDmn    = ifem%cDmn
+!     The FSI R in this case is computed only for a Neo-Hookean solid model       
+      iEq   = ifem%cEq
+      iDmn  = ifem%cDmn
+      mus   = eq(iEq)%dmnIB(iDmn)%stM%C10 
+      must  = eq(iEq)%dmnIB(iDmn)%stM%C10*0.5_RKIND*dt
 
       F      = 0._RKIND
       F(1,1) = 1._RKIND
@@ -4242,6 +4282,7 @@ C                write(*,*)"End call local assembly"
       i = 1
       j = 2
 
+!     Deformation gradient computed with the displacement at the previous iteration      
       DO a=1, eNoN
          F(1,1)  = F(1,1)  + Nx(1,a)*ubl(i,a)
          F(1,2)  = F(1,2)  + Nx(2,a)*ubl(i,a)
@@ -4252,8 +4293,9 @@ C                write(*,*)"End call local assembly"
 C       write(*,*)"ubl = ", ubl
 C       write(*,*)"F = ", F
 
-      Jac = MAT_DET(F, 2)
-      Fi  = MAT_INV(F, 2)
+       Jac = MAT_DET(F, 2)
+       Jo = Jac
+C       Fi  = MAT_INV(F, 2)
 
 C       write(*,*)"Jac = ", Jac
 
@@ -4264,27 +4306,133 @@ C       write(*,*)" Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
 !     2                       eq(iEq)%dmnIB(iDmn)%stM%C10/10._RKIND
 C       write(*,*)" new Kpen = ", eq(iEq)%dmnIB(iDmn)%stM%Kpen
 
-      CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
+!      CALL GETPK2CC(eq(iEq)%dmnIB(iDmn), F, nFn, fN, ya_g, S, Dm)
 
 C       write(*,*)"eq(iEq)%dmnIB(iDmn)%phys", eq(iEq)%dmnIB(iDmn)%phys
 C       write(*,*)" S = ", S
 
 C       write(*,*)" GETPK2CC done"
 !     1st Piola-Kirchhoff tensor (P)
-      P = MATMUL(F, S)
+!      P = MATMUL(F, S)
 
 C       write(*,*)"adding to local residue"
 !     Local residue
       DO a=1, eNoN
-         lR(1,a) = lR(1,a) + w*(Nx(1,a)*P(1,1) + Nx(2,a)*P(1,2))
-         lR(2,a) = lR(2,a) + w*(Nx(1,a)*P(2,1) + Nx(2,a)*P(2,2))
+         lR(1,a) = lR(1,a) + mus*w*(Nx(1,a)*F(1,1) + Nx(2,a)*F(1,2))
+         lR(2,a) = lR(2,a) + mus*w*(Nx(1,a)*F(2,1) + Nx(2,a)*F(2,2))
       END DO
 
-C       write(*,*)"lR = ", lR
+      DO a=1, eNoN
+         lR(1,a) = lR(1,a) + must*w*( Nx(1,a)*Nx(1,a)*aul(1,a) 
+     2                                  + Nx(2,a)*Nx(2,a)*aul(1,a) )
+         lR(2,a) = lR(2,a) + must*w*( Nx(1,a)*Nx(1,a)*aul(2,a) 
+     2                                  + Nx(2,a)*Nx(2,a)*aul(2,a) )
+      END DO
+      
+      DO a=1, eNoN
+         lR(1,a) = lR(1,a) + must*w*( Nx(1,a)*Nx(1,a)*au(1,a) 
+     2                                  + Nx(2,a)*Nx(2,a)*au(1,a) )
+         lR(2,a) = lR(2,a) + must*w*( Nx(1,a)*Nx(1,a)*au(2,a) 
+     2                                  + Nx(2,a)*Nx(2,a)*au(2,a) )
+      END DO
 
       RETURN
       END SUBROUTINE IFEM_CALCLFFSI2D
 !--------------------------------------------------------------------
+!     Compute the 2D FSI force due to IFEM on the background fluid
+      SUBROUTINE IFEM_CALCLKFSI2D(eNoN, nFn, w, N, Nx, ubl, aul, au, fN, 
+     2                                                           lK )
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
+      REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
+     2   aul(2,eNoN), au(2,eNoN), ubl(2,eNoN), fN(2,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lK(2,eNoN,eNoN)
+
+      INTEGER(KIND=IKIND) :: a, b, iEq, iDmn
+      REAL(KIND=RKIND) :: must, NxNx
+
+!     The FSI R in this case is computed only for a Neo-Hookean solid model       
+      iEq   = ifem%cEq
+      iDmn  = ifem%cDmn
+      must  = eq(iEq)%dmnIB(iDmn)%stM%C10*0.5_RKIND*dt*eq(cEq)%gam*dt
+
+      DO b=1, eNoN
+         DO a=1, eNoN
+            NxNx = Nx(1,a)*Nx(1,b) + Nx(2,a)*Nx(2,b)
+
+            lK(1,a,b)  = lK(1,a,b)  + must*w*NxNx
+
+            lK(2,a,b)  = lK(2,a,b)  + must*w*NxNx
+         END DO 
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_CALCLKFSI2D
+!--------------------------------------------------------------------
+!     Compute the 2D FSI force due to IFEM on the background fluid
+      SUBROUTINE IFEM_CALCLKFSI3D(eNoN, nFn, w, N, Nx, ubl, aul, au, fN, 
+     2                                                           lK )
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
+      REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
+     2   aul(2,eNoN), au(2,eNoN), ubl(2,eNoN), fN(2,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lK(2,eNoN,eNoN)
+
+      INTEGER(KIND=IKIND) :: a, b, iEq, iDmn
+      REAL(KIND=RKIND) :: must, NxNx
+
+!     STLL TODO 
+
+!     The FSI R in this case is computed only for a Neo-Hookean solid model       
+      iEq   = ifem%cEq
+      iDmn  = ifem%cDmn
+      must  = eq(iEq)%dmnIB(iDmn)%stM%C10*0.5_RKIND*dt*eq(cEq)%gam*dt
+
+      DO b=1, eNoN
+         DO a=1, eNoN
+            NxNx = Nx(1,a)*Nx(1,b) + Nx(2,a)*Nx(2,b)
+
+            lK(1,a,b)  = lK(1,a,b) + w*NxNx
+
+            lK(2,a,b)  = lK(2,a,b) + w*NxNx
+         END DO 
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_CALCLKFSI3D
+!--------------------------------------------------------------------
+!--------------------------------------------------------------------
+!     Compute the 2D FSI force due to IFEM on the background fluid
+      SUBROUTINE IFEM_CALCLFFSI2D_CUR(eNoN, nFn, w, N, Nx, ubl, aul, au,  
+     2                                                fN, lR, Jo )
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, nFn
+      REAL(KIND=RKIND), INTENT(IN) :: w, N(eNoN), Nx(2,eNoN), 
+     2   aul(2,eNoN), au(2,eNoN), ubl(2,eNoN), fN(2,nFn)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(2,eNoN), Jo
+
+      INTEGER(KIND=IKIND) :: a, iEq, iDmn
+      REAL(KIND=RKIND) :: mus
+
+!     The FSI R in this case is computed only for a Neo-Hookean solid model       
+      iEq   = ifem%cEq
+      iDmn  = ifem%cDmn
+      mus   = eq(iEq)%dmnIB(iDmn)%stM%C10 
+
+!     Local residue
+      DO a=1, eNoN
+         lR(1,a) = lR(1,a) - Jo*mus*w*Nx(1,a)
+         lR(2,a) = lR(2,a) - Jo*mus*w*Nx(2,a)
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_CALCLFFSI2D_CUR
 !####################################################################
       SUBROUTINE IFEM_DOASSEM(eNoN, ptr, lKu, lK)
       USE TYPEMOD
@@ -4345,7 +4493,7 @@ C       write(*,*)"lR = ", lR
 
       DO a=1, ifem%tnNo
          DO i=1, nsd
-            ifem%Rub(i,a) = ifem%Auk(i,a) - ifem%Yb(i,a)
+            ifem%Rub(i,a) = ifem%Auk(i,a) - ifem%Aun(i,a)
          END DO
       END DO
 
@@ -4437,7 +4585,6 @@ C       write(*,*)"lR = ", lR
       ALLOCATE(QMLS(mnS,ifem%tnNo))
       QMLS = 0._RKIND
 
-      ifem%Rfluid = 0._RKIND
 !     Loop over the nbr of solid meshes 
       DO iM=1, nMsh
 C          write(*,*)"inside loop mesh"
@@ -4625,7 +4772,251 @@ C       END DO
 
       RETURN
       END SUBROUTINE IFEM_RASSEMBLY
+!####################################################################
+      SUBROUTINE KASSEMBLY_FEM(eNoN, lK, idSElm)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
 
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, idSElm
+      REAL(KIND=RKIND), INTENT(IN) :: lK(nsd,eNoN,eNoN)
+      
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: gIDF(:,:), wRow(:,:), 
+     2                                          wCol(:,:), lKF(:,:)
+
+      INTEGER(KIND=IKIND) :: i, Ac, idFEl, j, Bc, v, rowN, colN, idxV
+      INTEGER(KIND=IKIND) :: idx, a, b, iM
+      LOGICAL :: Found = .TRUE.
+
+
+!     TODO for multiple fluid mesh
+      iM = 1
+
+      ALLOCATE( gIDF(ifem%msh(iM)%eNoN,msh(iM)%eNoN) )
+      ALLOCATE( wRow(1,msh(iM)%eNoN), wCol(1,msh(iM)%eNoN) )
+      ALLOCATE( lKF(msh(iM)%eNoN,msh(iM)%eNoN) )
+
+      DO i = 1, ifem%msh(iM)%eNoN      
+
+!        Select global id solid node   
+         Ac = ifem%msh(iM)%IEN(i,idSElm)   
+          
+!        Select the fluid element that contains the solid node 
+         idFEl = ifem%clsFElm(Ac)
+
+         DO j = 1, msh(iM)%eNoN
+!           Get the global id of the al-th fluid local node                
+            Bc = msh(iM)%IEN(j,idFEl)
+
+            gIDF(i,j) = Bc
+         END DO
+      END DO
+
+!     Loop over the velocity component v
+      DO v = 1, nsd
+
+!        Loop over solid local node (row) a
+         DO a = 1, ifem%msh(iM)%eNoN
+!           Get global id solid node             
+            Ac = ifem%msh(iM)%IEN(a,idSElm)  
+
+!           Loop over solid local node (col) b
+            DO b = 1, ifem%msh(iM)%eNoN
+               Bc = ifem%msh(iM)%IEN(b,idSElm)  
+
+!              Fill vectors with weights 
+               DO i = 1, msh(iM)%eNoN
+                  wRow(1,i) = ifem%wFEM(i,Ac)
+                  wCol(1,i) = ifem%wFEM(i,Bc)
+               END DO
+
+
+!              Build local K fluid (eNon Fluid, eNon fluid)
+               lKF = MATMUL(TRANSPOSE(wRow), wCol)
+               lKF = lK(v,a,b)*lKF
+
+!              Add contribution to Val by:
+!              1. looping over fluid local node (row) i
+               DO i = 1, msh(iM)%eNoN
+                  rowN = gIDF(a,i)
+
+!              2. looping over fluid local node (col) j
+                  DO j = 1, msh(iM)%eNoN
+                     colN = gIDF(b,j)
+
+!              3. find pointer in Val and add contribution 
+                     Found = .TRUE.
+                     CALL GETCOLPTR()
+
+                     IF(Found) THEN
+                        idxV = (v-1)*dof + v 
+                        Val(idxV,idx) = Val(idxV,idx) + lKF(i,j)
+                     END IF
+
+                  END DO
+               END DO
+
+            END DO
+
+         END DO
+
+      END DO
+
+      DEALLOCATE( gIDF, wRow, wCol, lKF)
+
+      RETURN
+      CONTAINS
+!--------------------------------------------------------------------
+         SUBROUTINE GETCOLPTR()
+         IMPLICIT NONE
+
+         INTEGER(KIND=IKIND) left, right, max, m
+
+         left  = rowPtr(rowN)
+         right = rowPtr(rowN+1)
+         idx   = (right + left)/2
+
+         max = right - left + 1
+         m = 0
+
+         DO WHILE ((colN .NE. colPtr(idx)) .AND. (m .LT. max))
+            IF (colN .GT. colPtr(idx)) THEN
+               left  = idx
+            ELSE
+               right = idx
+            END IF
+            idx = (right + left)/2
+            m = m + 1
+         END DO
+
+         !IF (m .EQ. max) Found = .FALSE.
+
+         RETURN
+         END SUBROUTINE GETCOLPTR
+
+      END SUBROUTINE KASSEMBLY_FEM
+!####################################################################
+      SUBROUTINE KASSEMBLY_MLS(eNoN, lK, idSElm)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, idSElm
+      REAL(KIND=RKIND), INTENT(IN) :: lK(nsd,eNoN,eNoN)
+      
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: gIDF(:,:), wRow(:,:), 
+     2                                          wCol(:,:), lKF(:,:)
+
+      INTEGER(KIND=IKIND) :: nbrSAc, nbrSBc, i, Ac, j, Bc, v, rowN
+      INTEGER(KIND=IKIND) :: colN, idxV, idx, a, b, iM, idFClsAc
+      INTEGER(KIND=IKIND) :: idFClsBc
+      LOGICAL :: Found = .TRUE.
+
+
+!     TODO for multiple fluid mesh
+      iM = 1
+
+!     Loop over the velocity component v
+      DO v = 1, nsd
+
+!        Loop over solid local node (row) a
+         DO a = 1, ifem%msh(iM)%eNoN
+!           Get global id solid node             
+            Ac = ifem%msh(iM)%IEN(a,idSElm)
+!           Global id closest fluid node
+            idFClsAc = ifem%clsFNd(Ac) 
+!           Nbr of node in stencil
+            nbrSAc = msh(iM)%stn%nbrNdStn(idFClsAc) 
+
+            ALLOCATE( wRow(1,nbrSAc))
+
+!           Fill vectors with weights 
+            DO i = 1, nbrSAc
+               wRow(1,i) = ifem%QMLS(i,Ac)
+            END DO
+
+!           Loop over solid local node (col) b
+            DO b = 1, ifem%msh(iM)%eNoN
+               Bc = ifem%msh(iM)%IEN(b,idSElm) 
+               idFClsBc = ifem%clsFNd(Bc) 
+               nbrSBc = msh(iM)%stn%nbrNdStn(idFClsBc) 
+
+               ALLOCATE( wCol(1,nbrSBc)) 
+               ALLOCATE( lKF(nbrSAc,nbrSBc) )
+
+!              Fill vectors with weights 
+               DO i = 1, nbrSBc
+                  wCol(1,i) = ifem%QMLS(i,Bc)
+               END DO
+
+!              Build local K fluid (eNon Fluid, eNon fluid)
+               lKF = MATMUL(TRANSPOSE(wRow), wCol)
+               lKF = lK(v,a,b)*lKF
+
+!              Add contribution to Val by:
+!              1. looping over fluid local node (row) i
+               DO i = 1, nbrSAc
+                  rowN = msh(iM)%stn%ndStn(idFClsAc,i)
+
+!              2. looping over fluid local node (col) j
+                  DO j = 1, nbrSBc
+                     colN = msh(iM)%stn%ndStn(idFClsBc,j)
+
+!              3. find pointer in Val and add contribution 
+                     Found = .TRUE.
+                     CALL GETCOLPTR()
+
+                     IF(Found) THEN
+                        idxV = (v-1)*dof + v 
+                        Val(idxV,idx) = Val(idxV,idx) + lKF(i,j)
+                     END IF
+
+                  END DO
+               END DO
+
+               DEALLOCATE(wCol, lKF)
+
+            END DO
+
+            DEALLOCATE( wRow )
+
+         END DO
+
+      END DO
+
+      RETURN
+      CONTAINS
+!--------------------------------------------------------------------
+         SUBROUTINE GETCOLPTR()
+         IMPLICIT NONE
+
+         INTEGER(KIND=IKIND) left, right, max, m
+
+         left  = rowPtr(rowN)
+         right = rowPtr(rowN+1)
+         idx   = (right + left)/2
+
+         max = right - left + 1
+         m = 0
+
+         DO WHILE ((colN .NE. colPtr(idx)) .AND. (m .LT. max))
+            IF (colN .GT. colPtr(idx)) THEN
+               left  = idx
+            ELSE
+               right = idx
+            END IF
+            idx = (right + left)/2
+            m = m + 1
+         END DO
+
+         !IF (m .EQ. max) Found = .FALSE.
+
+         RETURN
+         END SUBROUTINE GETCOLPTR
+
+      END SUBROUTINE KASSEMBLY_MLS
 !####################################################################
       SUBROUTINE IFEM_BUILDIntFluElm()
       USE COMMOD
@@ -4692,119 +5083,101 @@ C             write(*,*)" fluid elem is ", idFElm
 !     For the moment we are using only Yn, the displacement in case 
 !     of ALE will be consider in the future
 
-      write(*,*)"Inside IFEM_INTERPVEL"
+!     Here we update Aun, Auo, Ubn, Ubo 
 
       tt = CPUT()
       is = eq(ifem%cEq)%s
       ie = eq(ifem%cEq)%e
 
-C       write(*,*)"is = ", is, ", ie = ", ie
-
-      ALLOCATE(Yl(nsd+1,tnNo))
+      ALLOCATE(Yl(nsd,tnNo))
       DO a=1, tnNo
-         Yl(:,a) = Yg(is:ie,a) ! keeping only the fluid vel and pressure 
+!         Yl(:,a) = Yg(is:ie,a) ! Check this  
+         Yl(:,a) = Yg(1:nsd,a) ! keeping only the fluid vel  
       END DO
 
       IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
-         CALL IFEM_FINDSOLVEL_FEM(nsd+1, Yl, Dg, ifem%Yb)
+         CALL IFEM_FINDSOLVEL_FEM(nsd, Yl, Dg, ifem%Aun)
       ELSE
-         CALL IFEM_FINDSOLVEL_MLS(nsd+1, Yl, Dg, ifem%Yb)
+         CALL IFEM_FINDSOLVEL_MLS(nsd, Yl, Dg, ifem%Aun)
       END IF
 
       DEALLOCATE(Yl)
 
+!     Computing new solid displacement using a trapezoidal rule given 
+!     the new interpolated solid velocity   
 
-!     Computing new solid location using A-B scheme given the new interpolated 
-!     fluid velocity   
+      DO a=1, ifem%tnNo
+         DO i=1, nsd
+            ifem%Ubn(i,a) = ifem%Ubo(i,a)
+     2               + dt*0.5_RKIND*( ifem%Aun(i,a) +  ifem%Auo(i,a) ) 
 
-C       write(*,*)"ifem%xCuo ", ifem%xCuo
-C       write(*,*)""//""
-C       write(*,*)"ifem%xCu", ifem%xCu
-C       write(*,*)""//""
-      
-!     Solid update location via displacement   
-      IF(iT .GE. 3) THEN 
-         DO a=1, ifem%tnNo
-            DO i=1, nsd
-               ifem%Ubo(i,a) = ifem%Ubo(i,a)
-     2                 + dt*0.5_RKIND*( 3._RKIND * ifem%Auo(i,a) 
-     3                 - ifem%Auoo(i,a) )
-
-C                IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-C                   write(*,*)"OHHH NOOOO, out of fluid !"
-C                   CALL EXIT(1)
-C                END IF
-            END DO
          END DO
-      ELSE 
-         DO a=1, ifem%tnNo
-            DO i=1, nsd
-               ifem%Ubo(i,a) = ifem%Ubo(i,a) + dt*ifem%Yb(i,a)
+      END DO
 
-C                IF (ABS(ifem%xCu(i,a)).GT.1._RKIND) THEN 
-C                   write(*,*)"OHHH NOOOO, out of fluid !"
-C                   CALL EXIT(1)
-C                END IF
-            END DO
-         END DO
-      END IF
+      CALL IFEM_SETBCDIR(ifem%Aun, ifem%Ubn)
 
-      CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+      ifem%Auo = ifem%Aun
+      ifem%Ubo = ifem%Ubn
 
+!     Update current solid coordinates given new displacement 
       ifem%xCu = ifem%x + ifem%Ubo
-
-      write(*,*)"Done AB scheme" 
-      ifem%Auoo = ifem%Auo
-      ifem%Auo = ifem%Yb
 
       ifem%callD(1) = ifem%callD(1) + CPUT() - tt
 
       RETURN
       END SUBROUTINE IFEM_INTERPVEL
 !####################################################################
-!     Corrector step for implicit ifem 
+!     Corrector step for implicit ifem (inside (at the end) the inner loop)
       SUBROUTINE IFEM_PICC(Dg,Yg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo), Yg(tDof,tnNo)
 
-!     Compute the MLS velocity increment 
-      REAL(KIND=RKIND) :: coeff, dAl(nsd,ifem%tnNo), dUl(nsd,ifem%tnNo)
-      REAL(KIND=RKIND) :: Aun(nsd,ifem%tnNo)
+!     Given the just computed fluid velocity n+1, k we compute the 
+!     us n+1, k which will be used in the next inner iteration 
+!     into the Rsolid computation as Aug
 
-C       coeff = eq(1)%gam*dt
-
-C !     Extract accelaration increment and compute MLS increment evaluation
-C       CALL IFEM_FINDSOLVEL_MLS(dof, R, Dg, dAl)
-
-C !     find delta U
-C       dUl = coeff * dAl
-C !     Update Aun, Ubn 
-C       ifem%Aun = ifem%Aun - dUl
-C       ifem%Ubn = ifem%Ubn - coeff*dUl
-
-!     Using MLS/FEM for projection of the fluid velocity to the solid vel
-      coeff = eq(1)%gam*dt
-
-!     Extract accelaration increment and compute MLS/FEM increment evaluation
       IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
-         CALL IFEM_FINDSOLVEL_FEM(tDof, Yg, Dg, Aun)
+         CALL IFEM_FINDSOLVEL_FEM(tDof, Yg, Dg, ifem%Aug)
       ELSE
-         CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, Aun)
+         CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, ifem%Aug)
       END IF
 
-!     find delta U
-      dAl = Aun - ifem%Aun
-      ifem%Aun = Aun 
-
-!     Update Aun, Ubn 
-      ifem%Ubn = ifem%Ubn + coeff*dAl
-
-      CALL IFEM_SETBCDIR(ifem%Aun, ifem%Ubn)
+!     TODO: still need to think about a way to correctly impose the BC
+!     on the solid velocity (because there is an interpolation, 
+!     so there could be some errors)
+!     CALL IFEM_SETBCDIR(ifem%Aug, ifem%dispIntermediate) 
+!     just for the velocity, the intermediate displacement is not used 
 
       RETURN
       END SUBROUTINE IFEM_PICC
+!####################################################################
+!     Initiator step for ifem (inside (at the beginning) the inner loop)
+      SUBROUTINE IFEM_PICI(Dg,Yg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo), Yg(tDof,tnNo)
+
+!     Given the just computed fluid velocity n+1, k we compute the 
+!     us n+1, k which will be used in the next inner iteration 
+!     into the Rsolid computation as Aug
+
+      IF ( ifem%intrp .EQ. ifemIntrp_FEM ) THEN
+         CALL IFEM_FINDSOLVEL_FEM(tDof, Yg, Dg, ifem%Aug)
+      ELSE
+         CALL IFEM_FINDSOLVEL_MLS(tDof, Yg, Dg, ifem%Aug)
+      END IF
+
+!     TODO: still need to think about a way to correctly impose the BC
+!     on the solid velocity (because there is an interpolation, 
+!     so there could be some errors)
+!     CALL IFEM_SETBCDIR(ifem%Aug, ifem%dispIntermediate) 
+!     just for the velocity, the intermediate displacement is not used 
+
+      RETURN
+      END SUBROUTINE IFEM_PICI
 !####################################################################
 !     Interpolate data at IFEM nodes from background mesh using fem
 !     nodal function 
@@ -4820,18 +5193,17 @@ C       ifem%Ubn = ifem%Ubn - coeff*dUl
 
       Ub = 0._RKIND
 
-      !     TODO for multiple fluid mesh
+!     TODO for multiple fluid mesh
       iM = 1
 !     Loop over the solid nodes 
       DO a=1, ifem%tnNo
-C          write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+!        This should consider also the mesh displacement in the fluid
 !        Global id closest fluid node
          idFCls = ifem%clsFNd(a) 
 !        Nbr of node in stencil
          nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
 !        Loop over the stencil 
          DO is = 1, nbrSN
-C             write(*,*) "inside loop stencil"
 !           Extract fluid coordinates xlf
             idFStc = msh(iM)%stn%ndStn(idFCls,is)
 
@@ -4863,6 +5235,7 @@ C             write(*,*) "inside loop stencil"
 !     Loop over the solid nodes 
       DO a=1, ifem%tnNo
 !        Select the fluid element that contains the solid node 
+!        This should consider also the mesh displacement in the fluid
          idFEl = ifem%clsFElm(a)
 
          DO al=1, msh(iM)%eNoN
@@ -5081,6 +5454,223 @@ C             write(*,*) "inside loop stencil"
 
       RETURN
       END SUBROUTINE IFEM_OUTCPUT
+!####################################################################
+      SUBROUTINE IFEM_LHSA(nnz)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(OUT) :: nnz
+
+      LOGICAL flag
+      INTEGER(KIND=IKIND) a, b, e, is, i, j, rowN, colN, iM, iFa, masN,
+     2   mnnzeic, nbrSN, nbrSecSN, STcolN
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
+
+      ALLOCATE(idMap(tnNo))
+      DO a=1, tnNo
+         idMap(a) = a
+      END DO
+
+      mnnzeic = 30*MAXVAL(msh%eNoN)
+
+      write(*,*)" Calling IFEM_LHSA "
+
+!     First fill uInd array depending on mesh connectivity as is.
+      ALLOCATE (uInd(mnnzeic,tnNo))
+      uInd = 0
+      DO iM=1, nMsh
+!        Treat shell with triangular elements separately
+         IF (shlEq .AND. msh(iM)%eType.EQ.eType_TRI3) CYCLE
+
+         DO a=1, msh(iM)%gnNo
+            rowN = a
+            nbrSN = msh(iM)%stn%nbrNdStn(rowN) 
+
+!           First Loop over the stencil 
+            DO is = 1, nbrSN
+               colN = msh(iM)%stn%ndStn(rowN,is)
+               CALL ADDCOL(rowN, colN)
+
+!              If we are using MLS we need to add also this:
+               IF ( ifem%intrp .EQ. ifemIntrp_MLS ) THEN 
+!              Second Loop over the stencil 
+                  nbrSecSN = msh(iM)%stn%nbrNdStn(colN) 
+                  DO i = 1, nbrSecSN
+                     STcolN = msh(iM)%stn%ndStn(colN,i)
+                     CALL ADDCOL(rowN, STcolN)
+                  END DO
+               END IF
+
+            END DO
+
+         END DO
+      END DO
+
+!     Now reset idMap for undeforming Neumann BC faces. Then insert
+!     master node as a column entry in each row for all the slave nodes.
+!     This step is performed even for ghost master nodes where the idMap
+!     points to the ghost master node.
+      flag = .FALSE.
+      DO i=1, nEq
+         DO j=1, eq(i)%nBc
+            iM  = eq(i)%bc(j)%iM
+            iFa = eq(i)%bc(j)%iFa
+            IF (BTEST(eq(i)%bc(j)%bType, bType_undefNeu)) THEN
+               masN = eq(i)%bc(j)%masN
+               IF (masN .EQ. 0) CYCLE
+               DO a=1, msh(iM)%fa(iFa)%nNo
+                  rowN = msh(iM)%fa(iFa)%gN(a)
+                  IF (rowN .EQ. masN) CYCLE
+                  idMap(rowN) = masN
+!                 Insert master to the row if not already present
+                  CALL ADDCOL(rowN, masN)
+               END DO
+               flag = .TRUE.
+            END IF
+         END DO
+      END DO
+
+!     Change uInd if idMap has been changed
+      IF (flag) THEN
+         DO a=1, tnNo
+            rowN = idMap(a)
+!           If the mapping is not changed, examine the mapping of the
+!           column entries of uInd. Don't do anything if the mapping is
+!           unchanged. If the mapping is changed, then add to the column\
+!           indices of uInd if the entry is not already present.
+            IF (rowN .EQ. a) THEN
+               i = 0
+               DO
+                  i = i + 1
+                  b = uInd(i,rowN)
+!                 Terminate if end of column entries are reached
+                  IF (b .EQ. 0) EXIT
+                  colN = idMap(b)
+!                 Ignore if the column entry mapping is not changed.
+!                 This entry is already present and will be used to
+!                 assemble mass (D) matrix
+                  IF (b .EQ. colN) CYCLE
+!                 As the column entry is now mapped to a new node,
+!                 search all column entries and insert the new node if
+!                 it is not present. This step is performed to assemble
+!                 the Divergence (C) matrix
+                  CALL ADDCOL(rowN, colN)
+                  IF (i .EQ. mnnzeic) EXIT
+               END DO
+            ELSE
+!           If the row mapping is changed, insert the mapped/unmapped
+!           column entries of the old row into the new row if not
+!           already present.
+               i = 0
+               DO
+                  i = i + 1
+                  b = uInd(i,a)
+!                 Terminate if end of column entries are reached
+                  IF (b .EQ. 0) EXIT
+!                 Add unmapped column to assemble gradient matrix
+                  CALL ADDCOL(rowN, b)
+!                 If column is mapped, add the mapped column to assemble
+!                 stiffness matrix
+                  colN = idMap(b)
+                  IF (b .NE. colN) CALL ADDCOL(rowN, colN)
+                  IF (i .EQ. mnnzeic) EXIT
+               END DO
+            END IF
+         END DO
+      END IF
+
+!--------------------------------------------------------------------
+!     Finding number of non-zeros in colPtr vector
+      nnz = 0
+      DO rowN=1, tnNo
+         IF (uInd(1,rowN) .EQ. 0) THEN
+            err = "Node "//rowN//" is isolated"
+         END IF
+         DO i = 1, mnnzeic
+            IF (uInd(i,rowN) .NE. 0) THEN
+               nnz = nnz + 1
+            END IF
+         END DO
+      END DO
+
+!--------------------------------------------------------------------
+!     Now constructing compact form of rowPtr and colPtr
+      ALLOCATE (colPtr(nnz), rowPtr(tnNo+1))
+      j  = 1
+      rowPtr(1) = 1
+      DO rowN=1, tnNo
+         DO i=1, mnnzeic
+            IF (uInd(i,rowN) .NE. 0) THEN
+               colPtr(j) = uInd(i,rowN)
+               j = j + 1
+            END IF
+         END DO
+         rowPtr(rowN+1) = j
+      END DO
+      DEALLOCATE (uInd)
+
+      RETURN
+      CONTAINS
+!--------------------------------------------------------------------
+         SUBROUTINE ADDCOL(row, col)
+         IMPLICIT NONE
+         INTEGER(KIND=IKIND), INTENT(IN) :: row, col
+
+         INTEGER(KIND=IKIND) i, j
+
+         i = 0
+         DO
+            i = i + 1
+            IF (i .EQ. mnnzeic) CALL RESIZ()
+
+!           If current entry is zero, then  fill it up
+            IF (uInd(i,row) .EQ. 0) THEN
+               uInd(i,row) = col
+               EXIT
+            END IF
+
+!           If current entry is still smaller, keep going
+            IF (col .GT. uInd(i,row)) CYCLE
+
+!           If column entry already exists, exit
+            IF (col .EQ. uInd(i,row)) EXIT
+
+!           If we are this point, then then the current entry is bigger.
+!           Shift all the entries from here to the end of the list. If
+!           list is full, we request a larger list, otherwise we shift
+!           and add the item at the current entry position.
+            IF (uInd(mnnzeic,row) .NE. 0) CALL RESIZ()
+            DO j=mnnzeic, i+1, -1
+               uInd(j,row) = uInd(j-1,row)
+            END DO
+            uInd(i,row) = col
+            EXIT
+         END DO
+
+         RETURN
+         END SUBROUTINE ADDCOL
+!--------------------------------------------------------------------
+         SUBROUTINE RESIZ()
+         IMPLICIT NONE
+
+         INTEGER(KIND=IKIND) n
+         INTEGER(KIND=IKIND), ALLOCATABLE :: tmp(:,:)
+
+         n = mnnzeic
+         ALLOCATE(tmp(n,tnNo))
+         tmp(:,:) = uInd(:,:)
+         DEALLOCATE(uInd)
+         mnnzeic = n + MAX(5,n/5)
+         ALLOCATE(uInd(mnnzeic,tnNo))
+         uInd(:,:)   = 0
+         uInd(1:n,:) = tmp(:,:)
+         DEALLOCATE(tmp)
+
+         RETURN
+         END SUBROUTINE RESIZ
+!--------------------------------------------------------------------
+      END SUBROUTINE IFEM_LHSA
 !####################################################################
 C !     Debugs FSI force on the IFEM
 C       SUBROUTINE DEBUGIBR(incNd)

@@ -117,31 +117,33 @@ C       ifemImp = .FALSE.
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
 
-         IF (ifemFlag) THEN
-!           Set IB Dirichlet BCs
-            CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
+C          IF (ifemFlag) THEN
+C !           Set IB Dirichlet BCs
+C             CALL IFEM_SETBCDIR(ifem%Auo, ifem%Ubo)
 
-!           FSI forcing for immersed bodies (explicit coupling)
-            CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo)
+C !           FSI forcing for immersed bodies (explicit coupling)
+C             CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Auo, ifem%Ubo, ifem%Aug)
+C !           TODO need to update the solid vel at the previus inner iteration 
 
-!           Better to split this function and call the part for the 
-!           compuatation of the MLS terms during the initialization 
-!           without assembly the Rfluid, bur just add it immediatedlu 
-!           to the big fluid res immediately 
-!            CALL IFEM_CONSTRUCT()
 
-            IF(ifemImp) THEN 
-!           Predictor stage ifem
-               coef = (eq(1)%gam - 1._RKIND)/eq(1)%gam
-               ifem%Aun = coef*ifem%Auo
-               ifem%Ubn = ifem%Ubo
-            END IF
+C !           Better to split this function and call the part for the 
+C !           compuatation of the MLS terms during the initialization 
+C !           without assembly the Rfluid, bur just add it immediatedlu 
+C !           to the big fluid res immediately 
+C !            CALL IFEM_CONSTRUCT()
 
-!           Call to subroutine which builds the structure to change 
-!           the fluid stabilization below/near the solid mesh 
-            CALL IFEM_BUILDIntFluElm()
+C             IF(ifemImp) THEN 
+C !           Predictor stage ifem
+C                coef = (eq(1)%gam - 1._RKIND)/eq(1)%gam
+C                ifem%Aun = coef*ifem%Auo
+C                ifem%Ubn = ifem%Ubo
+C             END IF
 
-         END IF
+C !           Call to subroutine which builds the structure to change 
+C !           the fluid stabilization below/near the solid mesh 
+C             CALL IFEM_BUILDIntFluElm()
+
+C          END IF
 
 !     Inner loop for iteration
          DO
@@ -159,16 +161,16 @@ C       ifemImp = .FALSE.
                Kd = 0._RKIND
             END IF
 
-            IF(ifemImp .AND. ifemFlag) THEN 
-!           Predictor stage ifem
-               coeff(1) = 1._RKIND - eq(i)%am
-               coeff(2) = eq(i)%am
-               coeff(3) = 1._RKIND - eq(i)%af
-               coeff(4) = eq(i)%af
+C             IF(ifemImp .AND. ifemFlag) THEN 
+C !           Predictor stage ifem
+C                coeff(1) = 1._RKIND - eq(i)%am
+C                coeff(2) = eq(i)%am
+C                coeff(3) = 1._RKIND - eq(i)%af
+C                coeff(4) = eq(i)%af
          
-               ifem%Aug = ifem%Auo*coeff(1) + ifem%Aun*coeff(2)
-               ifem%Ubg = ifem%Ubo*coeff(3) + ifem%Ubn*coeff(4)
-            END IF
+C                ifem%Aug = ifem%Auo*coeff(1) + ifem%Aun*coeff(2)
+C                ifem%Ubg = ifem%Ubo*coeff(3) + ifem%Ubn*coeff(4)
+C             END IF
 
             dbg = 'Allocating the RHS and LHS'
             CALL LSALLOC(eq(cEq))
@@ -215,7 +217,7 @@ C       ifemImp = .FALSE.
 
             CALL SETBCUNDEFNEU()
 
-!        IB treatment: for explicit coupling, simply construct residue.
+!           IB treatment: for explicit coupling, simply construct residue.
             IF (ibFlag) THEN
                IF (ib%cpld .EQ. ibCpld_I) THEN
                   CALL IB_IMPLICIT(Ag, Yg, Dg)
@@ -223,17 +225,13 @@ C       ifemImp = .FALSE.
                CALL IB_CONSTRUCT()
             END IF
 
-!        IFEM: adding the FSI force to the Fluid residue 
+!           IFEM: adding the FSI force to the Fluid residue 
             IF (ifemFlag) THEN
+               write(*,*)" calling ifem stuff "
+!              Initiator stage solid velocity (computed from fluid vel initiator stage)
+               CALL IFEM_PICI(Do,Yg) ! Do not used to be removed 
 
-               IF (ifemImp) THEN
-!                 Set IB Dirichlet BCs
-                  CALL IFEM_SETBCDIR(ifem%Aug, ifem%Ubg)
-
-!                 FSI forcing for immersed bodies (explicit coupling)
-                  CALL IFEM_CALCFFSI(Ao, Yo, Do, ifem%Aug, ifem%Ubg)
-
-               END IF
+               CALL IFEM_CALCFFSI(ifem%Ubo, ifem%Auo, ifem%Aug)
 
                CALL IFEM_RASSEMBLY()
             END IF
@@ -251,14 +249,14 @@ C       ifemImp = .FALSE.
 
             dbg = "Solving equation <"//eq(cEq)%sym//">"
             CALL LSSOLVE(eq(cEq), incL, res)
-            write(*,*)" solve fluid eq done "
 
 !        Solution is obtained, now updating (Corrector)
             CALL PICC
 
-            IF(ifemImp .AND. ifemFlag) THEN 
-               CALL IFEM_PICC(Do,Yn)
-            END IF
+!            There is no need to update anything here! 
+C             IF(ifemImp .AND. ifemFlag) THEN 
+C                CALL IFEM_PICC(Do,Yn)
+C             END IF
             
 !        Checking for exceptions
             CALL EXCEPTIONS
@@ -286,13 +284,7 @@ C       ifemImp = .FALSE.
          IF (ifemFlag) THEN
 !           Find new solid velocity
 
-            IF (.NOT. ifemImp) THEN
-               CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
-            ELSE 
-               ifem%Auo = ifem%Aun
-               ifem%Ubo = ifem%Ubn
-               ifem%xCu = ifem%x + ifem%Ubo
-            END IF
+            CALL IFEM_INTERPVEL(Yn, Dn, cTS) 
 
 !           Update IB location and tracers
 !           Search for the new closest point looking in the fluid neighbors 
@@ -341,11 +333,7 @@ C       ifemImp = .FALSE.
                CALL WRITEVTUS(An, Yn, Dn, .FALSE.)
                IF (ibFlag) CALL IB_WRITEVTUS(ib%Yb, ib%Ubo)
                IF (ifemFlag) THEN 
-                  IF(.NOT.ifemImp) THEN
-                     CALL IFEM_WRITEVTUS(ifem%Yb, ifem%Ubo)
-                  ELSE 
-                     CALL IFEM_WRITEVTUS(ifem%Aun, ifem%Ubn)
-                  END IF
+                  CALL IFEM_WRITEVTUS(ifem%Aun, ifem%Ubn)
                END IF
             ELSE
                CALL OUTRESULT(timeP, 2, iEqOld)

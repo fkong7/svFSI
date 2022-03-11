@@ -79,7 +79,7 @@
 
 C       IF (ifemFlag) THEN
 C !        Set IB Dirichlet BCs
-C          CALL IFEM_SETBCDIR(ifem%Yb, ifem%Ubo)
+C          CALL IFEM_SETBCDIR(ifem%Aun, ifem%Ubo)
 
 C !        Update IB location and tracers, if we are not at the first iteration
 C !        search for the new closest point looking in the fluid neighbors 
