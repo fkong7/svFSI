@@ -1791,6 +1791,8 @@
          lBc%bType = IBSET(lBc%bType,bType_flat)
       CASE ('Parabolic')
          lBc%bType = IBSET(lBc%bType,bType_para)
+      CASE ('Half_Parabolic')
+         lBc%bType = IBSET(lBc%bType,bType_paraH)
       CASE ('User_defined')
          lBc%bType = IBSET(lBc%bType,bType_ud)
          lPtr => list%get(fTmp,"Spatial profile file path",1)
@@ -1899,6 +1901,7 @@ c     2         "can be applied for Neumann boundaries only"
 !           Clear any BC profile
             lBc%bType = IBCLR(lBc%bType,bType_flat)
             lBc%bType = IBCLR(lBc%bType,bType_para)
+            lBc%bType = IBCLR(lBc%bType,bType_paraH)
             IF (BTEST(lBc%bType,bType_ud) .OR.
      2          BTEST(lBc%bType,bType_gen)) THEN
                err = "General BC or user defined spatial profile "//
