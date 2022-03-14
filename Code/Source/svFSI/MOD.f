@@ -602,8 +602,20 @@
          TYPE(faceType), ALLOCATABLE :: fa(:)
 !        IB: tracers
          TYPE(traceType) :: trc
+!        StencilType for unfitted fem
+         TYPE(stencilType) :: stn         
       END TYPE mshType
 
+!     Mesh stencil for each fluid node 
+      TYPE stencilType
+!        Node stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
+!        Number of node in the stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
+!        Element stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
+      END TYPE stencilType
+      
 !     Equation type
       TYPE eqType
 !        Should be satisfied in a coupled/uncoupled fashion
@@ -942,7 +954,7 @@
       REAL(KIND=RKIND), ALLOCATABLE :: Ao(:,:)
 !     New time derivative of variables
       REAL(KIND=RKIND), ALLOCATABLE :: An(:,:)
-!     Old integrated variables (dissplacement)
+!     Old integrated variables (displacement)
       REAL(KIND=RKIND), ALLOCATABLE :: Do(:,:)
 !     New integrated variables
       REAL(KIND=RKIND), ALLOCATABLE :: Dn(:,:)
