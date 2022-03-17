@@ -78,6 +78,9 @@
       CALL INITIALIZE(timeP)
       stopTS = nTS
 
+!     Initiator step for unfitted FSI with Nitsche 
+      CALL NTS_INIT(Ao, Yo, Do)  
+
       dbg = 'Allocating intermediate variables'
       ALLOCATE(Ag(tDof,tnNo), Yg(tDof,tnNo), Dg(tDof,tnNo),
      2   res(nFacesLS), incL(nFacesLS))
@@ -111,6 +114,9 @@
 
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
+
+!     Initiator step for unfitted FSI with Nitsche 
+         CALL NTS_UPDATE(An, Yn, Dn)        
 
 !     Inner loop for iteration
          DO

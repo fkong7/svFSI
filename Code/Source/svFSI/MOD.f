@@ -499,6 +499,16 @@
          TYPE(cplFaceType), ALLOCATABLE :: fa(:)
       END TYPE cplBCType
 
+!     Mesh stencil for each fluid node 
+      TYPE stencilType
+!        Node stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
+!        Number of node in the stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
+!        Element stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
+      END TYPE stencilType
+
 !     This is the container for a mesh or NURBS patch, those specific
 !     to NURBS are noted
       TYPE mshType
@@ -540,6 +550,9 @@
          REAL(KIND=RKIND) scF
 !        IB: Mesh size parameter
          REAL(KIND=RKIND) dx
+!        Max diam 
+         REAL(KIND=RKIND) mDiam
+
 !        Element distribution between processors
          INTEGER(KIND=IKIND), ALLOCATABLE :: eDist(:)
 !        Element domain ID number
@@ -590,6 +603,8 @@
          REAL(KIND=RKIND), ALLOCATABLE :: Nxx(:,:,:)
 !        Mesh Name
          CHARACTER(LEN=stdL) :: name
+
+
 !        Mesh nodal adjacency
          TYPE(adjType) :: nAdj
 !        Mesh element adjacency
@@ -606,16 +621,6 @@
          TYPE(stencilType) :: stn         
       END TYPE mshType
 
-!     Mesh stencil for each fluid node 
-      TYPE stencilType
-!        Node stencil for each fluid node 
-         INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
-!        Number of node in the stencil for each fluid node 
-         INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
-!        Element stencil for each fluid node 
-         INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
-      END TYPE stencilType
-      
 !     Equation type
       TYPE eqType
 !        Should be satisfied in a coupled/uncoupled fashion
@@ -946,6 +951,18 @@
 !     Boundary nodes set for CMM initialization and for zeroing-out
 !     non-wall nodal displacements
       INTEGER(KIND=IKIND), ALLOCATABLE :: cmmBdry(:)
+
+
+!     Used for Nitsche-unfitted FSI: for each fluid element gives list of internal solid nodes 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: mapFElmSNd(:,:)
+!     Used for Nitsche-unfitted FSI: for each solid node gives id fluid element  
+      INTEGER(KIND=IKIND), ALLOCATABLE :: mapSNdFElm(:)
+!     Used for Nitsche-unfitted FSI: flag for each fluid element: 
+!     1 normal, 2 intersected from Nitsche Bnd, 0 hidden element 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: intFElmFlag(:)
+!     Isolated fluid nodes under solid mesh (0 isolated, 1 normal node) 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ghostFNd(:)
+
 
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)
       INTEGER, ALLOCATABLE :: iblank(:)

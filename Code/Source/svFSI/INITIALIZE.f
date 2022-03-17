@@ -375,7 +375,7 @@
       IF (bin2VTK) CALL PPBIN2VTK()
 
 !     Making sure the old solution satisfies BCs
-      CALL SETBCDIR(Ao, Yo, Do)
+      CALL SETBCDIR(Ao, Yo, Do)      
 
 !     Preparing TXT files
       CALL TXT(.TRUE.)
@@ -648,6 +648,11 @@
       IF (ALLOCATED(idMap))    DEALLOCATE(idMap)
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
+
+      IF (ALLOCATED(mapFElmSNd))  DEALLOCATE(mapFElmSNd)
+      IF (ALLOCATED(mapSNdFElm))  DEALLOCATE(mapSNdFElm)
+      IF (ALLOCATED(intFElmFlag)) DEALLOCATE(intFElmFlag)
+      IF (ALLOCATED(ghostFNd))    DEALLOCATE(ghostFNd)
 
       IF (ALLOCATED(Ao))       DEALLOCATE(Ao)
       IF (ALLOCATED(An))       DEALLOCATE(An)

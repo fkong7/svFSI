@@ -70,7 +70,7 @@
          MODULE PROCEDURE DESTROYFACE, DESTROYMSH, DESTROYBC, DESTROYBF,
      2      DESTROYDMN, DESTROYEQ, DESTROYBS, DESTROYMB, DESTROYDATA,
      3      DESTROYADJ, DESTROYSTACK, DESTROYQUEUE, DESTROYTRACE,
-     4      DESTROYIBCM, DESTROYFS
+     4      DESTROYIBCM, DESTROYFS, DESTROYSTN
       END INTERFACE DESTROY
 
       INTERFACE GETNADJCNCY
@@ -1485,6 +1485,18 @@
 
       RETURN
       END SUBROUTINE DESTROYIBCM
+!--------------------------------------------------------------------  
+      PURE SUBROUTINE DESTROYSTN(stc)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(stencilType), INTENT(OUT) :: stc
+
+      IF (ALLOCATED(stc%ndStn)) DEALLOCATE(stc%ndStn)
+      IF (ALLOCATED(stc%nbrNdStn)) DEALLOCATE(stc%nbrNdStn)
+      IF (ALLOCATED(stc%elmStn)) DEALLOCATE(stc%elmStn)
+
+      RETURN
+      END SUBROUTINE DESTROYSTN
 !####################################################################
 !     Spliting "m" jobs between "n" workers. "b" contains amount of jobs
 !     and "A" will store the distribution of jobs
@@ -2688,7 +2700,8 @@
          DO a=1, lM%eNoN
             ! TODO FOR PARALLEL VERSION
             Ac = lM%IEN(a,e)
-!             Ac = lM%lN(Ac) 
+            Ac = lM%lN(Ac)
+
             stcElm(Ac,idxInsrt(Ac)) = e
             idxInsrt(Ac) = idxInsrt(Ac) + 1
          END DO
@@ -2703,7 +2716,6 @@ C       END DO
       idxInsrt = 1
       flag = .FALSE.
 
-
       DO e = 1, lM%nNo ! Fluid Id node
          DO a = 1, incNd(e) 
             IdElmF = stcElm(e,a) ! Id fluid element
@@ -2713,6 +2725,7 @@ C       END DO
 
                ! TODO FOR PARALLEL VERSION
                Ac = lM%IEN(i,IdElmF)
+               Ac = lM%lN(Ac) 
 !              Ac = lM%lN(Ac) 
                IF (Ac .EQ. e) CYCLE
 
