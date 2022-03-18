@@ -113,10 +113,7 @@
          CALL PICP
 
 !     Apply Dirichlet BCs strongly
-         CALL SETBCDIR(An, Yn, Dn)
-
-!     Initiator step for unfitted FSI with Nitsche 
-         CALL NTS_UPDATE(An, Yn, Dn)        
+         CALL SETBCDIR(An, Yn, Dn)     
 
 !     Inner loop for iteration
          DO
@@ -143,7 +140,7 @@
 
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
-               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg)
+               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Do)
                dbg = "Mesh "//iM//" is assembled"
             END DO
 
@@ -202,7 +199,7 @@
             CALL LSSOLVE(eq(cEq), incL, res)
 
 !        Solution is obtained, now updating (Corrector)
-            CALL PICC
+            CALL PICC  
 
 !        Checking for exceptions
             CALL EXCEPTIONS
@@ -223,6 +220,9 @@
                ib%Ubo = ib%Ubn
             END IF
          END IF
+
+!        Update maps for unfitted FSI with Nitsche, given the new solid displ
+         CALL NTS_UPDATE(An, Yn, Dn) 
 
 !     Saving the TXT files containing average and fluxes
          CALL TXT(.FALSE.)
