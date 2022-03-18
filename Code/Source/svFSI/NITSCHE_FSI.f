@@ -351,7 +351,7 @@
                END DO 
             END DO 
 
-            write(*,*)" seach on solid done, cnt = ", cnt
+            write(*,*)" seach on solid msh done, cnt = ", cnt
 
 !           FlagSubTri = 1: fluid element, 0: solid element, 2: to be divided
             IF ( cnt .EQ. 0 ) THEN 
