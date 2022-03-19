@@ -62,7 +62,7 @@
      2   Nwxx(:,:), Nqx(:,:), xp(:), xiCur(:,:)
 
       INTEGER(KIND=IKIND) maxSubTri, maxQuadPnt, bgn, end, cnt, is, As,
-     2   find, FlagToDel, i, j 
+     2   find, FlagToDel, i, j, maxLevel
       INTEGER(KIND=IKIND), ALLOCATABLE :: FlagSubTri(:), FlagLevel(:)
       REAL(KIND=RKIND), ALLOCATABLE :: lstSubTri(:,:,:), lstQdPnt(:,:)
       REAL(KIND=RKIND) :: poly(nsd,msh(2)%eNoN),
@@ -144,7 +144,8 @@
          Nwxx     = 0._RKIND
 
 !        Definition of the integration to use in this element based on physics 
-         IF((cPhys .EQ. phys_fluid).AND.(intFElmFlag(e) .EQ. 2)) GOTO 20
+         IF((cPhys.EQ.phys_fluid).AND.(intFElmFlag(e) .EQ. 2)) GOTO 20
+         IF((cPhys.EQ.phys_fluid).AND.(intFElmFlag(e) .EQ. 0)) GOTO 100
 
 !-----------------------------------------------------------------------
 !        Normal fluid or structure element 
@@ -268,11 +269,11 @@
 !        Let consider for the moment fs(1)%nG = fs(2)%nG 
 20       CONTINUE
 
-         write(*,*)" For element ", e, " cut-fem "
-         write(*,*)" Element coord: "
-         write(*,*) xl(:,1)
-         write(*,*) xl(:,2)
-         write(*,*) xl(:,3)
+C          write(*,*)" For element ", e, " cut-fem "
+C          write(*,*)" Element coord: "
+C          write(*,*) xl(:,1)
+C          write(*,*) xl(:,2)
+C          write(*,*) xl(:,3)
 
          ALLOCATE( xiCur(nsd,fs(1)%nG) )
 
@@ -289,6 +290,7 @@
          lstQdPnt   = -1._RKIND
          FlagSubTri = -1
          FlagLevel  = -1
+         maxLevel = 3
 
 !        Initialize lists with reference element 
          lstSubTri(:,1,1) = (/ 1._RKIND , 0._RKIND /)
@@ -306,31 +308,31 @@
             end = i*3
 
             IF (lstSubTri(1,1,i) .LT. -0.5_RKIND) THEN 
-               write(*,*)" We stop here for fluid elem ", e
+C                write(*,*)" We stop here for fluid elem ", e
                EXIT
             END IF
 
 !           Plots 
-            write(*,*)"FlagSubTri: ", FlagSubTri(i)
-            write(*,*)"FlagLevel: ", FlagLevel(i)
-            write(*,*)"lstSubTri: "
-            write(*,*) lstSubTri(:,1,i)
-            write(*,*) lstSubTri(:,2,i)
-            write(*,*) lstSubTri(:,3,i)
-            write(*,*)"lstQdPnt: "
-            write(*,*) lstQdPnt(:,bgn)
-            write(*,*) lstQdPnt(:,bgn+1)
-            write(*,*) lstQdPnt(:,bgn+2)
-            write(*,*)""
-            write(*,*)""
+C             write(*,*)"FlagSubTri: ", FlagSubTri(i)
+C             write(*,*)"FlagLevel: ", FlagLevel(i)
+C             write(*,*)"lstSubTri: "
+C             write(*,*) lstSubTri(:,1,i)
+C             write(*,*) lstSubTri(:,2,i)
+C             write(*,*) lstSubTri(:,3,i)
+C             write(*,*)"lstQdPnt: "
+C             write(*,*) lstQdPnt(:,bgn)
+C             write(*,*) lstQdPnt(:,bgn+1)
+C             write(*,*) lstQdPnt(:,bgn+2)
+C             write(*,*)""
+C             write(*,*)""
 
             CALL GET_PntRefToCur(lM, fs(1), xl, lstQdPnt(:,bgn:end), 
      2                                                          xiCur)
 
-            write(*,*)" GET_PntRefToCur done, xiCur = "
-            write(*,*) xiCur(:,1)
-            write(*,*) xiCur(:,2)
-            write(*,*) xiCur(:,3)
+C             write(*,*)" GET_PntRefToCur done, xiCur = "
+C             write(*,*) xiCur(:,1)
+C             write(*,*) xiCur(:,2)
+C             write(*,*) xiCur(:,3)
             
             cnt = 0
             DO g = 1, fs(1)%nG 
@@ -351,29 +353,34 @@
                END DO 
             END DO 
 
-            write(*,*)" seach on solid msh done, cnt = ", cnt
+C             write(*,*)" seach on solid msh done, cnt = ", cnt
 
 !           FlagSubTri = 1: fluid element, 0: solid element, 2: to be divided
             IF ( cnt .EQ. 0 ) THEN 
                FlagSubTri(i) = 1
-               write(*,*)" Flag sub elem ", i , "as fluid "
+C                write(*,*)" Flag sub elem ", i , "as fluid "
             ELSE IF ( cnt .EQ. fs(1)%nG ) THEN 
                FlagSubTri(i) = 0
-               write(*,*)" Flag sub elem ", i , "as solid "
+C                write(*,*)" Flag sub elem ", i , "as solid "
             ELSE 
                FlagSubTri(i) = 2
-               write(*,*)" Flag sub elem ", i , "as to divide "
+C                write(*,*)" Flag sub elem ", i , "as to divide "
             END IF
 
 !           Check if we have reached the maximum level of subdivision
-            IF ( FlagLevel(i) .EQ. 4 ) THEN 
+            IF ( FlagLevel(i) .EQ. maxLevel ) THEN 
                IF ( cnt .EQ. 1 ) FlagSubTri(i) = 1
-               IF ( cnt .EQ. 2 ) FlagSubTri(i) = 0
+               IF ( cnt .EQ. 2 ) FlagSubTri(i) = 1
+C                IF ( cnt .EQ. 0 ) write(*,*)"!! ATTENTION, we do not 
+C      2                                                     int here !! "
+!              This should be better, but we have to check that we integrate somewhere                
+!              or we will have conditioning issue                 
+C              IF ( cnt .EQ. 2 ) FlagSubTri(i) = 0
             END IF
 
             IF ( FlagSubTri(i) .EQ. 2 ) THEN
 
-               write(*,*)" Dividing element ", e
+C                write(*,*)" Dividing subElm " , i , " of element ", e
 
 !              Destroy lstSubTri(i), move all the next to left if the next is negative           
 !              and at the end of the list add the new sub tri 
@@ -382,19 +389,24 @@
 
                IF (lstSubTri(1,1,i+1) .LT. -0.5_RKIND) THEN 
                   j = i
-                  write(*,*)" Nothing to copy, just divide"
+C                   write(*,*)" Nothing to copy, just divide"
                   GOTO 30
                END IF
 
                DO j = i+1, maxSubTri
+                  IF (lstSubTri(1,1,j) .LT. -0.5_RKIND) THEN 
+                     EXIT 
+                  END IF
+
+C                   write(*,*)" Need to copy subtri ", j
                   
                   bgn = j*3-(fs(1)%nG-1)
                   end = j*3
 
-                  lstSubTri(:,:,j) = lstSubTri(:,:,j-1)
-                  FlagSubTri(j) = FlagSubTri(j-1)
-                  FlagLevel(j) = FlagLevel(j-1)
-                  lstQdPnt(:,bgn:end) = lstQdPnt(:,bgn-3:end-3)
+                  lstSubTri(:,:,j-1) = lstSubTri(:,:,j)
+                  FlagSubTri(j-1) = FlagSubTri(j)
+                  FlagLevel(j-1) = FlagLevel(j)
+                  lstQdPnt(:,bgn-3:end-3) = lstQdPnt(:,bgn:end)
 
                END DO
 !              We add to j-1 the new subTri and quad point 
@@ -414,34 +426,34 @@
                lstSubTri(:,1,j) = xlToDel(:,1)
                lstSubTri(:,2,j) = x4
                lstSubTri(:,3,j) = x6
-               write(*,*)" SubTri 1 "
-               write(*,*) lstSubTri(:,1,j)
-               write(*,*) lstSubTri(:,2,j)
-               write(*,*) lstSubTri(:,3,j)
+C                write(*,*)" SubTri 1 "
+C                write(*,*) lstSubTri(:,1,j)
+C                write(*,*) lstSubTri(:,2,j)
+C                write(*,*) lstSubTri(:,3,j)
 
                lstSubTri(:,1,j+1) = x4
                lstSubTri(:,2,j+1) = xlToDel(:,2)
                lstSubTri(:,3,j+1) = x5
-               write(*,*)" SubTri 2 "
-               write(*,*) lstSubTri(:,1,j+1)
-               write(*,*) lstSubTri(:,2,j+1)
-               write(*,*) lstSubTri(:,3,j+1)
+C                write(*,*)" SubTri 2 "
+C                write(*,*) lstSubTri(:,1,j+1)
+C                write(*,*) lstSubTri(:,2,j+1)
+C                write(*,*) lstSubTri(:,3,j+1)
 
                lstSubTri(:,1,j+2) = x6
                lstSubTri(:,2,j+2) = x5
                lstSubTri(:,3,j+2) = xlToDel(:,3)
-               write(*,*)" SubTri 3 "
-               write(*,*) lstSubTri(:,1,j+2)
-               write(*,*) lstSubTri(:,2,j+2)
-               write(*,*) lstSubTri(:,3,j+2)
+C                write(*,*)" SubTri 3 "
+C                write(*,*) lstSubTri(:,1,j+2)
+C                write(*,*) lstSubTri(:,2,j+2)
+C                write(*,*) lstSubTri(:,3,j+2)
 
                lstSubTri(:,1,j+3) = x6
                lstSubTri(:,2,j+3) = x4
                lstSubTri(:,3,j+3) = x5
-               write(*,*)" SubTri 4 "
-               write(*,*) lstSubTri(:,1,j+3)
-               write(*,*) lstSubTri(:,2,j+3)
-               write(*,*) lstSubTri(:,3,j+3)
+C                write(*,*)" SubTri 4 "
+C                write(*,*) lstSubTri(:,1,j+3)
+C                write(*,*) lstSubTri(:,2,j+3)
+C                write(*,*) lstSubTri(:,3,j+3)
 
 !              and 4*3 new subQuad points, we need the sub-element coord in the ref element 
                bgn = j*3-(fs(1)%nG-1)
@@ -477,21 +489,16 @@ C                i = i - 1
          END DO   
 
          maxSubTri = i - 1 
-         write(*,*)" element fluid ", e, " nbr sub elm ", maxSubTri
-         write(*,*)" FlagSubTri: ", FlagSubTri(1:maxSubTri)
-         write(*,*)" FlagLevel: ", FlagLevel(1:maxSubTri)
-         write(*,*)" lstSubTri: "
-         write(*,*) lstSubTri(:,1,1:maxSubTri)
-         write(*,*) lstSubTri(:,2,1:maxSubTri)
-         write(*,*) lstSubTri(:,3,1:maxSubTri)
-         write(*,*)""
+C          write(*,*)" element fluid ", e, " nbr sub elm ", maxSubTri
+C          write(*,*)" FlagSubTri: ", FlagSubTri(1:maxSubTri)
+C          write(*,*)" FlagLevel: ", FlagLevel(1:maxSubTri)
 
 
 !        Loop over subElm
          DO i = 1, maxSubTri
 !           If it is a full solid, cycle
             IF ( FlagSubTri(i) .EQ. 0) THEN 
-               write(*,*)" sub element ", i, " hidden "
+C                write(*,*)" sub element ", i, " hidden "
                CYCLE
             END IF
 
@@ -601,8 +608,47 @@ C                i = i - 1
       CALL DESTROY(fs(1))
       CALL DESTROY(fs(2))
 
+!     This need to be removed once we have a ghost penalty stabilization 
+      CALL CLEAN_GHOSTPNT
+
       RETURN
       END SUBROUTINE CONSTRUCT_NITSCHE_FSI
+!####################################################################
+!####################################################################
+
+      SUBROUTINE CLEAN_GHOSTPNT
+      USE TYPEMOD
+      USE COMMOD
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND) a, Ac, ptr, rowN, colN, left, right
+
+      DO a = 1, msh(1)%nNo
+         Ac = msh(1)%gN(a)
+         IF( ghostFNd(a) .EQ. 0) THEN
+            R(:,Ac) = 0._RKIND
+
+            left  = rowPtr(Ac)
+            right = rowPtr(Ac+1)
+
+            Val(:,left:right) = 0._RKIND
+
+            ptr   = (right + left)/2
+            DO WHILE (Ac .NE. colPtr(ptr))
+               IF (Ac .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+            Val(:,ptr) = 1._RKIND
+         END IF
+      END DO
+
+      RETURN
+      END SUBROUTINE CLEAN_GHOSTPNT
+
 !####################################################################
 !####################################################################
 !--------------------------------------------------------------------
@@ -665,7 +711,7 @@ C                i = i - 1
       INTEGER(KIND=IKIND) :: g
       REAL(KIND=RKIND) :: Def(nsd,nsd), rhsD(nsd) 
 
-      write(*,*)" Inside GET_PntRefToCur "
+C       write(*,*)" Inside GET_PntRefToCur "
 
 !     Loop over Gauss quad point
       DO g=1, fs%nG
