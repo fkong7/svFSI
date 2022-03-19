@@ -808,8 +808,28 @@
             CALL putVTK_elemData(vtu, 'Mesh_ID', tmpI, iStat)
             IF (iStat .LT. 0) err = "VTU file write error (mesh id)"
          END IF
+
+!     Write the fluid mesh ID intersected  
+         IF (nMsh .GT. 1) THEN
+            Ec = 0
+            DO iM=1, nMsh
+               DO e=1, d(iM)%nEl
+                  Ec = Ec + 1
+                  IF( iM .EQ. 2) THEN 
+                     tmpI(1,Ec) = INT(3, KIND=IKIND)
+                  ELSE IF ( iM .EQ. 1) THEN 
+                     tmpI(1,Ec) = intFElmFlag(e)
+                  ELSE 
+                     err = " !! ATTENTION Intersection_ID !! "
+                     tmpI(1,Ec) = -1
+                  END IF
+               END DO
+            END DO
+            CALL putVTK_elemData(vtu, 'Intersection_ID', tmpI, iStat)
+            IF (iStat .LT. 0) err = "VTU file write error (mesh id)"
+         END IF
          DEALLOCATE(tmpI)
-      END IF
+      END IF      
 
 !     Write element Jacobian and von Mises stress if necessary
       DO l=1, nOute
