@@ -843,8 +843,8 @@ C       write(*,*)" Inside GET_PntRefToCur "
       FNdFlag = 0
 
 !     Compute meshes diameter 
-!     msh(1)%mDiam = COMP_DIAM(msh(1))
-      msh(2)%mDiam = COMP_DIAM(msh(2))
+!     CALL COMP_DIAM(msh(1),msh(1)%mDiam)
+      CALL COMP_DIAM(msh(2),msh(2)%mDiam)
       write(*,*)" Diam solid computed "
 
 !     Create a bounding box around of the current solid location 
@@ -1109,7 +1109,7 @@ C       mapFElmSNd = mapFElmSNd + 1
 
 
 !     Compute B-Box around solid with fluid mesh size
-      msh(1)%mDiam = COMP_DIAM(msh(1))
+      CALL COMP_DIAM(msh(1),msh(1)%mDiam)
       write(*,*)" fluid mesh diam ", msh(1)%mDiam
 
 !     Create a bounding box around of the current solid location 
@@ -1396,4 +1396,99 @@ C       mapFElmSNd = mapFElmSNd + 1
          END SUBROUTINE RESIZ
 !--------------------------------------------------------------------
       END SUBROUTINE NTS_LHSA
+!####################################################################
+!####################################################################
+!     This routine computes the diam of a mesh with TRI type elements in 2D  
+      PURE SUBROUTINE COMP_DIAM(lM, maxDist)
+      USE COMMOD, ONLY : mshType, x
+      USE ALLFUN
+      USE UTILMOD
+      IMPLICIT NONE 
+
+      TYPE(mshType), INTENT(IN) :: lM 
+      REAL(KIND=RKIND), INTENT(OUT) :: maxDist
+      
+      REAL(KIND=RKIND) :: diam
+      INTEGER(KIND=IKIND) :: e, Ac, Acn
+
+      maxDist = TINY(maxDist)
+!     compute solid mesh diamter (in the current configuration)
+      DO e=1, lM%nEl
+
+         Ac = lM%IEN(1,e)
+         Acn = lM%IEN(2,e)
+         diam = DIST(x(:,Ac), x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         Ac = lM%IEN(2,e)
+         Acn = lM%IEN(3,e)
+         diam = DIST(x(:,Ac),x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         Ac = lM%IEN(1,e)
+         Acn = lM%IEN(3,e)
+         diam = DIST(x(:,Ac),x(:,Acn))
+         IF(diam .GT. maxDist) maxDist = diam
+
+      END DO
+
+      RETURN
+      END SUBROUTINE COMP_DIAM
+!####################################################################
+!     This routine computes the diam of a mesh with TRI type elements in 2D  
+      PURE SUBROUTINE COMP_ELM_DIAM(lM,poly,eNoN,maxDist)
+      USE COMMOD, ONLY : nsd, mshType
+      USE ALLFUN
+      USE UTILMOD
+      IMPLICIT NONE 
+
+      TYPE(mshType), INTENT(IN) :: lM 
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN
+      REAL(KIND=RKIND), INTENT(IN) :: poly(nsd,eNoN) 
+      REAL(KIND=RKIND), INTENT(OUT) :: maxDist
+      
+      REAL(KIND=RKIND) :: diam 
+      INTEGER(KIND=IKIND) :: e, Ac, Acn
+
+
+      maxDist = TINY(maxDist)
+!     compute solid mesh diamter (in the current configuration)
+      IF((nsd .EQ. 2) .AND. (eNoN .EQ. 3)) THEN
+
+         diam = DIST(poly(:,1),poly(:,2))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,2),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,1),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+      ELSE IF ((nsd .EQ. 3) .AND. (eNoN .EQ. 4)) THEN
+
+         diam = DIST(poly(:,1),poly(:,2))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,1),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,1),poly(:,4))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,2),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,2),poly(:,4))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,3),poly(:,4))
+         IF(diam .GT. maxDist) maxDist = diam
+
+      ELSE 
+         !write(*,*)" *** rule for elementwise distance not defined ***"
+         maxDist = 0._RKIND
+      END IF
+
+      RETURN
+      END SUBROUTINE COMP_ELM_DIAM
 !####################################################################
