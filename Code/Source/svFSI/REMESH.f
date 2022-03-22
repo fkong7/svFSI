@@ -338,6 +338,7 @@
             IF (ALLOCATED(msh(iM)%eIEN))   DEALLOCATE(msh(iM)%eIEN)
             IF (ALLOCATED(msh(iM)%sbc))    DEALLOCATE(msh(iM)%sbc)
             IF (ALLOCATED(msh(iM)%iGC))    DEALLOCATE(msh(iM)%iGC)
+            IF (ALLOCATED(msh(iM)%neigh))  DEALLOCATE(msh(iM)%neigh)
             IF (ALLOCATED(msh(iM)%nW))     DEALLOCATE(msh(iM)%nW)
             IF (ALLOCATED(msh(iM)%w))      DEALLOCATE(msh(iM)%w)
             IF (ALLOCATED(msh(iM)%xi))     DEALLOCATE(msh(iM)%xi)

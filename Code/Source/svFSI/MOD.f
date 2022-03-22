@@ -578,6 +578,9 @@
          INTEGER(KIND=IKIND), ALLOCATABLE :: sbc(:,:)
 !        IB: Whether a cell is a ghost cell or not
          INTEGER(KIND=IKIND), ALLOCATABLE :: iGC(:)
+!        Neighbours list for each element and face/edge 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: neigh(:,:)
+         
 !        Control points weights (NURBS)
          REAL(KIND=RKIND), ALLOCATABLE :: nW(:)
 !        Gauss weights

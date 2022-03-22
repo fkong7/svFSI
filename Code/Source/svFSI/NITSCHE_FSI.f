@@ -824,12 +824,13 @@ C       write(*,*)" Inside GET_PntRefToCur "
 !     We will make the assumption that the first mesh is the fluid and the 
 !     second the solid, this can be generalized 
 
-
-!     Define fluid mesh stencil 
-      CALL GETNSTENCIL(msh(1))
-      CALL GETNSTENCIL(msh(2))
-
-      write(*,*)" Stencil done "
+!     This is now done in READFILES if Nitsche flag is active 
+! !     Define fluid mesh stencil 
+!       CALL GETNSTENCIL(msh(1))
+!       CALL GETNSTENCIL(msh(2))!
+!       write(*,*)" Stencil done "!
+! !     Define neighbour structure necessary for ghost penalty stabilization 
+!       CALL GETNEIGH(msh(1))
 
       ALLOCATE( ghostFNd(msh(1)%nNo), FElmSNd(msh(1)%nEl,20), 
      2          FNdFlag(msh(1)%nNo),  mapSNdFElm(msh(2)%nNo), 
@@ -1093,9 +1094,9 @@ C       mapFElmSNd = mapFElmSNd + 1
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(OUT) :: nnz
 
-      LOGICAL flag
+      LOGICAL :: flag, isInsie
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic, jM, tmpr, tmpc
+     2   mnnzeic, jM, tmpr, tmpc, aopp, eOpp
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
@@ -1133,8 +1134,8 @@ C       mapFElmSNd = mapFElmSNd + 1
       END DO
 
       DO i=1, nsd
-         minb(i) = minXs(i) - 10._RKIND*msh(1)%mDiam 
-         maxb(i) = maxXs(i) + 10._RKIND*msh(1)%mDiam 
+         minb(i) = minXs(i) - 5._RKIND*msh(1)%mDiam 
+         maxb(i) = maxXs(i) + 5._RKIND*msh(1)%mDiam 
       END DO
 
       write(*,*)"The solid BBOX x-dir is: ", minb(1), " and ", maxb(1)
@@ -1142,14 +1143,15 @@ C       mapFElmSNd = mapFElmSNd + 1
 
 
 !     Select fluid-fluid, solid-solid and fluid-solid node to connect            
-      write(*,*)" tnNo = ", tnNo
       DO a=1, tnNo
          idMap(a) = a
       END DO
 
-      mnnzeic = 10*MAXVAL(msh%eNoN)
+      mnnzeic = 20*MAXVAL(msh%eNoN)
 
 !     First fill uInd array depending on mesh connectivity as is.
+!     TODO also add the stencil nodes, we need it for ghost penalty stab
+
       ALLOCATE (uInd(mnnzeic,tnNo))
       uInd = 0
       DO iM=1, nMsh
@@ -1166,7 +1168,53 @@ C       mapFElmSNd = mapFElmSNd + 1
          END DO
       END DO
 
-!     Adding Nitsche coupling connections (only Nitsche faces with all fluid nodes)
+!     Adding opposite Neigh nodes if a fluid element is inside the bigger 
+!     solid bounding-box)
+      DO iM=1, nMsh
+!        Select fluid mesh          
+         IF( msh(iM)%nNtsFa .EQ. 0) THEN 
+            DO e=1, msh(iM)%nEl
+
+!              Check if the element is inside the BBox
+               isInsie = .FALSE.
+
+               DO a=1, msh(iM)%eNoN
+                  rowN = msh(iM)%IEN(a,e)
+
+!                 Check that the fluid node is in the BBox, if yes, add connection 
+                  xp(:) = x(:,rowN) !+ lD(:,Ac)
+
+!                 Is the fluid node in the solid BBox? 
+                  IF((xp(1) .LE. maxb(1)) .AND. (xp(1) .GE. minb(1)) 
+     2                          .AND. (xp(2) .LE. maxb(2)) 
+     3                          .AND. (xp(2) .GE. minb(2))) THEN
+
+                     isInsie = .TRUE.
+                  END IF
+               END DO
+
+               IF( isInsie ) THEN
+!                  write(*,*)" Element ", e 
+                  DO a=1, msh(iM)%eNoN
+                     rowN = msh(iM)%IEN(a,e)
+                     eOpp = msh(iM)%neigh(e,a)
+
+                     DO aopp = 1, msh(iM)%eNoN
+                        colN = msh(iM)%IEN(aopp,eOpp)
+!                        write(*,*)" Adding connection ", rowN, 
+!     2                           " with ", colN
+                        CALL ADDCOL(rowN, colN)
+                        CALL ADDCOL(colN, rowN)
+                     END DO
+                  END DO
+               END IF
+            END DO
+         END IF
+      END DO
+
+
+!     Adding Nitsche coupling connections (only Nitsche faces with fluid 
+!     nodes inside a bigger solid bounding-box)
       DO iM=1, nMsh
          IF( msh(iM)%nNtsFa .EQ. 0) CYCLE         
 

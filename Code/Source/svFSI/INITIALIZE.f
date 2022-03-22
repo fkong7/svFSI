@@ -189,6 +189,14 @@
       IF (.NOT.ntsFlag) THEN
          CALL LHSA(nnz)
       ELSE 
+!        THIS NEEDS TO BE DONE BETTER (to be extended for multiple F/S meshes)
+!        Define fluid mesh stencil 
+         CALL GETNSTENCIL(msh(1))
+         CALL GETNSTENCIL(msh(2))
+
+!        Define neighbour structure necessary for ghost penalty stabilization 
+         CALL GETNEIGH(msh(1))
+
          CALL NTS_LHSA(nnz)
       END IF
 

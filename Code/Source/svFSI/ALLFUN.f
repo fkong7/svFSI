@@ -1166,6 +1166,7 @@
       IF (ALLOCATED(lM%eIEN))    DEALLOCATE(lM%eIEN)
       IF (ALLOCATED(lM%sbc))     DEALLOCATE(lM%sbc)
       IF (ALLOCATED(lM%iGC))     DEALLOCATE(lM%iGC)
+      IF (ALLOCATED(lM%neigh))   DEALLOCATE(lM%neigh)
       IF (ALLOCATED(lM%nW))      DEALLOCATE(lM%nW)
       IF (ALLOCATED(lM%w))       DEALLOCATE(lM%w)
       IF (ALLOCATED(lM%xib))     DEALLOCATE(lM%xib)
@@ -2783,6 +2784,85 @@ C       END DO
 
       RETURN
       END SUBROUTINE GETNSTENCIL
+!####################################################################
+!####################################################################
+!     Find element neighbors  ?? CHECK for parallel version and for not TRI or TET meshes
+!     Computes list of all neigh around an element using stencil, i.e.  
+!     GETNSTENCIL needs to be called in advance 
+!     For ghost penalty stabilization for unfitted meshes (computed for the fluid mesh) 
+      SUBROUTINE GETNEIGH(lM)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(INOUT) :: lM
+
+      INTEGER(KIND=IKIND) :: a, e, nodeSt, nbrSN, cnt, is, eSt, Ac, Bc, 
+     2                                        i, j
+      INTEGER(KIND=IKIND) :: faceID(lM%eNoN, lM%eNoN-1)
+
+      ALLOCATE(lM%neigh(lM%nEl,lM%eNoN))
+      
+!     If we did not find any neigh, the face is a boundary face (neigh = -1)
+      lM%neigh = -1
+
+      IF ( nsd .EQ. 2 ) THEN
+         faceID(1,:) = (/2, 3/)
+         faceID(2,:) = (/3, 1/)
+         faceID(3,:) = (/1, 2/)
+      ELSE IF ( nsd .EQ. 3 ) THEN
+         faceID(1,:) = (/2, 3, 4/)
+         faceID(2,:) = (/4, 3, 1/)
+         faceID(3,:) = (/1, 2, 4/)
+         faceID(4,:) = (/1, 3, 2/)
+      ELSE 
+         err = "Dimension not supported in GETNEIGH"
+      END IF
+
+!     TODO: CHECK FOR PARALLEL VERSION
+
+!     Loop over element 
+      DO e=1, lM%nEl
+
+!        Loop over faces/edges          
+         DO a=1, lM%eNoN
+!           Get nbr of elements in the stencil 
+            nodeSt = lM%lN(lM%IEN(faceID(a,1),e))
+            nbrSN = msh(1)%stn%nbrNdStn(nodeSt)
+
+            cnt = 0
+
+!           Loop over element stencil of the first node of the face
+            DO is = 1, nbrSN
+
+               cnt = 0
+
+               eSt =  lm%stn%elmStn(nodeSt,is)
+
+               IF( eSt .EQ. e) CYCLE
+
+               DO i = 1, lM%eNoN-1
+                  DO j = 1, lM%eNoN
+                     Ac = lM%lN(lM%IEN(faceID(a,i),e))
+                     Bc = lM%lN(lM%IEN(j,eSt))
+
+                     IF( Ac .EQ. Bc ) cnt = cnt + 1
+                  END DO
+               END DO
+
+               IF (cnt .EQ. lM%eNoN-1) lM%neigh(e,a) = eSt
+
+            END DO 
+         END DO
+      END DO
+
+!     Printing neigh 
+!      write(*,*)" The neigh are: "
+!      DO e=1, lM%nEl
+!         write(*,*)" element ", e
+!         write(*,*), lM%neigh(e,:)
+!      END DO
+
+      RETURN
+      END SUBROUTINE GETNEIGH
 
 !####################################################################
 !####################################################################
