@@ -1262,6 +1262,223 @@ c        N(8) = lx*my*0.5_RKIND
 
       RETURN
       END SUBROUTINE GETGNN
+!####################################################################
+!     Returns shape functions and derivatives at given natural coords
+      SUBROUTINE GETN(insd, eType, eNoN, xi, N)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, eNoN
+      REAL(KIND=RKIND), INTENT(IN)  :: xi(insd)
+      REAL(KIND=RKIND), INTENT(OUT) :: N(eNoN)
+
+      REAL(KIND=RKIND) :: s, t, mx, my, mz, ux, uy, uz, lx, ly, lz
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+!     3D elements
+      SELECT CASE(eType)
+      CASE(eType_TET4)
+         N(1) = xi(1)
+         N(2) = xi(2)
+         N(3) = xi(3)
+         N(4) = 1._RKIND - xi(1) - xi(2) - xi(3)
+
+      CASE(eType_TET10)
+         s     = 1._RKIND - xi(1) - xi(2) - xi(3)
+         N(1)  = xi(1)*(2._RKIND*xi(1) - 1._RKIND)
+         N(2)  = xi(2)*(2._RKIND*xi(2) - 1._RKIND)
+         N(3)  = xi(3)*(2._RKIND*xi(3) - 1._RKIND)
+         N(4)  = s    *(2._RKIND*s     - 1._RKIND)
+         N(5)  = 4._RKIND*xi(1)*xi(2)
+         N(6)  = 4._RKIND*xi(2)*xi(3)
+         N(7)  = 4._RKIND*xi(1)*xi(3)
+         N(8)  = 4._RKIND*xi(1)*s
+         N(9)  = 4._RKIND*xi(2)*s
+         N(10) = 4._RKIND*xi(3)*s
+
+!     2D elements
+      CASE(eType_HEX8)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         lz = 1._RKIND - xi(3)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+         uz = 1._RKIND + xi(3)
+
+         N(1) = lx*ly*lz/8._RKIND
+         N(2) = ux*ly*lz/8._RKIND
+         N(3) = ux*uy*lz/8._RKIND
+         N(4) = lx*uy*lz/8._RKIND
+         N(5) = lx*ly*uz/8._RKIND
+         N(6) = ux*ly*uz/8._RKIND
+         N(7) = ux*uy*uz/8._RKIND
+         N(8) = lx*uy*uz/8._RKIND
+
+      CASE(eType_HEX20)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         lz = 1._RKIND - xi(3)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+         uz = 1._RKIND + xi(3)
+         mx = lx*ux
+         my = ly*uy
+         mz = lz*uz
+
+         N(1)  = lx*ly*lz*(lx+ly+lz-5._RKIND)/8._RKIND
+         N(2)  = ux*ly*lz*(ux+ly+lz-5._RKIND)/8._RKIND
+         N(3)  = ux*uy*lz*(ux+uy+lz-5._RKIND)/8._RKIND
+         N(4)  = lx*uy*lz*(lx+uy+lz-5._RKIND)/8._RKIND
+         N(5)  = lx*ly*uz*(lx+ly+uz-5._RKIND)/8._RKIND
+         N(6)  = ux*ly*uz*(ux+ly+uz-5._RKIND)/8._RKIND
+         N(7)  = ux*uy*uz*(ux+uy+uz-5._RKIND)/8._RKIND
+         N(8)  = lx*uy*uz*(lx+uy+uz-5._RKIND)/8._RKIND
+         N(9)  = mx*ly*lz/4._RKIND
+         N(10) = ux*my*lz/4._RKIND
+         N(11) = mx*uy*lz/4._RKIND
+         N(12) = lx*my*lz/4._RKIND
+         N(13) = mx*ly*uz/4._RKIND
+         N(14) = ux*my*uz/4._RKIND
+         N(15) = mx*uy*uz/4._RKIND
+         N(16) = lx*my*uz/4._RKIND
+         N(17) = lx*ly*mz/4._RKIND
+         N(18) = ux*ly*mz/4._RKIND
+         N(19) = ux*uy*mz/4._RKIND
+         N(20) = lx*uy*mz/4._RKIND
+
+      CASE(eType_HEX27)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         lz = 1._RKIND - xi(3)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+         uz = 1._RKIND + xi(3)
+         mx = xi(1)
+         my = xi(2)
+         mz = xi(3)
+
+         N(1)  = -mx*lx*my*ly*mz*lz/8._RKIND
+         N(2)  =  mx*ux*my*ly*mz*lz/8._RKIND
+         N(3)  = -mx*ux*my*uy*mz*lz/8._RKIND
+         N(4)  =  mx*lx*my*uy*mz*lz/8._RKIND
+         N(5)  =  mx*lx*my*ly*mz*uz/8._RKIND
+         N(6)  = -mx*ux*my*ly*mz*uz/8._RKIND
+         N(7)  =  mx*ux*my*uy*mz*uz/8._RKIND
+         N(8)  = -mx*lx*my*uy*mz*uz/8._RKIND
+         N(9)  =  lx*ux*my*ly*mz*lz/4._RKIND
+         N(10) = -mx*ux*ly*uy*mz*lz/4._RKIND
+         N(11) = -lx*ux*my*uy*mz*lz/4._RKIND
+         N(12) =  mx*lx*ly*uy*mz*lz/4._RKIND
+         N(13) = -lx*ux*my*ly*mz*uz/4._RKIND
+         N(14) =  mx*ux*ly*uy*mz*uz/4._RKIND
+         N(15) =  lx*ux*my*uy*mz*uz/4._RKIND
+         N(16) = -mx*lx*ly*uy*mz*uz/4._RKIND
+         N(17) =  mx*lx*my*ly*lz*uz/4._RKIND
+         N(18) = -mx*ux*my*ly*lz*uz/4._RKIND
+         N(19) =  mx*ux*my*uy*lz*uz/4._RKIND
+         N(20) = -mx*lx*my*uy*lz*uz/4._RKIND
+
+         N(21) = -mx*lx*ly*uy*lz*uz/2._RKIND
+         N(22) =  mx*ux*ly*uy*lz*uz/2._RKIND
+         N(23) = -lx*ux*my*ly*lz*uz/2._RKIND
+         N(24) =  lx*ux*my*uy*lz*uz/2._RKIND
+         N(25) = -lx*ux*ly*uy*mz*lz/2._RKIND
+         N(26) =  lx*ux*ly*uy*mz*uz/2._RKIND
+
+         N(27) =  lx*ux*ly*uy*lz*uz
+
+      CASE(eType_WDG)
+         ux = xi(1)
+         uy = xi(2)
+         uz = 1._RKIND - ux - uy
+         s = (1._RKIND + xi(3))*0.5_RKIND
+         t = (1._RKIND - xi(3))*0.5_RKIND
+         N(1) = ux*t
+         N(2) = uy*t
+         N(3) = uz*t
+         N(4) = ux*s
+         N(5) = uy*s
+         N(6) = uz*s
+
+      CASE(eType_TRI3)
+         N(1) = xi(1)
+         N(2) = xi(2)
+         N(3) = 1._RKIND - xi(1) - xi(2)
+
+      CASE(eType_TRI6)
+         s    = 1._RKIND - xi(1) - xi(2)
+         N(1) = xi(1)*( 2._RKIND*xi(1) - 1._RKIND )
+         N(2) = xi(2)*( 2._RKIND*xi(2) - 1._RKIND )
+         N(3) = s    *( 2._RKIND*s     - 1._RKIND )
+         N(4) = 4._RKIND*xi(1)*xi(2)
+         N(5) = 4._RKIND*xi(2)*s
+         N(6) = 4._RKIND*xi(1)*s
+
+      CASE(eType_QUD4)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+
+         N(1) = lx*ly/4._RKIND
+         N(2) = ux*ly/4._RKIND
+         N(3) = ux*uy/4._RKIND
+         N(4) = lx*uy/4._RKIND
+
+      CASE(eType_QUD8)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+         mx = lx*ux
+         my = ly*uy
+
+         N(1) = lx*ly*(lx+ly-3._RKIND)/4._RKIND
+         N(2) = ux*ly*(ux+ly-3._RKIND)/4._RKIND
+         N(3) = ux*uy*(ux+uy-3._RKIND)/4._RKIND
+         N(4) = lx*uy*(lx+uy-3._RKIND)/4._RKIND
+         N(5) = mx*ly*0.5_RKIND
+         N(6) = ux*my*0.5_RKIND
+         N(7) = mx*uy*0.5_RKIND
+         N(8) = lx*my*0.5_RKIND
+
+
+      CASE(eType_QUD9)
+         lx = 1._RKIND - xi(1)
+         ly = 1._RKIND - xi(2)
+         ux = 1._RKIND + xi(1)
+         uy = 1._RKIND + xi(2)
+         mx = xi(1)
+         my = xi(2)
+
+         N(1) =  mx*lx*my*ly/4._RKIND
+         N(2) = -mx*ux*my*ly/4._RKIND
+         N(3) =  mx*ux*my*uy/4._RKIND
+         N(4) = -mx*lx*my*uy/4._RKIND
+         N(5) = -lx*ux*my*ly*0.5_RKIND
+         N(6) =  mx*ux*ly*uy*0.5_RKIND
+         N(7) =  lx*ux*my*uy*0.5_RKIND
+         N(8) = -mx*lx*ly*uy*0.5_RKIND
+         N(9) =  lx*ux*ly*uy
+
+!     1D elements
+      CASE(eType_LIN1)
+         N(1) = (1._RKIND - xi(1))*0.5_RKIND
+         N(2) = (1._RKIND + xi(1))*0.5_RKIND
+
+      CASE(eType_LIN2)
+         N(1) = -xi(1)*(1._RKIND - xi(1))*0.5_RKIND
+         N(2) =  xi(1)*(1._RKIND + xi(1))*0.5_RKIND
+         N(3) = (1._RKIND - xi(1))*(1._RKIND + xi(1))
+
+!     0D elements
+      CASE(eType_PNT)
+         N(1) = 1._RKIND
+
+      END SELECT
+
+      RETURN
+      END SUBROUTINE GETN
 !--------------------------------------------------------------------
 !     Returns second order derivatives at given natural coords
       SUBROUTINE GETGNNxx(insd, ind2, eType, eNoN, xi, Nxx)
@@ -1563,6 +1780,94 @@ c        N(8) = lx*my*0.5_RKIND
 
       RETURN
       END SUBROUTINE GNN
+!####################################################################
+      SUBROUTINE GNN_FACE(eNoN, insd, Nxi, x, Nx, Jac, FinvT)
+      USE COMMOD, ONLY: nsd
+      USE UTILMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, insd
+      REAL(KIND=RKIND), INTENT(IN) :: Nxi(insd,eNoN), x(nsd,eNoN)
+      REAL(KIND=RKIND), INTENT(OUT) :: Nx(insd,eNoN),Jac,FinvT(nsd,nsd)
+
+      INTEGER(KIND=IKIND) a
+      REAL(KIND=RKIND) xXi(nsd,insd), xiX(insd,nsd)
+
+      xXi    = 0._RKIND
+      Jac    = 0._RKIND
+      Nx     = 0._RKIND
+      FinvT  = 0._RKIND
+      IF (insd .EQ. 1) THEN
+         DO a=1, eNoN
+            xXi(:,1) = xXi(:,1) + x(:,a)*Nxi(1,a)
+         END DO
+
+         Jac = SQRT(NORM(xXi)) + 1.E+3_RKIND*eps
+         DO a=1, eNoN
+            Nx(1,a) = Nxi(1,a)/Jac
+         END DO
+      ELSE IF (insd .EQ. 2) THEN
+         DO a=1, eNoN
+            xXi(:,1) = xXi(:,1) + x(:,a)*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,a)*Nxi(2,a)
+         END DO
+
+         Jac = xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1)
+
+!        inverse of the deformation gradient 
+         xiX(1,1) =  xXi(2,2)/Jac
+         xiX(1,2) = -xXi(1,2)/Jac
+         xiX(2,1) = -xXi(2,1)/Jac
+         xiX(2,2) =  xXi(1,1)/Jac
+
+         FinvT = TRANSPOSE(xiX)
+
+         DO a=1, eNoN
+            Nx(1,a) = Nx(1,a)+ Nxi(1,a)*xiX(1,1) + Nxi(2,a)*xiX(2,1)
+            Nx(2,a) = Nx(2,a)+ Nxi(1,a)*xiX(1,2) + Nxi(2,a)*xiX(2,2)
+         END DO
+      ELSE IF (insd .EQ. 3) THEN
+         DO a=1, eNoN
+            xXi(:,1) = xXi(:,1) + x(:,a)*Nxi(1,a)
+            xXi(:,2) = xXi(:,2) + x(:,a)*Nxi(2,a)
+            xXi(:,3) = xXi(:,3) + x(:,a)*Nxi(3,a)
+         END DO
+
+         Jac = xXi(1,1)*xXi(2,2)*xXi(3,3)
+     2       + xXi(1,2)*xXi(2,3)*xXi(3,1)
+     3       + xXi(1,3)*xXi(2,1)*xXi(3,2)
+     4       - xXi(1,1)*xXi(2,3)*xXi(3,2)
+     5       - xXi(1,2)*xXi(2,1)*xXi(3,3)
+     6       - xXi(1,3)*xXi(2,2)*xXi(3,1)
+
+         xiX(1,1) = (xXi(2,2)*xXi(3,3) - xXi(2,3)*xXi(3,2))/Jac
+         xiX(1,2) = (xXi(3,2)*xXi(1,3) - xXi(3,3)*xXi(1,2))/Jac
+         xiX(1,3) = (xXi(1,2)*xXi(2,3) - xXi(1,3)*xXi(2,2))/Jac
+         xiX(2,1) = (xXi(2,3)*xXi(3,1) - xXi(2,1)*xXi(3,3))/Jac
+         xiX(2,2) = (xXi(3,3)*xXi(1,1) - xXi(3,1)*xXi(1,3))/Jac
+         xiX(2,3) = (xXi(1,3)*xXi(2,1) - xXi(1,1)*xXi(2,3))/Jac
+         xiX(3,1) = (xXi(2,1)*xXi(3,2) - xXi(2,2)*xXi(3,1))/Jac
+         xiX(3,2) = (xXi(3,1)*xXi(1,2) - xXi(3,2)*xXi(1,1))/Jac
+         xiX(3,3) = (xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1))/Jac
+
+         FinvT = TRANSPOSE(xiX)
+
+         DO a=1, eNoN
+            Nx(1,a) = Nx(1,a) + Nxi(1,a)*xiX(1,1)
+     2                        + Nxi(2,a)*xiX(2,1)
+     3                        + Nxi(3,a)*xiX(3,1)
+
+            Nx(2,a) = Nx(2,a) + Nxi(1,a)*xiX(1,2)
+     2                        + Nxi(2,a)*xiX(2,2)
+     3                        + Nxi(3,a)*xiX(3,2)
+
+            Nx(3,a) = Nx(3,a) + Nxi(1,a)*xiX(1,3)
+     2                        + Nxi(2,a)*xiX(2,3)
+     3                        + Nxi(3,a)*xiX(3,3)
+         END DO
+      END IF
+
+      RETURN
+      END SUBROUTINE GNN_FACE
 !--------------------------------------------------------------------
 !     Compute second order derivative on parent element
       SUBROUTINE GNNxx(l, eNoN, insd, Nxi, Nxi2, lx, Nx, Nxx)

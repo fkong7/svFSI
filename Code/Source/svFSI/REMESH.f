@@ -377,6 +377,7 @@
       IF (ALLOCATED(cmmBdry))     DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))      DEALLOCATE(iblank)            
       IF (ALLOCATED(mapFElmSNd))  DEALLOCATE(mapFElmSNd)
+      IF (ALLOCATED(mapFElmSElm)) DEALLOCATE(mapFElmSElm)
       IF (ALLOCATED(mapSNdFElm))  DEALLOCATE(mapSNdFElm)
       IF (ALLOCATED(intFElmFlag)) DEALLOCATE(intFElmFlag)
       IF (ALLOCATED(ghostFNd))    DEALLOCATE(ghostFNd)

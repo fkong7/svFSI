@@ -956,15 +956,22 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: cmmBdry(:)
 
 
-!     Used for Nitsche-unfitted FSI: for each fluid element gives list of internal solid nodes 
+!     Used for Nitsche-unfitted FSI: for each fluid element gives the 
+!     list of internal solid nodes 
       INTEGER(KIND=IKIND), ALLOCATABLE :: mapFElmSNd(:,:)
-!     Used for Nitsche-unfitted FSI: for each solid node gives id fluid element  
+!     Used for Nitsche-unfitted FSI: for each fluid element gives the 
+!     list of internal solid elements 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: mapFElmSElm(:,:,:)
+!     Used for Nitsche-unfitted FSI: for each solid node gives id fluid 
+!     element  
       INTEGER(KIND=IKIND), ALLOCATABLE :: mapSNdFElm(:)
 !     Used for Nitsche-unfitted FSI: flag for each fluid element: 
 !     1 normal, 2 intersected from Nitsche Bnd, 0 hidden element 
       INTEGER(KIND=IKIND), ALLOCATABLE :: intFElmFlag(:)
 !     Isolated fluid nodes under solid mesh (0 isolated, 1 normal node) 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ghostFNd(:)
+!     Number of max finite cell sub-division level 
+      INTEGER(KIND=IKIND) :: nbrFntCllSD = 3
 
 
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)

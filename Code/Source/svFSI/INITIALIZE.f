@@ -191,12 +191,16 @@
       ELSE 
 !        THIS NEEDS TO BE DONE BETTER (to be extended for multiple F/S meshes)
 !        Define fluid mesh stencil 
+         write(*,*)" before GETNSTENCIL msh 1"
          CALL GETNSTENCIL(msh(1))
+         write(*,*)" before GETNSTENCIL msh 2"
          CALL GETNSTENCIL(msh(2))
 
 !        Define neighbour structure necessary for ghost penalty stabilization 
+         write(*,*)" before GETNEIGH"
          CALL GETNEIGH(msh(1))
 
+         write(*,*)" before NTS_LHSA"
          CALL NTS_LHSA(nnz)
       END IF
 
@@ -658,6 +662,7 @@
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
 
       IF (ALLOCATED(mapFElmSNd))  DEALLOCATE(mapFElmSNd)
+      IF (ALLOCATED(mapFElmSElm)) DEALLOCATE(mapFElmSElm)
       IF (ALLOCATED(mapSNdFElm))  DEALLOCATE(mapSNdFElm)
       IF (ALLOCATED(intFElmFlag)) DEALLOCATE(intFElmFlag)
       IF (ALLOCATED(ghostFNd))    DEALLOCATE(ghostFNd)

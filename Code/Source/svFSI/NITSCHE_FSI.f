@@ -38,7 +38,7 @@
 
 !--------------------------------------------------------------------
 !
-!     TODO
+!     TODO Description
 !
 !--------------------------------------------------------------------
       SUBROUTINE CONSTRUCT_NITSCHE_FSI(lM, Ag, Yg, Dg, lD)
@@ -49,25 +49,61 @@
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo), lD(tDof, tnNo)
 
-      LOGICAL :: vmsStab, flag
+      LOGICAL :: vmsStab, flag, computeBoth
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, N
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
-      TYPE(fsType) :: fs(2)
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), FinvT(nsd,nsd)
+      TYPE(fsType) :: fs(2), fsFace, fsFaceCur, fsFaceOpp
 
-      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:), ptrOpp(:)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), al(:,:), yl(:,:),
      2   dl(:,:), bfl(:,:), fN(:,:), pS0l(:,:), pSl(:), ya_l(:),
-     3   lR(:,:), lK(:,:,:), lKd(:,:,:)
+     3   lR(:,:), lK(:,:,:), lKd(:,:,:), xfacCur(:,:), xfacOpp(:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
      2   Nwxx(:,:), Nqx(:,:), xp(:), xiCur(:,:)
 
       INTEGER(KIND=IKIND) maxSubTri, maxQuadPnt, bgn, end, cnt, is, As,
-     2   find, FlagToDel, i, j, maxLevel
+     2   find, FlagToDel, i, j, maxLevel, eNoNF, eTypeF, nGF, idSolFac
+
       INTEGER(KIND=IKIND), ALLOCATABLE :: FlagSubTri(:), FlagLevel(:)
       REAL(KIND=RKIND), ALLOCATABLE :: lstSubTri(:,:,:), lstQdPnt(:,:)
       REAL(KIND=RKIND) :: poly(nsd,msh(2)%eNoN),
      2                    xlToDel(nsd,msh(2)%eNoN), x4(nsd), x5(nsd), 
      3                    x6(nsd), JacSub
+
+      INTEGER(KIND=IKIND) :: f, b, faceID(msh(1)%eNoN, msh(1)%eNoN-1), 
+     2                       eOpp, iFa, iFNit, isf, maxNbrSElm, nbrSElm, 
+     3                       nGFTot, bng, iv
+      REAL(KIND=RKIND) :: Nfac(nsd), NCur(nsd), nrm, n1,n2,n3, dNU(nsd), 
+     2                    dNUOpp(nsd), dNVb, dNVa, ghsP, visc, diamFace, 
+     3                    gammag, measMetric, wt, diam, nitscheP
+      REAL(KIND=RKIND), ALLOCATABLE :: covBas(:,:), xFacOp(:,:), 
+     2                   xFace(:,:), xlOpp(:,:), NwxOp(:,:), lROpp(:,:), 
+     3                   lKCurOpp(:,:,:), lKOpp(:,:,:), lKOppCur(:,:,:),
+     4                   ylOp(:,:), covMetric(:,:), FSubElm(:,:,:),
+     5                   qpFlu(:,:), qpSol(:,:), xFRef(:,:)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: FlagSubElm(:), ptrSOl(:)
+
+!     Parent shape function sub element 
+      REAL(KIND=RKIND), ALLOCATABLE :: Nwf(:,:), Nws(:,:), lRS(:,:), 
+     2                  lKS(:,:,:), lKSF(:,:,:), lKFS(:,:,:), yls(:,:)      
+
+
+      INTERFACE
+         SUBROUTINE GET_SElmQuadPoint(nbrSElm, eTypeF, eNonF, nG, nGF, 
+     2                         crdFace, quadPnt, SElm, qPRef )
+         USE COMMOD
+         IMPLICIT NONE
+         INTEGER(KIND=IKIND), INTENT(IN) :: nbrSElm, eTypeF,nG,nGF,eNonF
+         REAL(KIND=RKIND), INTENT(IN) :: crdFace(nsd, eNonF)
+         REAL(KIND=RKIND), INTENT(OUT) :: quadPnt(nsd, nGF)
+         REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: SElm(nsd-1,
+     2                                                    eNonF,nbrSElm)
+         REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: qPRef(nsd-1, nGF)
+         END SUBROUTINE GET_SElmQuadPoint
+      END INTERFACE
+
 
       eNoN = lM%eNoN
       nFn  = lM%nFn
@@ -87,10 +123,20 @@
      3   pSl(nsymd), ya_l(eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN),
      4   lKd(dof*nsd,eNoN,eNoN), xp(nsd))
 
+!     Only at the first time we enter here
+C       cDmn  = DOMAIN(lM, cEq, 1)
+C       cPhys = eq(cEq)%dmn(cDmn)%phys
+C       IF (cPhys .EQ. phys_fluid) THEN 
+C          CALL CONSTR_mapFElmSElm(lD)
+C       END IF
+
+      
+
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
          cDmn  = DOMAIN(lM, cEq, e)
          cPhys = eq(cEq)%dmn(cDmn)%phys
+
          IF ((cPhys .NE. phys_fluid)  .AND.
      2       (cPhys .NE. phys_lElas)  .AND.
      3       (cPhys .NE. phys_struct) .AND.
@@ -143,8 +189,10 @@
          Nqx      = 0._RKIND
          Nwxx     = 0._RKIND
 
-!        Definition of the integration to use in this element based on physics 
+!        Definition of different integration in this element based on physics 
          IF((cPhys.EQ.phys_fluid).AND.(intFElmFlag(e) .EQ. 2)) GOTO 20
+
+!         IF((cPhys.EQ.phys_fluid).AND.(intFElmFlag(e) .EQ. 0)) GOTO 21
          IF((cPhys.EQ.phys_fluid).AND.(intFElmFlag(e) .EQ. 0)) GOTO 100
 
 !-----------------------------------------------------------------------
@@ -275,10 +323,128 @@ C          write(*,*) xl(:,1)
 C          write(*,*) xl(:,2)
 C          write(*,*) xl(:,3)
 
+
+!-------------- No Bulk term integration 
+
+C !        Gauss integration 1
+C          DO g=1, fs(1)%nG
+C             IF (g.EQ.1 .OR. .NOT.fs(2)%lShpF) THEN
+C                CALL GNN(fs(2)%eNoN, nsd, fs(2)%Nx(:,:,g), xql, Nqx, Jac,
+C      2            ksix)
+C                IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+C             END IF
+
+C             IF (g.EQ.1 .OR. .NOT.fs(1)%lShpF) THEN
+C                CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xwl, Nwx, Jac,
+C      2            ksix)
+C                IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+
+C                CALL GNNxx(l, fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g),
+C      2            fs(1)%Nxx(:,:,g), xwl, Nwx, Nwxx)
+C             END IF
+C             w = fs(1)%w(g) * Jac
+
+C             IF (nsd .EQ. 3) THEN
+C                SELECT CASE (cPhys)
+C                CASE (phys_fluid)
+C                   CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+C      3               al, yl, bfl, lR, lK)
+
+C                CASE (phys_lElas)
+C                   CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
+C      2               bfl, pS0l, pSl, lR, lK)
+
+C                CASE (phys_struct)
+C                   CALL STRUCT3D(fs(1)%eNoN, nFn, w, fs(1)%N(:,g), Nwx,
+C      2               al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK)
+
+C                CASE (phys_ustruct)
+C                   CALL USTRUCT3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, nFn,
+C      2               w, Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, al, yl,
+C      3               dl, bfl, fN, ya_l, lR, lK, lKd)
+
+C                END SELECT
+
+C             ELSE IF (nsd .EQ. 2) THEN
+C                SELECT CASE (cPhys)
+C                CASE (phys_fluid)
+C                   CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+C      3               al, yl, bfl, lR, lK)
+
+C                CASE (phys_lElas)
+C                   CALL LELAS2D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
+C      2               bfl, pS0l, pSl, lR, lK)
+
+C                CASE (phys_struct)
+C                   CALL STRUCT2D(fs(1)%eNoN, nFn, w, fs(1)%N(:,g), Nwx,
+C      2               al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK)
+
+C                CASE (phys_ustruct)
+C                   CALL USTRUCT2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, nFn,
+C      2               w, Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, al, yl,
+C      3               dl, bfl, fN, ya_l, lR, lK, lKd)
+
+C                END SELECT
+C             END IF
+C          END DO ! g: loop
+
+C !        Set function spaces for velocity and pressure.
+C          CALL GETTHOODFS(fs, lM, vmsStab, 2)
+
+C !        Gauss integration 2
+C          DO g=1, fs(2)%nG
+C             IF (g.EQ.1 .OR. .NOT.fs(1)%lShpF) THEN
+C                CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xwl, Nwx, Jac,
+C      2            ksix)
+C                IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+C             END IF
+
+C             IF (g.EQ.1 .OR. .NOT.fs(2)%lShpF) THEN
+C                CALL GNN(fs(2)%eNoN, nsd, fs(2)%Nx(:,:,g), xql, Nqx, Jac,
+C      2            ksix)
+C                IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+C             END IF
+C             w = fs(2)%w(g) * Jac
+
+C             IF (nsd .EQ. 3) THEN
+C                SELECT CASE (cPhys)
+C                CASE (phys_fluid)
+C                   CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+C      3               al, yl, bfl, lR, lK)
+
+C                CASE (phys_ustruct)
+C                   CALL USTRUCT3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, al, yl,
+C      3               dl, bfl, lR, lK, lKd)
+C                END SELECT
+
+C             ELSE IF (nsd .EQ. 2) THEN
+C                SELECT CASE (cPhys)
+C                CASE (phys_fluid)
+C                   CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+C      3               al, yl, bfl, lR, lK)
+
+C                CASE (phys_ustruct)
+C                   CALL USTRUCT2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, al, yl,
+C      3               dl, bfl, lR, lK, lKd)
+C                END SELECT
+C             END IF
+C          END DO ! g: loop
+
+
+!-------------- Bulk term integration  
+         write(*,*)" Beginning integration cut cell "
+
          ALLOCATE( xiCur(nsd,fs(1)%nG) )
 
-         maxSubTri = 16 
-         maxQuadPnt = 16*fs(1)%nG
+         maxSubTri = 4**(nbrFntCllSD-1)
+         maxQuadPnt = maxSubTri*fs(1)%nG
+
 !        Allocate lstSubTri: list of sub element coordinates in the reference element 
          ALLOCATE ( lstSubTri(nsd,fs(1)%eNoN,maxSubTri) )
          ALLOCATE ( FlagSubTri(maxSubTri) )
@@ -290,7 +456,7 @@ C          write(*,*) xl(:,3)
          lstQdPnt   = -1._RKIND
          FlagSubTri = -1
          FlagLevel  = -1
-         maxLevel = 3
+         maxLevel = nbrFntCllSD
 
 !        Initialize lists with reference element 
          lstSubTri(:,1,1) = (/ 1._RKIND , 0._RKIND /)
@@ -369,7 +535,7 @@ C                write(*,*)" Flag sub elem ", i , "as to divide "
 
 !           Check if we have reached the maximum level of subdivision
             IF ( FlagLevel(i) .EQ. maxLevel ) THEN 
-               IF ( cnt .EQ. 1 ) FlagSubTri(i) = 1
+               IF ( cnt .EQ. 1 ) FlagSubTri(i) = 0
                IF ( cnt .EQ. 2 ) FlagSubTri(i) = 1
 C                IF ( cnt .EQ. 0 ) write(*,*)"!! ATTENTION, we do not 
 C      2                                                     int here !! "
@@ -379,6 +545,8 @@ C              IF ( cnt .EQ. 2 ) FlagSubTri(i) = 0
             END IF
 
             IF ( FlagSubTri(i) .EQ. 2 ) THEN
+
+               !!!!! CHECJ THAT j is correct here!!!!!! 
 
 C                write(*,*)" Dividing subElm " , i , " of element ", e
 
@@ -399,6 +567,7 @@ C                   write(*,*)" Nothing to copy, just divide"
                   END IF
 
 C                   write(*,*)" Need to copy subtri ", j
+C                  !!!! CHECK THIS< WE SHOUDL START FROM THE END  write(*,*)" Need to copy subtri ", j
                   
                   bgn = j*3-(fs(1)%nG-1)
                   end = j*3
@@ -578,7 +747,585 @@ C                write(*,*)" sub element ", i, " hidden "
          END DO
 
          DEALLOCATE( xiCur, lstSubTri, FlagSubTri, FlagLevel, lstQdPnt)
+!--------------
 
+
+
+
+!-------------- Nitsche's term 
+
+C          write(*,*)" Fluid element e = ", e
+C          write(*,*)" coord = ", xl
+C          write(*,*)" Nbr of solid faces inside "
+C          write(*,*) mapFElmSElm(e, 1, :)
+C          write(*,*) mapFElmSElm(e, 2, :)
+C          write(*,*) mapFElmSElm(e, 3, :)
+
+!        Compute fluid element diameter h
+         CALL COMP_ELM_DIAM( xl, eNoN, diam)
+
+!        Define nitsche's coefficient gamma*mu/h
+         nitscheP = eq(cEq)%dmn(cDmn)%prop(nitsche_param)
+         visc = eq(cEq)%dmn(cDmn)%visc%mu_i
+
+         nitscheP = nitscheP * visc / diam
+
+         iFNit = 0
+         maxNbrSElm = SIZE(mapFElmSElm, 3) 
+
+         iFa = 1 
+         eNonF  = msh(2)%fa(iFa)%eNoN
+         eTypeF = msh(2)%fa(iFa)%eType
+         nGF    = msh(2)%fa(iFa)%nG
+
+         IF ( nsd .EQ. 2) nbrSElm = 2**(nbrFntCllSD-1)
+         IF ( nsd .EQ. 3) nbrSElm = 4**(nbrFntCllSD-1)
+         nGFTot = nGF*nbrSElm
+
+         ALLOCATE(qpFlu(nsd,nGFTot), FSubElm(nsd,eNonF,nbrSElm))
+         ALLOCATE(qpSol(nsd-1, nGFTot), FlagSubElm(nbrSElm))
+         ALLOCATE(xFace(nsd,eNonF),xFRef(nsd,eNonF))
+         ALLOCATE(Nws(eNoNF,nGF), Nwf(eNoN,nGF))
+
+         ALLOCATE( lRS(dof,eNoNF), lKS(dof*dof,eNoNF,eNoNF),
+     2   lKFS(dof*dof,eNoN,eNoNF), lKSF(dof*dof,eNoNF,eNoN), 
+     3   yls(nsd,eNoNF), ptrSOl(eNoNF))
+
+!        Loop over solid faces 
+         DO iFa = 1, msh(2)%nFa
+
+            IF( .NOT.msh(2)%fa(iFa)%isNts ) CYCLE
+
+!           If the face is a nitsche's face continue 
+            iFNit = iFNit + 1
+C             write(*,*)" Nitsche face ", iFNit
+
+
+
+            qpFlu = 0._RKIND
+            qpSol = 0._RKIND
+            FSubElm = 0._RKIND
+            FlagSubElm = -1
+            xFace = 0._RKIND
+            xFRef = 0._RKIND
+
+            FinvT = 0._RKIND
+            Jac = 0._RKIND
+
+!           Loop over face elements 
+            DO isf = 1, maxNbrSElm
+
+               lRS  = 0._RKIND
+               lKS  = 0._RKIND
+               lKFS = 0._RKIND
+               lKSF = 0._RKIND
+               yls  = 0._RKIND
+
+C              write(*,*)" isf = ", isf
+C              write(*,*) mapFElmSElm(e, iFNit, :)
+
+               idSolFac = mapFElmSElm(e, iFNit, isf)
+
+!              If the id != 0, continue, otherwise EXIT 
+               IF( mapFElmSElm(e, iFNit, isf) .EQ. 0 ) EXIT  
+
+C                write(*,*) " NEED to do Nitsche here "
+
+!              Get initial face coordinates  
+!              get starting point solid velocity for ustruct, check for struct 
+               iv = eq(1)%s !!!! check that this is correct for the solid 
+
+               DO a = 1, eNonF
+                  Ac = msh(2)%fa(iFa)%IEN(a,idSolFac)
+                  ptrSOl(a) = Ac
+                  xFace(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+                  yls(:,a) = Yg(iv:iv+(nsd-1),Ac)
+               END DO
+
+C                write(*,*)" Face coord : ", xFace
+
+!              Update fluid gradient (constant) wrt K^hat and compute J, F^-T
+               g = 1
+               CALL GNN_FACE( fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xl, Nwx, 
+     2            Jac, FinvT)              
+
+!              Get solid face finite element space 
+               CALL GETFSFace(msh(2), fsFace, vmsStab)
+
+!              Map solid face to reference fluid elememnt and compute 
+!              det F * | F^{-T} n_ref |, with the normal to the segment 
+!              in reference configuration
+               DO a = 1, eNonF
+                  CALL GET_PntCurToRef(lM, xl, xFace(:,a), xFRef(:,a))
+               END DO
+
+               IF ( nsd .EQ. 2 ) THEN
+
+!                 Normal computation in the fluid reference elm  
+                  n1 =   xFRef(2,2) - xFRef(2,1) 
+                  n2 = - (xFRef(1,2) - xFRef(1,1))
+                  nrm = SQRT(n1*n1 + n2*n2)
+                  Nfac(1) = n1/nrm
+                  Nfac(2) = n2/nrm
+C                 write(*,*)" Normal in the ref is : ", Nfac
+
+!                 Normal computation in the fluid current elm 
+                  n1 =   xFace(2,2) - xFace(2,1) 
+                  n2 = - (xFace(1,2) - xFace(1,1))
+                  nrm = SQRT(n1*n1 + n2*n2)
+                  NCur(1) = n1/nrm
+                  NCur(2) = n2/nrm
+C                 write(*,*)" Normal in the cur is : ", NCur
+
+               ELSE IF ( nsd .EQ. 3 ) THEN
+                  ALLOCATE(covBas(2,3))
+
+!                 Normal computation in the fluid reference elm  
+                  covBas(1,:) = xFRef(:,2) - xFRef(:,1) 
+                  covBas(2,:) = xFRef(:,3) - xFRef(:,1) 
+
+                  n1 = covBas(1,2)*covBas(2,3)-covBas(1,3)*covBas(2,2);
+                  n2 = covBas(1,3)*covBas(2,1)-covBas(1,1)*covBas(2,3);
+                  n3 = covBas(1,1)*covBas(2,2)-covBas(1,2)*covBas(2,1);
+
+                  nrm = SQRT(n1*n1 + n2*n2 + n3*n3)
+                  Nfac(1) = n1/nrm
+                  Nfac(2) = n2/nrm
+                  Nfac(3) = n3/nrm
+
+!                 Normal computation in the fluid current elm 
+                  covBas(1,:) = xFace(:,2) - xFace(:,1) 
+                  covBas(2,:) = xFace(:,3) - xFace(:,1) 
+
+                  n1 = covBas(1,2)*covBas(2,3)-covBas(1,3)*covBas(2,2);
+                  n2 = covBas(1,3)*covBas(2,1)-covBas(1,1)*covBas(2,3);
+                  n3 = covBas(1,1)*covBas(2,2)-covBas(1,2)*covBas(2,1);
+
+                  nrm = SQRT(n1*n1 + n2*n2 + n3*n3)
+                  NCur(1) = n1/nrm
+                  NCur(2) = n2/nrm
+                  NCur(3) = n3/nrm
+
+                  DEALLOCATE(covBas)
+               END IF
+
+               wt = Jac*SQRT(NORM(MATMUL(FinvT,Nfac)))
+
+
+!              Get list of internal sub element and respective quad point 
+!              in the reference fluid configuration 
+               CALL GET_SElmQuadPoint(nbrSElm, eTypeF, eNonF, nGF,  
+     2                         nGFTot, xFRef, qpFlu, FSubElm, qpSol )
+
+C                write(*,*)" before GET_InternalQP "
+               CALL GET_InternalQP(lM, nGF, nGFTot, nbrSElm, qpFlu, 
+     2                                                    FlagSubElm)
+
+C                write(*,*)" xFRef = ", xFRef
+C                write(*,*)""
+C                write(*,*) "FlagSubElm =  ", FlagSubElm
+C                write(*,*)""
+C                write(*,*) "FSubElm = ", FSubElm
+C                write(*,*)""
+C                write(*,*) "qpFlu = ", qpFlu
+C                write(*,*)""
+C                write(*,*) "qpSol = ", qpSol
+
+
+
+!              Loop over sub-element 
+               DO i = 1, nbrSElm
+
+!                 Check that the sub-element is inside the fluid element 
+                  IF( FlagSubElm(i) .EQ. 0 ) CYCLE      
+
+C                   write(*,*)" sub elem i = ", i , " inside "   
+
+                  Nwf = 0._RKIND         
+!                 Evaluate fluid nodal finite element function at the quad point 
+                  DO g = 1, nGF
+                     bng = nGF*(i-1)+g
+                     CALL GETN(nsd,lM%eType,eNoN,qpFlu(:,bng),Nwf(:,g))
+
+C                      write(*,*)" Quad point fluid " , qpFlu(:,bng)
+C                      write(*,*)" value fluid test func ", Nwf(:,g)
+                  END DO
+
+!                 Compute metric a=F^T F and sqrt(a) for solid-sub element 
+!                 Metric and measure camputations: sqrt(det (F_(S^ -> S)^T F(S^ -> S)))
+                  IF ( nsd .EQ. 2 ) THEN
+                     ALLOCATE(covMetric(2,1))
+
+                     covMetric(:,1) = 0.5_RKIND*(xFace(:,2)-xFace(:,1))
+
+                     measMetric = SQRT( covMetric(1,1)*covMetric(1,1) + 
+     2                                covMetric(2,1)*covMetric(2,1) )
+
+                     DEALLOCATE(covMetric)
+                  ELSE IF ( nsd .EQ. 3 ) THEN
+                     err = "TODO "
+                  ELSE 
+                     err = "Dimension not supported in Measure comp"
+                  END IF
+
+!                 Find solid quad point in the face reference element and 
+!                 evaluate the solid fe test func there 
+                  DO g = 1, nGF
+                     bng = nGF*(i-1)+g
+                     CALL GETN(nsd-1,eTypeF,eNoNF, qpSol(:,bng), 
+     2                                                         Nws(:,g))
+C                      write(*,*)" Quad point solid " , qpSol(:,bng)
+C                      write(*,*)" value fluid test func ", Nws(:,g)
+                  END DO                  
+
+
+!                 We can now integrate considering as weights
+
+
+!                 Loop over solid quad point and assembly 
+                  DO g = 1, nGF
+
+!                    det F * | F^{-T} n  | * | alpha'| * wq (wq ref face solid quad )
+                     w = fsFace%w(g) * measMetric * wt
+
+C                      write(*,*)"  fsFace%w(g) ", fsFace%w(g)
+C                      write(*,*)"   w = ", w 
+
+                     CALL NTS_ALLOC_2D( eNoN, eNoNF, w, Nwf(:,g), Nwx, 
+     2                    Nws(:,g), yl, yls, lR, lK, lRS, lKS, lKFS, 
+     3                                  lKSF, NCur, nitscheP)
+
+                  END DO
+
+
+
+               END DO
+
+C                write(*,*)" lRS = ", lRS
+C                write(*,*)" lKS = ", lKS
+C                write(*,*)" lKFS = ", lKFS
+C                write(*,*)" lKSF = ", lKSF
+
+!              Call special assembly for the coupling fluid solid terms
+               CALL NTS_ASSEMBLY(eNoN, eNoNF, ptr, ptrSOl, lRS, lKS, 
+     2                                                     lKFS, lKFS) 
+            END DO
+
+         END DO
+
+         DEALLOCATE(xFace, xFRef, qPSol, qpFlu, FSubElm, flagsubelm)
+         DEALLOCATE( lRS, lKS, lKFS, lKSF, yls, Nwf, Nws, ptrSOl)
+
+!--------------
+!-------------- Ghost Penalty stabilization 
+21       CONTINUE
+
+C          write(*,*)" Beginning ghost element ", e 
+
+         ghsP = eq(cEq)%dmn(cDmn)%prop(ghostP_param)
+         visc = eq(cEq)%dmn(cDmn)%visc%mu_i
+
+         IF( ghsP .LT. 0._RKIND ) GOTO 100
+
+         ALLOCATE( xlOpp(nsd,fs(1)%eNoN), NwxOp(nsd,fs(1)%eNoN) )
+         ALLOCATE( xFacOp(nsd,fs(1)%eNoN-1), xFace(nsd,fs(1)%eNoN-1) )
+         ALLOCATE( lROpp(dof,eNoN), lKOpp(dof*dof,eNoN,eNoN) )
+         ALLOCATE( lKCurOpp(dof*dof,eNoN,eNoN), ptrOpp(eNoN) )
+         ALLOCATE( lKOppCur(dof*dof,eNoN,eNoN), ylOp(tDof,eNoN) )
+         Nwx    = 0._RKIND
+         NwxOp  = 0._RKIND
+
+         IF ( nsd .EQ. 2 ) THEN
+            faceID(1,:) = (/2, 3/)
+            faceID(2,:) = (/3, 1/)
+            faceID(3,:) = (/1, 2/)
+
+C             faceIDOp(1,:) = (/3, 2/)
+C             faceIDOp(2,:) = (/1, 3/)
+C             faceIDOp(3,:) = (/2, 1/)
+         ELSE IF ( nsd .EQ. 3 ) THEN
+            faceID(1,:) = (/2, 3, 4/)
+            faceID(2,:) = (/4, 3, 1/)
+            faceID(3,:) = (/1, 2, 4/)
+            faceID(4,:) = (/1, 3, 2/)
+
+C             faceIDOp(1,:) = (/2, 4, 3/)
+C             faceIDOp(2,:) = (/4, 1, 3/)
+C             faceIDOp(3,:) = (/1, 4, 2/)
+C             faceIDOp(4,:) = (/1, 2, 3/)
+         ELSE 
+            err = "Dimension not supported in GETNEIGH"
+         END IF
+
+         
+!        xl(:,a)  = x(:,Ac) contains the coordinates of the current element 
+!        Loop over faces 
+         DO f = 1, eNoN
+
+!           Initialize residue and tangents
+            lROpp     = 0._RKIND
+            lKOpp     = 0._RKIND
+            lKCurOpp  = 0._RKIND
+            lKOppCur  = 0._RKIND
+
+!           Define the opposite element 
+            eOpp = lM%neigh(e,f)
+
+!           If the face is a boundary face, go to next face 
+            IF( eOpp .EQ. -1 ) CYCLE
+
+C             write(*,*)" Beginning loop faces for opposite ", eOpp
+
+!           Get coordinates and velocity opposite element   
+C             write(*,*)" Coordinates opposite: "
+        
+            DO a = 1, eNoN
+               Ac = lM%IEN(a,eOpp)
+               ptrOpp(a) = Ac
+               xlOpp(:,a)  = x(:,Ac)
+
+C                write(*,*) xlOpp(:,a)
+
+               dl(:,a)     = Dg(:,Ac)
+               ylOp(:,a)   = Yg(:,Ac)
+            END DO
+            xlOpp(:,:) = xlOpp(:,:) + dl(nsd+2:2*nsd+1,:)
+
+C             write(*,*)" xl = ", xl
+C             write(*,*)" xlOpp = ", xlOpp
+
+
+
+            computeBoth = .FALSE.
+            IF( (intFElmFlag(eOpp) .EQ. 1) ) computeBoth = .TRUE.
+
+            CALL GETFSFace(lM, fsFaceCur, vmsStab)
+            CALL GETFSFace(lM, fsFaceOpp, vmsStab)
+
+!           No need to locate the surface reference quad point in the  
+!           reference area/volume element because we are assuming P1 fem  
+!           the gradient is therefore constant in the element.
+!           We evaluate the grand in both currenrt and opposite 
+!           just once because it will be constant over the element 
+            g = 1
+            CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xl, Nwx, Jac,
+     2            ksix)
+            CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xlOpp, NwxOp, 
+     2            Jac, ksix)
+
+
+C             write(*,*)" The gradient are ", Nwx
+C             write(*,*)" For the opposite ", NwxOp
+
+
+!           Get coordinated current and opposite face 
+            DO a = 1, eNoN-1
+               xFace(:,a) = xl(:,faceID(f,a))
+C                xFacOp(:,a) = xl(:,faceIDOp(f,a))
+            END DO
+
+C             write(*,*)" face coordinates : "
+C             write(*,*) xFac(:,1)
+C             write(*,*) xFac(:,2)
+
+!           Computing ghost penalty coefficient 
+            CALL COMP_ELM_DIAM( xFace, eNoN-1, diamFace)
+
+C             write(*,*)" diam face = ", diamFace
+
+            gammag = ghsP * visc * diamFace
+
+            wt   = eq(cEq)%af * eq(cEq)%gam * dt
+
+!           Compute face Normal current element (Nopp = - Ncur)
+            IF ( nsd .EQ. 2 ) THEN
+
+               n1 =   xFace(2,2) - xFace(2,1) 
+               n2 = - (xFace(1,2) - xFace(1,1))
+               nrm = SQRT(n1*n1 + n2*n2)
+               Nfac(1) = n1/nrm
+               Nfac(2) = n2/nrm
+
+C                write(*,*)" Normal is : ", Nfac
+
+            ELSE IF ( nsd .EQ. 3 ) THEN
+               ALLOCATE(covBas(2,3))
+
+               covBas(1,:) = xFace(:,2) - xFace(:,1) 
+               covBas(2,:) = xFace(:,3) - xFace(:,1) 
+
+               n1 = covBas(1,2) * covBas(2,3) - covBas(1,3)*covBas(2,2);
+               n2 = covBas(1,3) * covBas(2,1) - covBas(1,1)*covBas(2,3);
+               n3 = covBas(1,1) * covBas(2,2) - covBas(1,2)*covBas(2,1);
+
+               nrm = SQRT(n1*n1 + n2*n2 + n3*n3)
+               Nfac(1) = n1/nrm
+               Nfac(2) = n2/nrm
+               Nfac(3) = n3/nrm
+
+               DEALLOCATE(covBas)
+            ELSE 
+               err = "Dimension not supported in Normal comp"
+            END IF
+
+!           Metric and measure camputations: sqrt(det (F_(S^ -> S)^T F(S^ -> S)))
+            IF ( nsd .EQ. 2 ) THEN
+               ALLOCATE(covMetric(2,1))
+
+               covMetric(:,1) = 0.5_RKIND*(xFace(:,2) - xFace(:,1))
+
+               measMetric = SQRT( covMetric(1,1)*covMetric(1,1) + 
+     2                            covMetric(2,1)*covMetric(2,1) )
+
+               DEALLOCATE(covMetric)
+            ELSE IF ( nsd .EQ. 3 ) THEN
+               err = "TODO "
+            ELSE 
+               err = "Dimension not supported in Measure comp"
+            END IF
+
+
+!---------- Defining vectors for known velocity current and opposite  
+            dNU = 0._RKIND
+            dNUOpp = 0._RKIND
+            DO a=1, eNoN
+               dNU(1) = dNU(1) + Nwx(1,a)*yl(1,a)*Nfac(1) + 
+     2                                       Nwx(2,a)*yl(1,a)*Nfac(2)
+
+               dNU(2) = dNU(2) + Nwx(1,a)*yl(2,a)*Nfac(1) + 
+     2                                       Nwx(2,a)*yl(2,a)*Nfac(2)
+            END DO
+
+            DO a=1, eNoN
+               dNUOpp(1) = dNUOpp(1) + NwxOp(1,a)*ylOp(1,a)*Nfac(1)  
+     2                                  + NwxOp(2,a)*ylOp(1,a)*Nfac(2)
+
+               dNUOpp(2) = dNUOpp(2) + NwxOp(1,a)*ylOp(2,a)*Nfac(1) 
+     2                                  + NwxOp(2,a)*ylOp(2,a)*Nfac(2)
+            END DO
+
+!---------- Loop over quadrature points 
+            DO g=1, fsFaceCur%nG
+
+C                write(*,*)" num quad = ", fsFaceCur%nG
+
+               w = fsFaceCur%w(g) * measMetric
+
+C                write(*,*)" Original weight is ", fsFaceCur%w(g) 
+C                write(*,*)" New weight is ", w
+
+!------------- row Current - col Current/Opposite assembly   
+!              Local Residue current - current and current - opposite 
+               DO a = 1, fs(1)%eNoN  
+
+                  dNVa = Nwx(1,a)*Nfac(1) + Nwx(2,a)*Nfac(2)
+                  lR(1,a) = lR(1,a) + w * dNU(1) * dNVa
+                  lR(2,a) = lR(2,a) + w * dNU(2) * dNVa
+
+                  lR(1,a) = lR(1,a) - w * dNUOpp(1) * dNVa
+                  lR(2,a) = lR(2,a) - w * dNUOpp(2) * dNVa
+
+               END DO             
+
+!              Local current - current Tangent matrices 
+               DO a = 1, fs(1)%eNoN  ! row 
+                  DO b = 1, fs(1)%eNoN ! col
+
+                     dNVb = Nwx(1,b)*Nfac(1) + Nwx(2,b)*Nfac(2)
+                     dNVa = Nwx(1,a)*Nfac(1) + Nwx(2,a)*Nfac(2)
+
+                     lK(1,a,b) = lK(1,a,b) + w*wt *  dNVb * dNVa
+
+                     lK(5,a,b) = lK(5,a,b) + w*wt *  dNVb * dNVa
+
+                  END DO  
+               END DO  
+
+!              Local current - opposite Tangent matrices 
+               DO a = 1, fs(1)%eNoN  ! row current 
+                  DO b = 1, fs(1)%eNoN ! col opposite
+
+                     dNVb = NwxOp(1,b)*Nfac(1) + NwxOp(2,b)*Nfac(2)
+                     dNVa = Nwx(1,a)*Nfac(1) + Nwx(2,a)*Nfac(2)
+
+                     lKCurOpp(1,a,b) = lKCurOpp(1,a,b) - w*wt*dNVb*dNVa
+
+                     lKCurOpp(5,a,b) = lKCurOpp(5,a,b) - w*wt*dNVb*dNVa
+
+                  END DO  
+               END DO  
+       
+!------------- row Current - col Current/Opposite assembly   
+               IF( computeBoth ) THEN
+
+                  w = fsFaceOpp%w(g) * measMetric
+
+C                   write(*,*)" New weight Opp is ", w
+
+!                 Local Residue opposite - opposite and opposite - current 
+                  DO a = 1, fs(1)%eNoN  
+
+                     dNVa = NwxOp(1,a)*Nfac(1) + NwxOp(2,a)*Nfac(2)
+                     lROpp(1,a) = lROpp(1,a) - w * dNU(1) * dNVa
+                     lROpp(2,a) = lROpp(2,a) - w * dNU(2) * dNVa
+
+                     lROpp(1,a) = lROpp(1,a) + w * dNUOpp(1) * dNVa
+                     lROpp(2,a) = lROpp(2,a) + w * dNUOpp(2) * dNVa
+
+                  END DO             
+
+!                 Local opposite - opposite Tangent matrices 
+                  DO a = 1, fs(1)%eNoN  ! row 
+                     DO b = 1, fs(1)%eNoN ! col
+
+                        dNVb = NwxOp(1,b)*Nfac(1) + NwxOp(2,b)*Nfac(2)
+                        dNVa = NwxOp(1,a)*Nfac(1) + NwxOp(2,a)*Nfac(2)
+
+                        lKOpp(1,a,b) = lKOpp(1,a,b) + w*wt* dNVb * dNVa
+
+                        lKOpp(5,a,b) = lKOpp(5,a,b) + w*wt* dNVb * dNVa
+
+                     END DO  
+                  END DO  
+
+!                 Local opposite - current Tangent matrices 
+                  DO a = 1, fs(1)%eNoN  ! row opposite 
+                     DO b = 1, fs(1)%eNoN ! col current
+
+                        dNVb = Nwx(1,b)*Nfac(1) + Nwx(2,b)*Nfac(2)
+                        dNVa = NwxOp(1,a)*Nfac(1) + NwxOp(2,a)*Nfac(2)
+
+                        lKOppCur(1,a,b)=lKOppCur(1,a,b) - w*wt*dNVb*dNVa
+
+                        lKOppCur(5,a,b)=lKOppCur(5,a,b) - w*wt*dNVb*dNVa
+
+                     END DO  
+                  END DO  
+
+               END IF
+
+            END DO ! quad point 
+
+            CALL DOASSEM_RC( eNoN, ptr, ptrOpp, lKCurOpp )
+            IF( computeBoth ) THEN 
+               CALL DOASSEM_Opp(eNoN,ptrOpp,ptr, lKOpp, lROpp, lKOppCur)
+            END IF
+
+C             write(*,*)" lK ", lK
+C             write(*,*)" lR ", lR
+C             write(*,*)" lKOpp ", lKOpp
+C             write(*,*)" lROpp ", lROpp
+C             write(*,*)" lKOppCur ", lKOppCur
+C             write(*,*)" lKCurOpp ", lKCurOpp
+
+         END DO ! faces 
+
+
+         DEALLOCATE(xlOpp, NwxOp, xFacOp, xFace, lROpp, lKOpp, lKCurOpp, 
+     2              lKOppCur, ptrOpp, ylOp)   
+
+C          write(*,*)" ending ghost penalty "   
+!-------------- 
 !-----------------------------------------------------------------------
 100      CONTINUE
 
@@ -609,10 +1356,293 @@ C                write(*,*)" sub element ", i, " hidden "
       CALL DESTROY(fs(2))
 
 !     This need to be removed once we have a ghost penalty stabilization 
-      CALL CLEAN_GHOSTPNT
+!      CALL CLEAN_GHOSTPNT
 
       RETURN
       END SUBROUTINE CONSTRUCT_NITSCHE_FSI
+!####################################################################
+      SUBROUTINE NTS_ALLOC_2D(eNoN, eNoNF, w, Nw, Nwx, Nws, yl, yls, lR, 
+     2                    lK, lRS, lKS, lKFS, lKSF, N, coef)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, eNoNF
+      
+      REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoN), Nws(eNoNF),
+     2  Nwx(nsd,eNoN), yl(tDof,eNoN), yls(nsd,eNoNF), N(nsd), coef
+      
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoN),
+     2  lK(dof*dof,eNoN,eNoN), lRS(dof,eNoNF), lKS(dof*dof,eNonF,eNoNF), 
+     3  lKFS(dof*dof,eNon,eNoNF), lKSF(dof*dof,eNonF,eNoN)
+
+
+      INTEGER(KIND=IKIND) :: is, a, b
+      REAL(KIND=RKIND) :: u(nsd), p, dd(nsd), Rnts(nsd), ux(2,2), 
+     2                    es(2,2), esN(2), vis, wt, st(2), T1
+
+C       write(*,*)" Inside NTS_ALLOC_2D "
+
+      u   = 0._RKIND
+      ux  = 0._RKIND
+      p   = 0._RKIND
+      p   = 0._RKIND
+      dd  = 0._RKIND
+      st  = 0._RKIND
+      vis = eq(1)%dmn(cDmn)%visc%mu_i
+
+      is  = eq(1)%s
+
+      wt  = eq(1)%af * eq(1)%gam * dt
+
+C       write(*,*)" first loop u, p ux "
+
+      DO a=1, eNoN
+         u(1) = u(1) + Nw(a)*yl(1,a)
+         u(2) = u(2) + Nw(a)*yl(2,a)
+
+         p = p + Nw(a)*yl(3,a)
+
+         ux(1,1) = ux(1,1) + Nwx(1,a)*yl(1,a)
+         ux(2,1) = ux(2,1) + Nwx(1,a)*yl(2,a)
+         ux(1,2) = ux(1,2) + Nwx(2,a)*yl(1,a)
+         ux(2,2) = ux(2,2) + Nwx(2,a)*yl(2,a)
+      END DO
+
+!     Strain rate tensor 2*e_ij := (u_ij + u_ji)
+      es(1,1) = ux(1,1) + ux(1,1)
+      es(2,1) = ux(2,1) + ux(1,2)
+      es(2,2) = ux(2,2) + ux(2,2)
+      es(1,2) = es(2,1)
+
+      esN(1) = vis*(es(1,1)*N(1) + es(1,2)*N(2))
+      esN(2) = vis*(es(2,1)*N(1) + es(2,2)*N(2))
+
+      st(1) = esN(1) - p*N(1) 
+      st(2) = esN(2) - p*N(2)
+
+C       write(*,*)" second loop solid vel " 
+
+      DO a=1, eNoNF
+         dd(1) = dd(1) + Nws(a)*yls(1,a)
+         dd(2) = dd(2) + Nws(a)*yls(2,a)
+      END DO
+
+!------------- row Fluid - col Fluid  
+C       write(*,*)" Assembly F - F "
+!     Local Residue 
+      DO a = 1, eNoN  
+
+         Rnts(1) = coef*(u(1)-dd(1)) - st(1)
+         Rnts(2) = coef*(u(2)-dd(2)) - st(2)
+         
+         lR(1,a) = lR(1,a) + w * Rnts(1) * Nw(a)
+         lR(2,a) = lR(2,a) + w * Rnts(2) * Nw(a)       
+
+      END DO
+
+!     Local Tangent Matrix 
+      DO a = 1, eNoN ! row 
+         DO b = 1, eNoN ! col
+
+!           Nitsche penalty terms (u1.v1 + u2.v2)
+            lK(1,a,b) = lK(1,a,b) + w*wt * coef * Nw(a)*Nw(b)  
+            lK(5,a,b) = lK(5,a,b) + w*wt * coef * Nw(a)*Nw(b)  
+
+!           Stability Nitsche's terms ( sigma(u,p) n . v ) 
+!           Part related to v1
+            T1 = 2*vis*Nwx(1,b)*N(1) + vis*Nwx(2,b)*N(2)  
+            lK(1,a,b) = lK(1,a,b) - w*wt * T1 * Nw(a) 
+
+            T1 = vis*Nwx(1,b)*N(2) 
+            lK(2,a,b) = lK(2,a,b) - w*wt * T1 * Nw(a)
+
+            T1 = - Nw(b)*N(1) 
+            lK(3,a,b) = lK(3,a,b) - w*wt * T1 * Nw(a)
+!           Part related to v2
+            T1 = vis*Nwx(2,b)*N(1) 
+            lK(4,a,b) = lK(4,a,b) - w*wt * T1 * Nw(a) 
+
+            T1 = 2*vis*Nwx(2,b)*N(2) + vis*Nwx(1,b)*N(1)              
+            lK(5,a,b) = lK(5,a,b) - w*wt * T1 * Nw(a)
+
+            T1 = - Nw(b)*N(2) 
+            lK(6,a,b) = lK(6,a,b) - w*wt * T1 * Nw(a)
+
+         END DO
+      END DO
+!-------------  
+
+!------------- row Fluid - col Solid  
+C       write(*,*)" Assembly F - S "
+!     Local Tangent Matrix 
+      DO a = 1, eNoN ! row 
+         DO b = 1, eNoNF ! col
+
+!           Nitsche penalty terms (-ddot1.v1 - ddot2.v2)
+            lKFS(1,a,b) = lKFS(1,a,b) - w*wt * coef * Nw(a)*Nws(b)  
+            lKFS(5,a,b) = lKFS(5,a,b) - w*wt * coef * Nw(a)*Nws(b)              
+
+
+         END DO
+      END DO
+
+!-------------  
+
+!------------- row Solid - col Solid  
+C       write(*,*)" Assembly S - S "
+
+!     Local Residue 
+      DO a = 1, eNoNF  
+         Rnts(1) = - coef*(u(1)-dd(1)) + st(1)
+         Rnts(2) = - coef*(u(2)-dd(2)) + st(2)
+         
+         lRS(1,a) = lRS(1,a) + w * Rnts(1) * Nws(a)
+         lRS(2,a) = lRS(2,a) + w * Rnts(2) * Nws(a)       
+      END DO
+
+!     Local Tangent Matrix 
+      DO a = 1, eNoNF ! row 
+         DO b = 1, eNoNF ! col
+
+!           Nitsche penalty terms (ddot1.w1 + ddot2.w2)
+            lKS(1,a,b) = lKS(1,a,b) + w*wt * coef * Nws(a)*Nws(b)  
+            lKS(5,a,b) = lKS(4,a,b) + w*wt * coef * Nws(a)*Nws(b)    
+
+            
+         END DO
+      END DO
+!-------------  
+
+!------------- row Solid - col Fluid  
+C       write(*,*)" Assembly S - F "
+
+!     Local Tangent Matrix 
+      DO a = 1, eNoNF ! row 
+         DO b = 1, eNoN ! col
+
+!           Nitsche penalty terms (u1.w1 + u2.w2)
+            lKSF(1,a,b) = lKSF(1,a,b) - w*wt * coef * Nws(a)*Nw(b)  
+            lKSF(5,a,b) = lKSF(5,a,b) - w*wt * coef * Nws(a)*Nw(b) 
+
+!           Stability Nitsche's terms ( sigma(u,p) n . w ) 
+!           Part related to w1
+            T1 = 2*vis*Nwx(1,b)*N(1) + vis*Nwx(2,b)*N(2)  
+            lKSF(1,a,b) = lKSF(1,a,b) + w*wt * T1 * Nws(a) 
+
+            T1 = vis*Nwx(1,b)*N(2) 
+            lKSF(2,a,b) = lKSF(2,a,b) + w*wt * T1 * Nws(a)
+
+            T1 = - Nw(b)*N(1) 
+            lKSF(3,a,b) = lKSF(3,a,b) + w*wt * T1 * Nws(a)
+!           Part related to w2
+            T1 = vis*Nwx(2,b)*N(1) 
+            lKSF(4,a,b) = lKSF(4,a,b) + w*wt * T1 * Nws(a) 
+
+            T1 = 2*vis*Nwx(2,b)*N(2) + vis*Nwx(1,b)*N(1)              
+            lKSF(5,a,b) = lKSF(5,a,b) + w*wt * T1 * Nws(a)
+
+            T1 = - Nw(b)*N(2) 
+            lKSF(6,a,b) = lKSF(6,a,b) + w*wt * T1 * Nws(a)
+
+
+         END DO
+      END DO
+!-------------  
+
+      RETURN
+      END SUBROUTINE NTS_ALLOC_2D
+
+!####################################################################
+
+      SUBROUTINE GET_InternalQP(lM, nGF, nGFTot, nbrSElm, xFRef, 
+     2    FlagSubElm)
+      USE COMMOD
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(IN) :: lM
+      INTEGER(KIND=IKIND), INTENT(IN) :: nGF, nGFTot, nbrSElm
+      REAL(KIND=RKIND), INTENT(IN) :: xFRef(nsd, nGFTot)
+      INTEGER(KIND=IKIND), INTENT(OUT) :: FlagSubElm(nbrSElm)
+
+
+      REAL(KIND=RKIND) :: poly(nsd,lM%eNoN)
+      INTEGER(KIND=IKIND) :: bng, cnt, find, g, i
+
+
+!     Store only info of internal (to the reference fluid element) quadrature point
+      SELECT CASE(lM%eType)
+      CASE(eType_TRI3)
+         poly(1,1) = 1._RKIND
+         poly(2,1) = 0._RKIND
+
+         poly(1,2) = 0._RKIND
+         poly(2,2) = 1._RKIND
+
+         poly(1,3) = 0._RKIND
+         poly(2,3) = 0._RKIND
+
+      CASE(eType_TET4)
+         poly(1,1) = 1._RKIND
+         poly(2,1) = 0._RKIND
+         poly(3,1) = 0._RKIND
+
+         poly(1,2) = 0._RKIND
+         poly(2,2) = 1._RKIND
+         poly(3,2) = 0._RKIND
+
+         poly(1,3) = 0._RKIND
+         poly(2,3) = 0._RKIND
+         poly(3,3) = 1._RKIND
+
+         poly(1,4) = 0._RKIND
+         poly(2,4) = 0._RKIND
+         poly(3,4) = 0._RKIND
+
+      END SELECT
+
+
+      DO i = 1, nbrSElm
+
+!        If outside just delete the sub element
+!        If inisde keep it, and go to the next one 
+!        If partially inside subdivide the element 
+         find = 0
+         cnt = 0
+         DO g = 1, nGF 
+            bng = nGF*(i-1)+g 
+
+!           Is the fluid node inside any solid element?
+            find = IN_POLY(xFRef(:,bng),poly)
+
+            IF (find .EQ. 1) THEN 
+               cnt = cnt + 1
+            END IF
+
+         END DO 
+
+C          write(*,*)" nbr inside quad point = ", cnt 
+
+!        FlagSubElm = 1: inside fluid element, 0: outside fluid elm, 
+!        2: to be divided
+         IF ( cnt .EQ. nGF ) THEN 
+            FlagSubElm(i) = 1
+C              write(*,*)" Flag sub elem ", i , "is inside "
+         ELSE IF ( cnt .EQ. 0 ) THEN 
+            FlagSubElm(i) = 0
+C              write(*,*)" Flag sub elem ", i , "is outside "
+         ELSE 
+            FlagSubElm(i) = 0 !we consider outside the seg with only one qp inside 
+C              write(*,*)" Flag sub elem ", i , "is partially inside "
+         END IF
+
+      END DO
+
+
+      RETURN
+      END SUBROUTINE GET_InternalQP
+
+
 !####################################################################
 !####################################################################
 
@@ -738,6 +1768,40 @@ C       write(*,*)" Inside GET_PntRefToCur "
 
       RETURN
       END SUBROUTINE GET_PntRefToCur
+!--------------------------------------------------------------------
+      SUBROUTINE GET_PntCurToRef(lM, xl, xiCur, xiRef)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(IN) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: xl(nsd,lM%eNoN)
+      REAL(KIND=RKIND), INTENT(IN) :: xiCur(nsd)
+      REAL(KIND=RKIND), INTENT(OUT) :: xiRef(nsd)
+
+      INTEGER(KIND=IKIND) :: g
+      REAL(KIND=RKIND) :: Def(nsd,nsd), invDef(nsd,nsd), rhsD(nsd) 
+
+      IF (nsd .EQ. 2) THEN
+         Def(1,1) = xl(1,1) - xl(1,3) 
+         Def(1,2) = xl(1,2) - xl(1,3) 
+         Def(2,1) = xl(2,1) - xl(2,3) 
+         Def(2,2) = xl(2,2) - xl(2,3) 
+         
+      ELSE 
+         write(*,*)"****** 3D implementation still TODO *****" 
+!           Need to check how the basis function are ordered
+!           and rewrite Def and rhsD            
+      END IF 
+
+!     Find the coordinates in the current element 
+      rhsD(:) = xiCur(:) - xl(:,3) 
+      invDef = MAT_INV(Def,nsd)
+      xiRef = MATMUL(invDef,rhsD)
+C       write(*,*)" xiCur = " , xiCur, "xiRef coord are ", xiRef
+
+      RETURN
+      END SUBROUTINE GET_PntCurToRef
 
 
 !####################################################################
@@ -819,7 +1883,7 @@ C       write(*,*)" Inside GET_PntRefToCur "
       INTEGER(KIND=IKIND), ALLOCATABLE :: FNdFlag(:), cnt(:), 
      2                                                      FElmSNd(:,:)
 
-      write(*,*)" Calling NTS_INIT "
+C       write(*,*)" Calling NTS_INIT "
 
 !     We will make the assumption that the first mesh is the fluid and the 
 !     second the solid, this can be generalized 
@@ -846,7 +1910,7 @@ C       write(*,*)" Inside GET_PntRefToCur "
 !     Compute meshes diameter 
 !     CALL COMP_DIAM(msh(1),msh(1)%mDiam)
       CALL COMP_DIAM(msh(2),msh(2)%mDiam)
-      write(*,*)" Diam solid computed "
+C       write(*,*)" Diam solid computed "
 
 !     Create a bounding box around of the current solid location 
       minb = HUGE(minb)
@@ -873,8 +1937,8 @@ C       write(*,*)" Inside GET_PntRefToCur "
          maxb(i) = maxXs(i) + msh(2)%mDiam 
       END DO
 
-      write(*,*)"S BBOX NTS_INIT x-dir is: ", minb(1), " and ", maxb(1)
-      write(*,*)"S BBOX NTS_INITy-dir is: ", minb(2), " and ", maxb(2)
+C       write(*,*)"S BBOX NTS_INIT x-dir is: ", minb(1), " and ", maxb(1)
+C       write(*,*)"S BBOX NTS_INITy-dir is: ", minb(2), " and ", maxb(2)
 
 !     Check that the solid is inside the fluid deformed mesh 
 C       DO iM=1, nMsh
@@ -932,7 +1996,7 @@ C       END DO
 
       END DO
 
-!     Filling intFElmFlag: 1 normal, 2 intersected from Nitsche Bnd, 0 hidden element 
+!---- Filling intFElmFlag: 1 normal, 2 intersected from Nitsche Bnd, 0 hidden element 
       DO e = 1, msh(1)%nEl 
 
          count = 0
@@ -955,7 +2019,7 @@ C       END DO
 
       END DO
 
-!     Filling mapSNdFElm, find the fluid element that contains the corresponding solid node
+!---- Filling mapSNdFElm, find the fluid element that contains the corresponding solid node
       DO a = 1, msh(2)%nNo
 
          find = 0
@@ -995,7 +2059,7 @@ C       END DO
          END DO 
       END DO
 
-!     Filling FElmSNd, loop over mapSNdFElm and add the analogous contribution 
+!---- Filling FElmSNd, loop over mapSNdFElm and add the analogous contribution 
       DO a = 1, msh(2)%nNo
 
 C          Ac = msh(2)%gN(a)
@@ -1011,7 +2075,7 @@ C       write(*,*)" cnt = ", cnt
 
       maxNbrSNd = MAXVAL(cnt)
 
-!     Filling mapFElmSNd from FElmSNd 
+!---- Filling mapFElmSNd from FElmSNd 
       ALLOCATE(mapFElmSNd(msh(1)%nEl ,maxNbrSNd))
       mapFElmSNd = 0
       mapFElmSNd(:,:) = FElmSNd(:,1:maxNbrSNd)
@@ -1063,6 +2127,411 @@ C       mapFElmSNd = mapFElmSNd + 1
       RETURN
       END SUBROUTINE NTS_INIT
 !####################################################################
+!--------------------------------------------------------------------
+!
+!     TODO
+!
+!--------------------------------------------------------------------
+
+      SUBROUTINE CONSTR_mapFElmSElm(lD)
+      USE COMMOD
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) :: iFa, eNonF, idFaceElm, a, Ac, nbrNdF, Ac1,
+     2                       cntElm, iFNit, e, eTypeF, nG, nGF, idFlElm, 
+     3                       nbrSElm, maxNbrSElm, maxNbr, i, findInF, 
+     4                       idF, iq, find
+      INTEGER(KIND=IKIND), ALLOCATABLE :: FElmSElm(:,:,:), cnt(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: xFace(:,:), ds(:,:), QPnt(:,:)
+      REAL(KIND=RKIND) :: xq(nsd) 
+
+      INTERFACE
+         SUBROUTINE GET_SElmQuadPoint(nbrSElm, eTypeF, eNonF, nG, nGF, 
+     2                         crdFace, quadPnt, SElm, qPRef )
+         USE COMMOD
+         IMPLICIT NONE
+         INTEGER(KIND=IKIND), INTENT(IN) :: nbrSElm, eTypeF,nG,nGF,eNonF
+         REAL(KIND=RKIND), INTENT(IN) :: crdFace(nsd, eNonF)
+         REAL(KIND=RKIND), INTENT(OUT) :: quadPnt(nsd, nGF)
+         REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: SElm(nsd-1,
+     2                                                    eNonF,nbrSElm)
+         REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: qPRef(nsd-1, nGF)
+         END SUBROUTINE GET_SElmQuadPoint
+      END INTERFACE
+
+
+
+C       write(*,*) " Inside CONSTR_mapFElmSElm "
+
+!---- Filling FElmSElm, loop over mapSNdFElm and add the analogous contribution 
+      ALLOCATE(FElmSElm(msh(1)%nEl, msh(2)%nNtsFa, 10), 
+     2                                  cnt(msh(1)%nEl, msh(2)%nNtsFa) )
+
+      nbrNdF = msh(1)%nNo
+      cnt = 0
+      iFNit = 0
+      FElmSElm = 0
+
+!     Loop over solid faces 
+      DO iFa = 1, msh(2)%nFa 
+C       DO iFa = 1, 1
+
+!        We cycle if this is not a Nitsche-face 
+         IF( .NOT.msh(2)%fa(iFa)%isNts ) CYCLE
+
+!        Update counter Nitsche's face          
+         iFNit = iFNit + 1
+
+C          write(*,*)" Lookinfg at Nitsche solid face ", iFa
+
+         eNonF  = msh(2)%fa(iFa)%eNoN
+         eTypeF = msh(2)%fa(iFa)%eType
+         nG     = msh(2)%fa(iFa)%nG
+
+!        Define number of face sub-element/tot quad point in the reference face element 
+         IF ( nsd .EQ. 2) nbrSElm = 2**(nbrFntCllSD-1)
+         IF ( nsd .EQ. 3) nbrSElm = 4**(nbrFntCllSD-1)
+         nGF = nG*nbrSElm
+
+         ALLOCATE(QPnt(nsd,nGF))
+
+C          write(*,*)"Solid face ",iFa,"nbr of elem = ",msh(2)%fa(iFa)%nEl
+
+!        Loop over face element 
+         DO idFaceElm = 1, msh(2)%fa(iFa)%nEl
+
+C             write(*,*)" local idFaceElm = ", idFaceElm
+
+!           Are all element's nodes inside the same fluid elem? 
+            cntElm = 0
+            Ac1 = msh(2)%fa(iFa)%IEN(1,idFaceElm) - nbrNdF
+
+            DO a = 1, eNonF
+               Ac = msh(2)%fa(iFa)%IEN(a,idFaceElm)
+C                Ac = msh(2)%fa(iFa)%gN(Ac) ! check this for parallel 
+               Ac = Ac - nbrNdF
+C                write(*,*)" Ac = ", Ac, " inside fluid ", mapSNdFElm(Ac) 
+
+               IF ( mapSNdFElm(Ac) .EQ. mapSNdFElm(Ac1) ) THEN 
+                  cntElm = cntElm + 1
+               END IF
+
+            END DO
+
+!---------- Check if the solid element nodes are in the same fluid elm 
+            IF (cntElm .EQ. eNonF) THEN 
+               
+!-----         The solid face is in only one fluid elm
+C                 write(*,*)" The solid face is in only one fluid elm "
+
+!              Set fluid element in which the solid face is                
+               idFlElm = mapSNdFElm(Ac)
+C                write(*,*)" idFlElm = ", idFlElm
+
+!              Update counter for nmr of solids in fluid elm                
+               cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit) + 1 
+               e = cnt(idFlElm,iFNit) 
+
+!              Store local (wrt the face) id face into idFlElm map  
+!              Check if we have already add this solid for this fluid   
+               DO a = 1, e           
+                  IF(FElmSElm(idFlElm,iFNit, a) .EQ. idFaceElm) THEN
+                     cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit) - 1  
+                     EXIT
+                  END IF
+                  IF(a .EQ. e) FElmSElm(idFlElm,iFNit, e) = idFaceElm
+               END DO    
+
+            ELSE 
+!-----         The solid extremes are in different flu elem
+C                write(*,*)" The solid extremes are in different flu elem"
+
+               ALLOCATE(xFace(nsd,eNonF), ds(tDof,eNonF))
+
+               DO a = 1, eNonF
+                  Ac = msh(2)%fa(iFa)%IEN(a,idFaceElm)
+                  ds(:,a) = lD(:,Ac)
+                  xFace(:,a) = x(:,Ac) + ds(nsd+2:2*nsd+1,a)
+               END DO
+
+C                write(*,*)" xFace solid is ", xFace
+
+               CALL GET_SElmQuadPoint(nbrSElm, eTypeF, eNonF, nG, nGF, 
+     2                                            xFace, QPnt)
+
+!--            Given the quadrature points in the current solid face element 
+!              we have to find the fluid element that contains the quad point                
+
+               DO iq = 1, nGF 
+                  xq = QPnt(:,iq)
+
+C                   write(*,*)" quad point: ", iq
+C                   write(*,*) xq
+
+                  find = 0
+
+                  DO a = 1, eNonF
+
+                     IF( find .EQ. 1 ) EXIT 
+
+                     Ac = msh(2)%fa(iFa)%IEN(a,idFaceElm)
+C                    Ac = msh(2)%fa(iFa)%gN(Ac) ! check this for parallel 
+                     Ac = Ac - nbrNdF
+
+                     idF = mapSNdFElm(Ac) 
+
+C                      write(*,*)" looking into fluid elm ", idF
+
+                     find = 0
+
+                     CALL SrcSTENCIL(msh(1),lD, xq, idF, idFlElm, find)
+                   
+!--                  If we have found the quadrature point in the fluid mesh 
+!                    we update the map                      
+                     IF( find .EQ. 1 ) THEN 
+!                       Update counter for nmr of solids in fluid elm                
+                        cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit) + 1 
+                        e = cnt(idFlElm,iFNit) 
+
+!                       Store local (wrt the face) id face into idFlElm map  
+!                       Check if we have already add this solid for this fluid   
+                        DO i = 1, e           
+                           IF(FElmSElm(idFlElm,iFNit, i) 
+     2                                         .EQ.idFaceElm) THEN
+
+                              cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit)-1  
+                              EXIT
+                           END IF
+                           IF(i .EQ. e) THEN 
+                              FElmSElm(idFlElm,iFNit, e) = idFaceElm
+                           END IF
+                        END DO
+
+                     END IF
+
+                  END DO 
+
+!--               If at the end of the loop we didn't find it, loop 
+!                 over the whole fluid mesh 
+                  IF( find .EQ. 0 ) THEN 
+                     write(*,*)"!!!! @@@ NEED TO LOOP OVER MESH "
+                     CALL SrcMESH(msh(1),lD, xq, idFlElm, find)
+
+                     IF( find .EQ. 1 ) THEN 
+!                       Update counter for nmr of solids in fluid elm                
+                        cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit) + 1 
+                        e = cnt(idFlElm,iFNit) 
+
+!                       Store local (wrt the face) id face into idFlElm map  
+!                       Check if we have already add this solid for this fluid   
+                        DO i = 1, e           
+                           IF(FElmSElm(idFlElm,iFNit, i) 
+     2                                         .EQ.idFaceElm) THEN
+
+                              cnt(idFlElm,iFNit) = cnt(idFlElm,iFNit)-1  
+                              EXIT
+                           END IF
+                           IF(i .EQ. e) THEN 
+                              FElmSElm(idFlElm,iFNit, e) = idFaceElm
+                           END IF
+                        END DO
+
+                     ELSE
+                        err= " quad solid node not in fluid mesh "
+                     END IF
+                  END IF
+
+
+               END DO
+
+               DEALLOCATE(xFace, ds)
+
+
+            END IF 
+
+         END DO 
+
+         DEALLOCATE(QPnt)
+
+C          write(*,*)""
+C          write(*,*)""
+C          write(*,*)""
+
+      END DO 
+
+      maxNbrSElm = MAXVAL(cnt(:,1))
+      DO i=1, iFNit
+         maxNbr = MAXVAL(cnt(:,i))
+         IF(maxNbr .GT. maxNbrSElm) maxNbrSElm = maxNbr
+      END DO
+C       write(*,*)" maxNbrSElm =  ", maxNbrSElm
+
+
+!     Copy FElmSElm into  mapFElmSElm
+!---- Filling mapFElmSElm  
+      
+      IF (ALLOCATED(mapFElmSElm)) DEALLOCATE(mapFElmSElm)
+      ALLOCATE( mapFElmSElm(msh(1)%nEl, msh(2)%nNtsFa, maxNbrSElm) )
+      mapFElmSElm = 0
+      mapFElmSElm(:,:,:) = FElmSElm(:,:,1:maxNbrSElm)
+
+!     Useful printing part 
+C       write(*,*)" PRINTING PART mapFElmSElm "
+      
+C C       DO e = 1, msh(2)%nNtsFa
+C C          DO a = 1, msh(1)%nEl
+C C             IF( mapFElmSElm(a,e,1) .EQ. 0 ) CYCLE
+C C             write(*,*)" solid face nische ", e, " element fluid: ", a 
+C C             write(*,*) mapFElmSElm(a,e,:) 
+C C          END DO
+C C       END DO
+
+
+
+C       DO e = 1, msh(2)%nFa
+C          IF( .NOT.msh(2)%fa(e)%isNts ) CYCLE
+
+C          DO a = 1, msh(1)%nEl
+C             IF( mapFElmSElm(a,e,1) .EQ. 0 ) CYCLE
+C             write(*,*)" solid face nische ", e, " element fluid: ", a 
+
+C             DO i=1, maxNbrSElm
+
+C                IF( mapFElmSElm(a,e,i) .GT. msh(2)%fa(e)%nEl) THEN 
+C                   write(*,*)" error here!!!!! %%%%$$$$%@^ "
+C                END IF
+C                write(*,*) mapFElmSElm(a,e,i) 
+C             END DO
+C          END DO
+C       END DO
+
+
+C       write(*,*)" END PRINTING PART mapFElmSElm "
+
+
+
+
+      DEALLOCATE(FElmSElm, cnt)
+
+
+      RETURN
+      END SUBROUTINE CONSTR_mapFElmSElm
+
+!####################################################################
+!     Search a point xq inside the element stencil of node idNodeStc
+      SUBROUTINE SrcSTENCIL(lM, lD, xq, idElmStc, findIn, find)
+      USE COMMOD
+      IMPLICIT NONE
+      
+      TYPE(mshType),  INTENT(IN) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: xq(nsd)
+      INTEGER(KIND=IKIND), INTENT(IN) :: idElmStc 
+     
+      INTEGER(KIND=IKIND), INTENT(OUT) :: findIn, find
+      
+      INTEGER(KIND=IKIND) :: nbrElmStc, is, e, a, Ac, idNodeStc, in
+      REAL(KIND=RKIND), ALLOCATABLE :: poly(:,:)
+
+      ALLOCATE(poly(nsd,lM%eNoN))
+
+      find = 0
+      findIn = 0
+
+      DO in = 1, lM%eNoN
+
+         IF(find .EQ. 1) EXIT
+
+         idNodeStc = lM%IEN(in,idElmStc) 
+C          write(*,*)" Node for stencil is ", idNodeStc
+
+         nbrElmStc = lM%stn%nbrNdStn(idNodeStc)-1
+
+C       write(*,*)" beginning loop "
+         DO is = 1, nbrElmStc
+
+            e = lM%stn%elmStn(idNodeStc,is)
+
+            IF( e .EQ. 0 ) EXIT
+            
+C          write(*,*)" inside loop stencil elem, fliud el id = ", e
+
+            DO a = 1, lM%eNoN
+               Ac = lM%IEN(a,e)
+C             poly(:,a) = x(:,Ac) + lD(:,Ac)
+C                write(*,*)" Ac = ", Ac
+               poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+            END DO 
+
+C             write(*,*)" poly ", poly
+C          write(*,*)" xq ", xq
+
+            find = IN_POLY(xq,poly)
+
+            IF(find .EQ. 1) THEN 
+
+C             write(*,*)" inside loop stencil elem, fliud el id = ", e
+               findIn = e
+
+C                write(*,*)" find it in fluid element ", findIn
+               EXIT
+            END IF
+         END DO
+            
+
+      END DO 
+
+C       write(*,*)" "
+
+      DEALLOCATE(poly)
+
+      RETURN
+
+      END SUBROUTINE SrcSTENCIL
+!--------------------------------------------------------------------      
+!     Search a point xq inside the element stencil of node idNodeStc
+      SUBROUTINE SrcMESH(lM, lD, xq, findIn, find)
+      USE COMMOD
+      IMPLICIT NONE
+      
+      TYPE(mshType),  INTENT(IN) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: xq(nsd)
+     
+      INTEGER(KIND=IKIND), INTENT(OUT) :: findIn
+      LOGICAL, INTENT(OUT) :: find
+      
+      REAL(KIND=RKIND), ALLOCATABLE :: poly(:,:)
+      INTEGER(KIND=IKIND) :: e, a, Ac
+
+      ALLOCATE(poly(nsd,lM%eNoN))
+
+      find = .FALSE.
+      findIn = 0
+
+      DO e = 1, lM%nEl
+
+         DO a=1, lM%eNoN
+            Ac = lM%IEN(a,e)
+            poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+         END DO 
+
+         find = IN_POLY(xq,poly)
+
+         IF(find) THEN 
+            findIn = e
+            EXIT
+         END IF
+      END DO
+
+      DEALLOCATE(poly)
+      
+      RETURN
+
+      END SUBROUTINE SrcMESH
+!####################################################################
 !####################################################################
 !--------------------------------------------------------------------
 !
@@ -1107,11 +2576,9 @@ C       mapFElmSNd = mapFElmSNd + 1
 
       ALLOCATE(idMap(tnNo))
 
-
-
 !     Compute B-Box around solid with fluid mesh size
       CALL COMP_DIAM(msh(1),msh(1)%mDiam)
-      write(*,*)" fluid mesh diam ", msh(1)%mDiam
+C       write(*,*)" fluid mesh diam ", msh(1)%mDiam
 
 !     Create a bounding box around of the current solid location 
       minb = HUGE(minb)
@@ -1170,6 +2637,7 @@ C       mapFElmSNd = mapFElmSNd + 1
 
 !     Adding opposite Neigh nodes if a fluid element is inside the bigger 
 !     solid bounding-box)
+      write(*,*)" Adding opposite Neigh nodes "
       DO iM=1, nMsh
 !        Select fluid mesh          
          IF( msh(iM)%nNtsFa .EQ. 0) THEN 
@@ -1194,10 +2662,12 @@ C       mapFElmSNd = mapFElmSNd + 1
                END DO
 
                IF( isInsie ) THEN
-!                  write(*,*)" Element ", e 
+                  write(*,*)" Element ", e , " inside bbox"
                   DO a=1, msh(iM)%eNoN
                      rowN = msh(iM)%IEN(a,e)
                      eOpp = msh(iM)%neigh(e,a)
+                     write(*,*)" eOpp = ", eOpp
+                     IF( eOpp .EQ. -1 ) CYCLE 
 
                      DO aopp = 1, msh(iM)%eNoN
                         colN = msh(iM)%IEN(aopp,eOpp)
@@ -1215,6 +2685,7 @@ C       mapFElmSNd = mapFElmSNd + 1
 
 !     Adding Nitsche coupling connections (only Nitsche faces with fluid 
 !     nodes inside a bigger solid bounding-box)
+      write(*,*)" Adding Nitsche coupling connections "
       DO iM=1, nMsh
          IF( msh(iM)%nNtsFa .EQ. 0) CYCLE         
 
@@ -1484,13 +2955,12 @@ C       mapFElmSNd = mapFElmSNd + 1
       END SUBROUTINE COMP_DIAM
 !####################################################################
 !     This routine computes the diam of a mesh with TRI type elements in 2D  
-      PURE SUBROUTINE COMP_ELM_DIAM(lM,poly,eNoN,maxDist)
+      PURE SUBROUTINE COMP_ELM_DIAM(poly,eNoN,maxDist)
       USE COMMOD, ONLY : nsd, mshType
       USE ALLFUN
       USE UTILMOD
       IMPLICIT NONE 
 
-      TYPE(mshType), INTENT(IN) :: lM 
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoN
       REAL(KIND=RKIND), INTENT(IN) :: poly(nsd,eNoN) 
       REAL(KIND=RKIND), INTENT(OUT) :: maxDist
@@ -1498,9 +2968,8 @@ C       mapFElmSNd = mapFElmSNd + 1
       REAL(KIND=RKIND) :: diam 
       INTEGER(KIND=IKIND) :: e, Ac, Acn
 
-
       maxDist = TINY(maxDist)
-!     compute solid mesh diamter (in the current configuration)
+
       IF((nsd .EQ. 2) .AND. (eNoN .EQ. 3)) THEN
 
          diam = DIST(poly(:,1),poly(:,2))
@@ -1510,6 +2979,11 @@ C       mapFElmSNd = mapFElmSNd + 1
          IF(diam .GT. maxDist) maxDist = diam
 
          diam = DIST(poly(:,1),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+      ELSE IF((nsd .EQ. 2) .AND. (eNoN .EQ. 2)) THEN
+
+         diam = DIST(poly(:,1),poly(:,2))
          IF(diam .GT. maxDist) maxDist = diam
 
       ELSE IF ((nsd .EQ. 3) .AND. (eNoN .EQ. 4)) THEN
@@ -1532,11 +3006,566 @@ C       mapFElmSNd = mapFElmSNd + 1
          diam = DIST(poly(:,3),poly(:,4))
          IF(diam .GT. maxDist) maxDist = diam
 
+      ELSE IF ((nsd .EQ. 3) .AND. (eNoN .EQ. 3)) THEN
+
+         diam = DIST(poly(:,1),poly(:,2))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,2),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
+         diam = DIST(poly(:,1),poly(:,3))
+         IF(diam .GT. maxDist) maxDist = diam
+
       ELSE 
-         !write(*,*)" *** rule for elementwise distance not defined ***"
+!        *** rule for elementwise distance not defined ***
          maxDist = 0._RKIND
       END IF
 
       RETURN
       END SUBROUTINE COMP_ELM_DIAM
 !####################################################################
+!--------------------------------------------------------------------
+      SUBROUTINE GETFSFace(lM, fs, lStab)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(fsType), INTENT(OUT) :: fs
+      TYPE(mshType), INTENT(IN) :: lM
+      LOGICAL, INTENT(IN) :: lStab
+
+      INTEGER i, g
+
+      CALL DESTROY(fs)
+      
+      IF (lStab) THEN
+         fs%nG    = lM%fa(1)%fs(1)%nG
+         fs%eType = lM%fa(1)%fs(1)%eType
+         fs%lShpF = lM%fa(1)%fs(1)%lShpF
+         fs%eNoN  = lM%fa(1)%fs(1)%eNoN
+         CALL ALLOCFS(fs, nsd-1)
+         fs%w   = lM%fa(1)%fs(1)%w
+         fs%xi  = lM%fa(1)%fs(1)%xi
+         fs%N   = lM%fa(1)%fs(1)%N
+         fs%Nx  = lM%fa(1)%fs(1)%Nx
+         fs%xib = lM%fa(1)%fs(1)%xib
+         fs%Nb  = lM%fa(1)%fs(1)%Nb
+         IF (ALLOCATED(fs%Nxx)) THEN
+            fs%Nxx = lM%fa(1)%fs(1)%Nxx
+         END IF
+      ELSE 
+         err=" Non linear FEM not accepted for Nitshe-unfitted "
+      END IF
+
+      RETURN
+      END SUBROUTINE GETFSFace
+!####################################################################
+!     Returns Gauss integration points in current coordinates from 
+!     reference face (dimFace) to current face (dimFace+1)
+
+      SUBROUTINE GET_SElmQuadPoint(nbrSElm, eTypeF, eNonF, nG, nGF, 
+     2                         crdFace, quadPnt, SElm, qPRef )
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: nbrSElm, eTypeF, nG, nGF, eNonF
+      REAL(KIND=RKIND), INTENT(IN) :: crdFace(nsd, eNonF)
+      REAL(KIND=RKIND), INTENT(OUT) :: quadPnt(nsd, nGF)
+      REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: SElm(nsd,eNonF,nbrSElm)
+      REAL(KIND=RKIND),INTENT(OUT),OPTIONAL :: qPRef(nsd-1, nGF)
+
+
+      INTEGER(KIND=IKIND) :: FlagToDel, i, j, bng, end
+      INTEGER(KIND=IKIND), ALLOCATABLE :: FlagLevel(:)                                     
+      REAL(KIND=RKIND), ALLOCATABLE :: lstSbElm(:,:,:), x3(:), 
+     2                                                 xlToDel(:,:)
+      REAL(KIND=RKIND) :: QpFacRef(nsd-1, nGF)
+      
+
+C       write(*,*)" Inside GET_SElmQuadPoint "
+
+!     Define number of face sun-element in the reference face element 
+C       IF ( nsd .EQ. 2) nbrSElm = 2**(nbrFntCllSD-1)
+C       IF ( nsd .EQ. 3) nbrSElm = 4**(nbrFntCllSD-1)
+
+C       write(*,*)" nbr max sub-element = ", nbrSElm
+
+      ALLOCATE( lstSbElm(nsd-1, eNonF, nbrSElm), FlagLevel(nbrSElm), 
+     2           xlToDel(nsd-1, eNonF) )
+      FlagLevel = 0
+      lstSbElm = -2
+      
+      IF ( nsd .EQ. 2) THEN 
+         IF ( eTypeF .NE. eType_LIN1) err=" eTypeF not supported "
+
+         ALLOCATE(x3(nsd-1))
+
+         lstSbElm(1,1,1) = -1._RKIND
+         lstSbElm(1,2,1) = 1._RKIND
+
+         FlagLevel(1) = 1
+
+         i = 1
+         
+C          write(*,*)" Flag level = ", FlagLevel
+C          write(*,*)" Sub element list : "
+C          write(*,*) lstSbElm
+         
+
+         DO WHILE (i .LE. nbrSElm)
+
+            IF ( FlagLevel(i) .EQ. nbrFntCllSD ) THEN 
+!              We have reached the maxminum number of subdivision
+               i = i + 1
+C                write(*,*)" sub elem ", i, " end sundivision"
+
+C                write(*,*)" Flag level = ", FlagLevel
+C                write(*,*)" Sub element list : "
+C                write(*,*) lstSbElm
+
+               CYCLE
+            END IF
+
+!           Store into of initial element to subdivide 
+            xlToDel = lstSbElm(:,:,i)  
+C             write(*,*)" xlToDel = ", xlToDel
+            FlagToDel = FlagLevel(i)
+
+
+            IF (lstSbElm(1,1,i+1) .LT. -1.5_RKIND) THEN 
+               j = i
+!              Nothing to copy, just divide
+               GOTO 130
+            END IF
+
+!           Need to copy on the right the previously cretaed sub-elements 
+
+            IF (lstSbElm(1,1,i+1) .GT. -1.5_RKIND) THEN 
+               j = nbrSElm - 1
+               DO WHILE (j .GE. i+1)
+                  lstSbElm(:,:,j+1) = lstSbElm(:,:,j)
+                  FlagLevel(j+1) = FlagLevel(j)
+                  j = j - 1
+               END DO 
+               
+C                write(*,*)" Flag level = ", FlagLevel
+C                write(*,*)" Sub element list : "
+C                write(*,*) lstSbElm
+
+            END IF
+
+
+130         CONTINUE
+!           We have 2 new subFaces 
+            x3(1) = (xlToDel(1,1) + xlToDel(1,2))*0.5_RKIND
+
+            lstSbElm(:,1,i) = xlToDel(:,1)
+            lstSbElm(:,2,i) = x3
+
+            lstSbElm(:,1,i+1) = x3 
+            lstSbElm(:,2,i+1) = xlToDel(:,2)
+
+!           Update just created level by adding 1 to previous parent level 
+            FlagLevel(i:i+1) = FlagToDel + 1
+
+C             write(*,*)" Flag level = ", FlagLevel
+C             write(*,*)" Sub element list : "
+C             write(*,*) lstSbElm
+
+C             write(*,*)""
+C             write(*,*)""
+C             write(*,*)""
+C             write(*,*)""
+
+         END DO
+
+C          write(*,*)" For the solid reference element we have " 
+C          write(*,*)" Flag level = ", FlagLevel
+C          write(*,*)" Sub element list : "
+C          write(*,*) lstSbElm
+
+         DEALLOCATE(x3)
+
+      ELSE IF( nsd .EQ. 3) THEN 
+         IF ( eTypeF .NE. eType_TRI3) err=" eTypeF not supported "
+
+         lstSbElm(1,1,1) = 1._RKIND
+         lstSbElm(2,1,1) = 0._RKIND
+         
+         lstSbElm(1,2,1) = 0._RKIND
+         lstSbElm(2,2,1) = 1._RKIND
+         
+         lstSbElm(1,3,1) = 0._RKIND
+         lstSbElm(2,3,1) = 0._RKIND
+
+         FlagLevel(1) = 1
+
+!        To do sub-element dub-division 
+
+      END IF
+
+
+!     Given lstSbElm, we can now define the quadrature point in the 
+!     reference divided face element 
+
+      DO i = 1, nbrSElm
+
+         bng = nG*(i-1)+1
+         end = nG*i
+         CALL GETGIP_SELM(nsd-1, eTypeF, eNonF, nG, lstSbElm(:,:,i), 
+     2                                              QpFacRef(:,bng:end))
+
+      END DO
+
+C       write(*,*)" !!!!!! Quad point ref face element = ", QpFacRef
+
+      DO i = 1, nbrSElm
+
+         bng = nG*(i-1)+1
+         end = nG*i
+         CALL GETP_SELM(nsd-1, eTypeF, eNonF, nG, crdFace,  
+     2                          QpFacRef(:,bng:end), quadPnt(:,bng:end))
+
+      END DO
+
+C       write(*,*)" !!!!!! Quad point in current elemem ", quadPnt
+
+C       write(*,*)" End GET_SElmQuadPoint"
+
+      IF (PRESENT(SElm)) THEN 
+
+         DO i = 1, nbrSElm
+            CALL GETP_SELM(nsd-1, eTypeF, eNonF, nG, crdFace,  
+     2                          lstSbElm(:,:, i), SElm(:,:,i))
+         END DO
+      END IF
+ 
+      IF (PRESENT(qPRef)) qPRef = QpFacRef
+
+      DEALLOCATE ( lstSbElm, FlagLevel, xlToDel )
+
+      RETURN
+      END SUBROUTINE GET_SElmQuadPoint
+
+!####################################################################
+!     Returns Gauss integration points in current coordinates from 
+!     reference face (dimFace) to current face (dimFace)
+      SUBROUTINE GETGIP_SELM(insd, eType, eNonF, nG, crdFace, xi)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, nG, eNonF
+      REAL(KIND=RKIND), INTENT(IN) :: crdface(insd,eNonF)
+      REAL(KIND=RKIND), INTENT(OUT) :: xi(insd, nG)
+
+      REAL(KIND=RKIND) :: s, t, in, jq, xiRef(insd,nG), N(eNonF,nG)
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+C       write(*,*)" inside GETGIP_SELM "
+
+!     3D elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+         s = 2._RKIND/3._RKIND
+         t = 1._RKIND/6._RKIND
+         xiRef(1,1) = t; xiRef(2,1) = t
+         xiRef(1,2) = s; xiRef(2,2) = t
+         xiRef(1,3) = t; xiRef(2,3) = s
+
+!     2D elements
+      CASE(eType_LIN1)
+         s = 1._RKIND/SQRT(3._RKIND)
+         xiRef(1,1) = -s
+         xiRef(1,2) =  s
+
+      END SELECT
+
+C       write(*,*)" sub face ref elemem = ", crdFace
+
+      DO in = 1, eNonF
+!        Get nodal shape function in the reference face element 
+         CALL GETNFace(insd, eType, eNonF, xiRef(:,in), N(:,in))
+      END DO
+
+!     N_ij is the weight that we will use to define the quad point 
+!     in the new subElement in the reference bulk element with 
+!     coordinates = crdFace
+      xi = 0._RKIND
+
+!     Loop over quad point          
+      DO jq = 1, nG
+!        Loop over element nodes 
+         DO in = 1, eNonF
+            xi(:, jq) = xi(:, jq) + crdFace(:,in)*N(in,jq)
+         END DO
+      END DO  
+
+C       write(*,*)" quad point sub elemem ", xi
+
+      RETURN
+      END SUBROUTINE GETGIP_SELM
+!--------------------------------------------------------------------
+!     Returns shape functions at given point (reference coords)
+      SUBROUTINE GETNFace(insd, eType, eNoN, xi, N)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, eNoN
+      REAL(KIND=RKIND), INTENT(IN)  :: xi(insd)
+      REAL(KIND=RKIND), INTENT(OUT) :: N(eNoN)
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+C       write(*,*)" Inside GETNFace "
+
+!     3D face elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+         N(1) = xi(1)
+         N(2) = xi(2)
+         N(3) = 1._RKIND - xi(1) - xi(2)
+
+!     2D face elements
+      CASE(eType_LIN1)
+         N(1) = (1._RKIND - xi(1))*0.5_RKIND
+         N(2) = (1._RKIND + xi(1))*0.5_RKIND
+
+      END SELECT
+
+      RETURN
+      END SUBROUTINE GETNFace
+!--------------------------------------------------------------------
+!     Returns quad points in current coordinates (current face, dimFace) 
+!     from points (nbr of point = nbr of quad points) in the reference 
+!     face (dimFace-1) 
+      SUBROUTINE GETP_SELM(insd, eType, eNonF, nG, crdFace, 
+     2                                                        xin, xout)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, nG, eNonF
+      REAL(KIND=RKIND), INTENT(IN) :: crdFace(insd+1, eNonF), 
+     2              xin(insd, nG)
+      REAL(KIND=RKIND), INTENT(OUT) :: xout(insd+1, nG)
+
+      REAL(KIND=RKIND) :: in, jq, N(eNonF,nG)
+
+C       write(*,*)" face sub elemem = ", crdFace
+
+      DO in = 1, eNonF
+!        Get nodal shape function in the reference face element 
+         CALL GETNFace(insd, eType, eNonF, xin(:,in), N(:,in))
+      END DO
+
+!     N_ij is the weight that we will use to define the quad point 
+!     in the new subElement in the reference bulk element with 
+!     coordinates = crdFace
+      xout = 0._RKIND
+
+!     Loop over quad point          
+      DO jq = 1, nG
+!        Loop over element nodes 
+         DO in = 1, eNonF
+            xout(:, jq) = xout(:, jq) + crdFace(:,in)*N(in,jq)
+         END DO
+      END DO  
+
+C       write(*,*)" quad point sub elemem ", xout
+
+      RETURN
+      END SUBROUTINE GETP_SELM
+!####################################################################
+!     This subroutine assembels the element stiffness matrix into the
+!     global stiffness matrix (Val sparse matrix formatted as a vector)
+      SUBROUTINE DOASSEM_RC (d, eqNRow, eqNCol, lK )
+      USE TYPEMOD
+      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nsd
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: d, eqNRow(d), eqNCol(d)
+      REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d)
+
+      INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right
+
+      DO a=1, d
+         rowN = eqNRow(a)
+         IF (rowN .EQ. 0) CYCLE
+
+         DO b=1, d
+            colN = eqNCol(b)
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+            Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE DOASSEM_RC
+!####################################################################
+!     This subroutine assembels the element stiffness matrix into the
+!     global stiffness matrix (Val sparse matrix formatted as a vector)
+      SUBROUTINE DOASSEM_Opp (d, eqNRow, eqNCol, lK, lR, lKrc)
+      USE TYPEMOD
+      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: d, eqNRow(d), eqNCol(d)
+      REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
+      REAL(KIND=RKIND), INTENT(IN) :: lKrc(dof*dof,d,d)
+
+      INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right
+
+      DO a=1, d
+         rowN = eqNRow(a)
+         IF (rowN .EQ. 0) CYCLE
+         R(:,rowN) = R(:,rowN) + lR(:,a)
+
+!        Loop for lK         
+         DO b=1, d
+            colN = eqNRow(b)
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+            Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
+         END DO
+
+!        Loop for lKrc
+         DO b=1, d
+            colN = eqNCol(b)
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+            Val(:,ptr) = Val(:,ptr) + lKrc(:,a,b)
+         END DO
+
+      END DO
+
+      RETURN
+      END SUBROUTINE DOASSEM_Opp
+!####################################################################
+!     This subroutine assembels the element tangent matrices and red
+!     for Nitsche into the global stiffness matrix
+      SUBROUTINE NTS_ASSEMBLY (eNoN, eNoNF, ptrFlu, ptrSOl, lRS, lKS, 
+     2                                                      lKFS, lKSF)
+      USE TYPEMOD
+      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoN, eNoNF 
+      INTEGER(KIND=IKIND), INTENT(IN) :: ptrFlu(eNoN), ptrSOl(eNoNF)
+      REAL(KIND=RKIND), INTENT(IN) :: lRS(dof,eNoNF)
+      REAL(KIND=RKIND), INTENT(IN) :: lKS(dof*dof,eNoNF,eNoNF)
+      REAL(KIND=RKIND), INTENT(IN) :: lKFS(dof*dof,eNoN,eNoNF)
+      REAL(KIND=RKIND), INTENT(IN) :: lKSF(dof*dof,eNoNF,eNoN)
+
+      INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right
+
+
+C       write(*,*)" Starting assembly"
+
+!     Adding Solid-Solid contribution    
+      DO a=1, eNoNF
+         rowN = ptrSOl(a)
+         IF (rowN .EQ. 0) CYCLE
+         R(:,rowN) = R(:,rowN) + lRS(:,a)
+
+         DO b=1, eNoNF
+            colN = ptrSOl(b)
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+
+            Val(:,ptr) = Val(:,ptr) + lKS(:,a,b)
+         END DO
+      END DO
+
+C       write(*,*)" end Solid-Solid "
+
+!     Adding Fluid-Solid contribution  lKFS
+      DO a=1, eNoN
+         rowN = ptrFlu(a)
+         IF (rowN .EQ. 0) CYCLE
+
+         DO b=1, eNoNF
+            colN = ptrSOl(b)
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+
+            Val(:,ptr) = Val(:,ptr) + lKFS(:,a,b)
+
+
+         END DO
+      END DO
+C       write(*,*)" end Fluid-Solid "
+
+!     Adding Solid-Fluid contribution  lKSF
+      DO a=1, eNoNF
+         rowN = ptrSOl(a)
+         IF (rowN .EQ. 0) CYCLE
+
+         DO b=1, eNoN
+            colN = ptrFlu(b) 
+            IF (colN .EQ. 0) CYCLE
+            left  = rowPtr(rowN)
+            right = rowPtr(rowN+1)
+            ptr   = (right + left)/2
+            DO WHILE (colN .NE. colPtr(ptr))
+               IF (colN .GT. colPtr(ptr)) THEN
+                  left  = ptr
+               ELSE
+                  right = ptr
+               END IF
+               ptr = (right + left)/2
+            END DO
+
+            Val(:,ptr) = Val(:,ptr) + lKSF(:,a,b)
+
+
+         END DO
+      END DO
+
+C       write(*,*)" end Solid-Fluid  "
+
+      RETURN
+      END SUBROUTINE NTS_ASSEMBLY

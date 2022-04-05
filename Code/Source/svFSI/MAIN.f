@@ -113,7 +113,12 @@
          CALL PICP
 
 !     Apply Dirichlet BCs strongly
-         CALL SETBCDIR(An, Yn, Dn)     
+         CALL SETBCDIR(An, Yn, Dn)   
+
+!     If we use Nitsche unfitted FSI 
+         IF( msh(2)%nNtsFa .GE. 1)  THEN 
+            CALL CONSTR_mapFElmSElm(Do) 
+         END IF          
 
 !     Inner loop for iteration
          DO

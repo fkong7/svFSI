@@ -427,8 +427,10 @@
          IF (nsd .EQ. 3) THEN 
             propL(5,1) = f_z
             propL(6,1) = nitsche_param
+            propL(7,1) = ghostP_param
          ELSE 
             propL(5,1) = nitsche_param
+            propL(6,1) = ghostP_param
          END IF
          CALL READDOMAIN(lEq, propL, list)
 
@@ -730,8 +732,10 @@
          IF (nsd .EQ. 3) THEN 
             propL(5,1) = f_z
             propL(6,1) = nitsche_param
+            propL(7,1) = ghostP_param
          ELSE 
             propL(5,1) = nitsche_param
+            propL(6,1) = ghostP_param
          END IF
 
 !        struct properties
@@ -1077,6 +1081,8 @@
                IF (.NOT.ASSOCIATED(lPtr)) rtmp = 0._RKIND
             CASE (nitsche_param)
                lPtr => lPD%get(rtmp,"Nitsche Param",1,lb=0._RKIND)
+            CASE (ghostP_param)
+               lPtr =>lPD%get(rtmp,"Ghost penalty Param",1,lb=-1._RKIND)
             CASE DEFAULT
                err = "Undefined properties"
             END SELECT

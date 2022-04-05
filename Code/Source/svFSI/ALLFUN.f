@@ -2689,7 +2689,7 @@
       ALLOCATE(stcNd(lM%nNo,maxAdj+1))
       ALLOCATE(stcElm(lM%nNo,maxAdj))
       ALLOCATE(idxInsrt(lM%nNo))
-      ALLOCATE(lm%stn%nbrNdStn(lM%nNo)) 
+      ALLOCATE(lM%stn%nbrNdStn(lM%nNo)) 
 
 
       stcNd = 0
@@ -2751,30 +2751,31 @@ C       END DO
 
       DO e=1, lM%nNo
          a = idxInsrt(e)-1
-         lm%stn%nbrNdStn(e) = a+1
+         lM%stn%nbrNdStn(e) = a+1
       END DO
 
-!     insert them into lm%stn
-      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+2)) 
-      lm%stn%ndStn = 0
-      ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
+!     insert them into lM%stn
+      ALLOCATE(lM%stn%ndStn(lM%nNo,maxAdj+2)) 
+      lM%stn%ndStn = 0
+      ALLOCATE(lM%stn%elmStn(lM%nNo,maxAdj))
+      lM%stn%elmStn = 0
 
 
-      lm%stn%ndStn(:,1:maxAdj+1) = stcNd
+      lM%stn%ndStn(:,1:maxAdj+1) = stcNd
       DO a=1, lM%nNo
-         lm%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
+         lM%stn%ndStn(a,lM%stn%nbrNdStn(a)) = a 
       END DO
-      lm%stn%elmStn = stcElm
+      lM%stn%elmStn = stcElm
 
 !     Print stencil by element IDs and node IDs
-C       DO a=1, lM%nNo
-C          write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
-C       END DO 
+      DO a=1, lM%nNo
+         write(*,*)" lM%stn%elmStn node ", a , " = ", lM%stn%elmStn(a,:)
+      END DO 
 
-C       DO a=1, lM%nNo
-C          write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
-C      2       " = ", lm%stn%ndStn(a,:) 
-C       END DO
+      DO a=1, lM%nNo
+         write(*,*)"lM%stn%ndStn node ",a, " are ", lM%stn%nbrNdStn(a) , 
+     2       " = ", lM%stn%ndStn(a,:) 
+      END DO
       
 
       DEALLOCATE(incNd)
@@ -2801,6 +2802,7 @@ C       END DO
 
       ALLOCATE(lM%neigh(lM%nEl,lM%eNoN))
       
+      write(*,*)" Inside GETNEIGH "
 !     If we did not find any neigh, the face is a boundary face (neigh = -1)
       lM%neigh = -1
 
@@ -2819,14 +2821,26 @@ C       END DO
 
 !     TODO: CHECK FOR PARALLEL VERSION
 
+      write(*,*)" loop over fluid eleme"
+
 !     Loop over element 
       DO e=1, lM%nEl
+
+         write(*,*)" looking fluid elem ", e
 
 !        Loop over faces/edges          
          DO a=1, lM%eNoN
 !           Get nbr of elements in the stencil 
-            nodeSt = lM%lN(lM%IEN(faceID(a,1),e))
-            nbrSN = msh(1)%stn%nbrNdStn(nodeSt)
+!           Why did I put lM%lN here ?? 
+!            nodeSt = lM%lN(lM%IEN(faceID(a,1),e))
+            nodeSt = lM%IEN(faceID(a,1),e)
+
+            write(*,*)" lM%lN(...) = ", lM%lN(lM%IEN(faceID(a,1),e))
+            write(*,*)" nodeSt = ", nodeSt
+
+            nbrSN = msh(1)%stn%nbrNdStn(nodeSt) - 1
+
+            write(*,*)" nbrSN = ", nbrSN
 
             cnt = 0
 
@@ -2835,14 +2849,17 @@ C       END DO
 
                cnt = 0
 
-               eSt =  lm%stn%elmStn(nodeSt,is)
+               eSt =  lM%stn%elmStn(nodeSt,is)
+
+               IF( eSt .EQ. 0) CYCLE
+               write(*,*)" checking elm  ", eSt
 
                IF( eSt .EQ. e) CYCLE
 
                DO i = 1, lM%eNoN-1
                   DO j = 1, lM%eNoN
-                     Ac = lM%lN(lM%IEN(faceID(a,i),e))
-                     Bc = lM%lN(lM%IEN(j,eSt))
+                     Ac = lM%IEN(faceID(a,i),e)
+                     Bc = lM%IEN(j,eSt)
 
                      IF( Ac .EQ. Bc ) cnt = cnt + 1
                   END DO
@@ -2855,11 +2872,11 @@ C       END DO
       END DO
 
 !     Printing neigh 
-!      write(*,*)" The neigh are: "
-!      DO e=1, lM%nEl
-!         write(*,*)" element ", e
-!         write(*,*), lM%neigh(e,:)
-!      END DO
+      write(*,*)" The neigh are: "
+      DO e=1, lM%nEl
+         write(*,*)" element ", e
+         write(*,*), lM%neigh(e,:)
+      END DO
 
       RETURN
       END SUBROUTINE GETNEIGH
