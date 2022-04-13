@@ -145,7 +145,7 @@
 
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
-               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Do)
+               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Do, Yo)
                dbg = "Mesh "//iM//" is assembled"
             END DO
 

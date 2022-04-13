@@ -697,6 +697,8 @@
 
       tauM = 1._RKIND / (rho * SQRT( kT + kU + kS ))
 
+      ! probably here that we should use u^n-1 instead of u
+!     Here they add u . Nabla u 
       rV(1) = ud(1) + u(1)*ux(1,1) + u(2)*ux(2,1)
       rV(2) = ud(2) + u(1)*ux(1,2) + u(2)*ux(2,2)
 
@@ -721,6 +723,9 @@
          tauB  = 0._RKIND
          ua(:) = u(:)
          pa    = p
+
+!        reove also up part 
+!         up = 0._RKIND      
       END IF
 
       rV(1) = tauB*(up(1)*ux(1,1) + up(2)*ux(2,1))
@@ -742,6 +747,10 @@
 
          lR(2,a) = lR(2,a) + wr*Nw(a)*rV(2) + w*(Nwx(1,a)*rM(1,2)
      2      + Nwx(2,a)*rM(2,2))
+
+!        Adding extra term for Temam's trick for the trilinear form \
+C          lR(1,a) = lR(1,a) + wr * 0.5_RKIND * divU * u(1)*Nw(a) 
+C          lR(2,a) = lR(2,a) + wr * 0.5_RKIND * divU * u(2)*Nw(a) 
 
 !        Quantities used for stiffness matrix
          uNx(a)  = u(1)*Nwx(1,a)  + u(2)*Nwx(2,a)
@@ -794,6 +803,13 @@
             T2 = (mu + tauC)*rM(2,2) + esNx(2,a)*mu_g*esNx(2,b)
      2         - rho*tauM*uaNx(a)*updu(2,2,b)
             lK(5,a,b)  = lK(5,a,b)  + wl*(T2 + T1)
+
+
+!           Adding extra term for Temam's trick for the trilinear form \
+C             lK(1,a,b)  = lK(1,a,b) + wl*0.5_RKIND*rho*divU*Nw(b)*Nw(a) 
+C             lK(5,a,b)  = lK(5,a,b) + wl*0.5_RKIND*rho*divU*Nw(b)*Nw(a) 
+
+
          END DO
       END DO
 
@@ -809,6 +825,247 @@
 
       RETURN
       END SUBROUTINE FLUID2D_M
+!####################################################################
+      SUBROUTINE FLUID2D_M_NoVMS(eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
+     2   Nqx, Nwxx, al, yl, ylo, bfl, lR, lK)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
+      REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
+     2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
+     3   yl(tDof,eNoNw), bfl(2,eNoNw), ylo(tDof,eNoNw)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
+     2   lK(dof*dof,eNoNw,eNoNw)
+
+      INTEGER(KIND=IKIND) a, b, k
+      REAL(KIND=RKIND) amd, wl, wr, rho,
+     2   divU, gam, mu, mu_s, mu_g, p, pa, u(2), uo(2), ud(2), px(2),
+     3   f(2), up(2), ua(2), ux(2,2), uxx(2,2,2), es(2,2), es_x(2,2,2),
+     4   esNx(2,eNoNw), mu_x(2), rV(2), rS(2), rM(2,2), updu(2,2,eNoNw),
+     5   uNx(eNoNw), upNx(eNoNw), uaNx(eNoNw), NxNx, d2u2(2), T1, T2
+
+      rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
+      f(1) = eq(cEq)%dmn(cDmn)%prop(f_x)
+      f(2) = eq(cEq)%dmn(cDmn)%prop(f_y)
+
+      T1   = eq(cEq)%af * eq(cEq)%gam * dt
+      amd  = eq(cEq)%am/T1
+      wl   = w*T1
+      wr   = w*rho
+
+!     Note that indices are not selected based on the equation because
+!     fluid equation always come first
+!     Velocity and its gradients, inertia (acceleration & body force)
+      ud  = -f
+      u   = 0._RKIND
+      ux  = 0._RKIND
+      uxx = 0._RKIND
+      DO a=1, eNoNw
+         ud(1)   = ud(1) + Nw(a)*(al(1,a)-bfl(1,a))
+         ud(2)   = ud(2) + Nw(a)*(al(2,a)-bfl(2,a))
+
+         uo(1)   = uo(1) + Nw(a)*ylo(1,a)
+         uo(2)   = uo(2) + Nw(a)*ylo(2,a)
+
+         u(1)    = u(1) + Nw(a)*yl(1,a)
+         u(2)    = u(2) + Nw(a)*yl(2,a)
+
+         ux(1,1) = ux(1,1) + Nwx(1,a)*yl(1,a)
+         ux(2,1) = ux(2,1) + Nwx(2,a)*yl(1,a)
+         ux(1,2) = ux(1,2) + Nwx(1,a)*yl(2,a)
+         ux(2,2) = ux(2,2) + Nwx(2,a)*yl(2,a)
+
+         uxx(1,1,1) = uxx(1,1,1) + Nwxx(1,a)*yl(1,a)
+         uxx(2,1,2) = uxx(2,1,2) + Nwxx(2,a)*yl(1,a)
+         uxx(2,1,1) = uxx(2,1,1) + Nwxx(3,a)*yl(1,a)
+
+         uxx(1,2,1) = uxx(1,2,1) + Nwxx(1,a)*yl(2,a)
+         uxx(2,2,2) = uxx(2,2,2) + Nwxx(2,a)*yl(2,a)
+         uxx(2,2,1) = uxx(2,2,1) + Nwxx(3,a)*yl(2,a)
+      END DO
+      divU = ux(1,1) + ux(2,2)
+
+      uxx(1,1,2) = uxx(2,1,1)
+      uxx(1,2,2) = uxx(2,2,1)
+
+      d2u2(1) = uxx(1,1,1) + uxx(2,1,2)
+      d2u2(2) = uxx(1,2,1) + uxx(2,2,2)
+
+!     Pressure and its gradient
+      p  = 0._RKIND
+      px = 0._RKIND
+      DO a=1, eNoNq
+         p  = p + Nq(a)*yl(3,a)
+
+         px(1) = px(1) + Nqx(1,a)*yl(3,a)
+         px(2) = px(2) + Nqx(2,a)*yl(3,a)
+      END DO
+
+!     Update convection velocity relative to mesh velocity
+      IF (mvMsh) THEN
+         DO a=1, eNoNw
+            uo(1) = uo(1) - Nw(a)*yl(4,a)
+            uo(2) = uo(2) - Nw(a)*yl(5,a)
+         END DO
+      END IF
+
+!     Strain rate tensor 2*e_ij := (u_ij + u_ji)
+      es(1,1) = ux(1,1) + ux(1,1)
+      es(2,2) = ux(2,2) + ux(2,2)
+      es(2,1) = ux(2,1) + ux(1,2)
+      es(1,2) = es(2,1)
+
+      DO a=1, eNoNw
+        esNx(1,a) = es(1,1)*Nwx(1,a) + es(2,1)*Nwx(2,a)
+        esNx(2,a) = es(1,2)*Nwx(1,a) + es(2,2)*Nwx(2,a)
+      END DO
+
+      DO k=1, 2
+         es_x(1,1,k) = uxx(1,1,k) + uxx(1,1,k)
+         es_x(2,2,k) = uxx(2,2,k) + uxx(2,2,k)
+         es_x(2,1,k) = uxx(2,1,k) + uxx(1,2,k)
+
+         es_x(1,2,k) = es_x(2,1,k)
+      END DO
+
+      mu_x(1) = (es_x(1,1,1)*es(1,1) + es_x(2,2,1)*es(2,2))*0.5_RKIND
+     2        +  es_x(2,1,1)*es(2,1)
+
+      mu_x(2) = (es_x(1,1,2)*es(1,1) + es_x(2,2,2)*es(2,2))*0.5_RKIND
+     2        +  es_x(2,1,2)*es(2,1)
+
+!     Shear-rate := (2*e_ij*e_ij)^.5
+      gam = es(1,1)*es(1,1) + es(2,1)*es(2,1)
+     2    + es(1,2)*es(1,2) + es(2,2)*es(2,2)
+      gam = SQRT(0.5_RKIND*gam)
+
+!     Compute viscosity based on shear-rate and chosen viscosity model
+!     The returned mu_g := (d\mu / d\gamma)
+      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+
+      IF (ISZERO(gam)) THEN
+         mu_g = 0._RKIND
+      ELSE
+         mu_g = mu_g/gam
+      END IF
+      mu_x(:) = mu_g * mu_x(:)
+
+      ! probably here that we should use u^n-1 instead of u
+!     Here they add u . Nabla u 
+C       rV(1) = ud(1) + u(1)*ux(1,1) + u(2)*ux(2,1)
+C       rV(2) = ud(2) + u(1)*ux(1,2) + u(2)*ux(2,2)
+
+C       rS(1) = mu_x(1)*es(1,1) + mu_x(2)*es(2,1) + mu*d2u2(1)
+C       rS(2) = mu_x(1)*es(1,2) + mu_x(2)*es(2,2) + mu*d2u2(2)
+
+C       up(1) = -tauM*(rho*rV(1) + px(1) - rS(1))
+C       up(2) = -tauM*(rho*rV(2) + px(2) - rS(2))
+
+C       IF (vmsFlag) THEN
+C          tauC = 1._RKIND / (tauM * (Kxi(1,1) + Kxi(2,2)))
+C          tauB = up(1)*up(1)*Kxi(1,1) + up(2)*up(1)*Kxi(2,1)
+C      2        + up(1)*up(2)*Kxi(1,2) + up(2)*up(2)*Kxi(2,2)
+C          IF (ISZERO(tauB)) tauB = eps
+C          tauB = rho/SQRT(tauB)
+
+C          ua(1) = u(1) + up(1)
+C          ua(2) = u(2) + up(2)
+C          pa    = p - tauC*divU
+C       ELSE
+C          tauC  = 0._RKIND
+C          tauB  = 0._RKIND
+      ua(:) = uo(:)
+      pa    = p
+
+!        reove also up part 
+!         up = 0._RKIND      
+C       END IF
+
+C       rV(1) = tauB*(up(1)*ux(1,1) + up(2)*ux(2,1))
+C       rV(2) = tauB*(up(1)*ux(1,2) + up(2)*ux(2,2))
+
+      rM(1,1) = mu*es(1,1) - pa
+      rM(2,1) = mu*es(2,1)
+
+      rM(1,2) = mu*es(1,2) 
+      rM(2,2) = mu*es(2,2) - pa
+
+      rV(1) = ud(1) + ua(1)*ux(1,1) + ua(2)*ux(2,1)
+      rV(2) = ud(2) + ua(1)*ux(1,2) + ua(2)*ux(2,2)
+
+!     Local residue
+      DO a=1, eNoNw
+         lR(1,a) = lR(1,a) + wr*Nw(a)*rV(1) + w*(Nwx(1,a)*rM(1,1)
+     2      + Nwx(2,a)*rM(2,1))
+
+         lR(2,a) = lR(2,a) + wr*Nw(a)*rV(2) + w*(Nwx(1,a)*rM(1,2)
+     2      + Nwx(2,a)*rM(2,2))
+
+!        Quantities used for stiffness matrix
+         uNx(a)  = uo(1)*Nwx(1,a)  + uo(2)*Nwx(2,a)
+
+         uaNx(a) = uNx(a)
+
+         T1 = -rho*uNx(a) + mu*(Nwxx(1,a) + Nwxx(2,a))
+     2      + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a)
+
+         updu(1,1,a) = mu_x(1)*Nwx(1,a) + d2u2(1)*mu_g*esNx(1,a) + T1
+         updu(2,1,a) = mu_x(2)*Nwx(1,a) + d2u2(1)*mu_g*esNx(2,a)
+
+         updu(1,2,a) = mu_x(1)*Nwx(2,a) + d2u2(2)*mu_g*esNx(1,a)
+         updu(2,2,a) = mu_x(2)*Nwx(2,a) + d2u2(2)*mu_g*esNx(2,a) + T1
+      END DO
+
+!     Tangent (stiffness) matrices
+      DO b=1, eNoNw
+         DO a=1, eNoNw
+            rM(1,1) = Nwx(1,a)*Nwx(1,b)
+            rM(2,1) = Nwx(2,a)*Nwx(1,b)
+            rM(1,2) = Nwx(1,a)*Nwx(2,b)
+            rM(2,2) = Nwx(2,a)*Nwx(2,b)
+
+            NxNx = Nwx(1,a)*Nwx(1,b) + Nwx(2,a)*Nwx(2,b)
+
+            T1 = mu*NxNx + rho*amd*Nw(b)*(Nw(a) + rho*uaNx(a))
+     2         + rho*Nw(a)*(uNx(b)+upNx(b)) 
+
+!           dRm_a1/du_b1
+            T2 = (mu )*rM(1,1) + esNx(1,a)*mu_g*esNx(1,b)
+     2         - rho*uaNx(a)*updu(1,1,b)
+            lK(1,a,b)  = lK(1,a,b)  + wl*(T2 + T1)
+
+!           dRm_a1/du_b2
+            T2 = mu*rM(2,1) + esNx(1,a)*mu_g*esNx(2,b)
+     2         - rho*uaNx(a)*updu(2,1,b)
+            lK(2,a,b)  = lK(2,a,b)  + wl*(T2)
+
+!           dRm_a2/du_b1
+            T2 = mu*rM(1,2)  + esNx(2,a)*mu_g*esNx(1,b)
+     2         - rho*uaNx(a)*updu(1,2,b)
+            lK(4,a,b)  = lK(4,a,b)  + wl*(T2)
+
+!           dRm_a2/du_b2
+            T2 = (mu )*rM(2,2) + esNx(2,a)*mu_g*esNx(2,b)
+     2         - rho*uaNx(a)*updu(2,2,b)
+            lK(5,a,b)  = lK(5,a,b)  + wl*(T2 + T1)
+         END DO
+      END DO
+
+      DO b=1, eNoNq
+         DO a=1, eNoNw
+           
+!           dRm_a1/dp_b
+            lK(3,a,b)  = lK(3,a,b)  - wl* Nwx(1,a)*Nq(b) 
+!           dRm_a2/dp_b
+            lK(6,a,b)  = lK(6,a,b)  - wl* Nwx(2,a)*Nq(b) 
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE FLUID2D_M_NoVMS
+!####################################################################
 !####################################################################
       SUBROUTINE FLUID3D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
      2   Nqx, Nwxx, al, yl, bfl, lR, lK)

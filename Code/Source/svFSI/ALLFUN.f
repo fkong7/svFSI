@@ -2768,14 +2768,14 @@ C       END DO
       lM%stn%elmStn = stcElm
 
 !     Print stencil by element IDs and node IDs
-      DO a=1, lM%nNo
-         write(*,*)" lM%stn%elmStn node ", a , " = ", lM%stn%elmStn(a,:)
-      END DO 
+C       DO a=1, lM%nNo
+C          write(*,*)" lM%stn%elmStn node ", a , " = ", lM%stn%elmStn(a,:)
+C       END DO 
 
-      DO a=1, lM%nNo
-         write(*,*)"lM%stn%ndStn node ",a, " are ", lM%stn%nbrNdStn(a) , 
-     2       " = ", lM%stn%ndStn(a,:) 
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*)"lM%stn%ndStn node ",a, " are ", lM%stn%nbrNdStn(a) , 
+C      2       " = ", lM%stn%ndStn(a,:) 
+C       END DO
       
 
       DEALLOCATE(incNd)
@@ -2821,12 +2821,8 @@ C       END DO
 
 !     TODO: CHECK FOR PARALLEL VERSION
 
-      write(*,*)" loop over fluid eleme"
-
 !     Loop over element 
       DO e=1, lM%nEl
-
-         write(*,*)" looking fluid elem ", e
 
 !        Loop over faces/edges          
          DO a=1, lM%eNoN
@@ -2835,12 +2831,7 @@ C       END DO
 !            nodeSt = lM%lN(lM%IEN(faceID(a,1),e))
             nodeSt = lM%IEN(faceID(a,1),e)
 
-            write(*,*)" lM%lN(...) = ", lM%lN(lM%IEN(faceID(a,1),e))
-            write(*,*)" nodeSt = ", nodeSt
-
             nbrSN = msh(1)%stn%nbrNdStn(nodeSt) - 1
-
-            write(*,*)" nbrSN = ", nbrSN
 
             cnt = 0
 
@@ -2852,7 +2843,6 @@ C       END DO
                eSt =  lM%stn%elmStn(nodeSt,is)
 
                IF( eSt .EQ. 0) CYCLE
-               write(*,*)" checking elm  ", eSt
 
                IF( eSt .EQ. e) CYCLE
 

@@ -971,7 +971,7 @@
 !     Isolated fluid nodes under solid mesh (0 isolated, 1 normal node) 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ghostFNd(:)
 !     Number of max finite cell sub-division level 
-      INTEGER(KIND=IKIND) :: nbrFntCllSD = 3
+      INTEGER(KIND=IKIND) :: nbrFntCllSD = 4
 
 
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)

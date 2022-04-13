@@ -35,12 +35,12 @@
 !
 !--------------------------------------------------------------------
 
-      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg, lD)
+      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg, lD, lY)
       USE COMMOD
       IMPLICIT NONE
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
-     2   Dg(tDof,tnNo), lD(tDof,tnNo)
+     2   Dg(tDof,tnNo), lD(tDof,tnNo), lY(tDof,tnNo)
 
       SELECT CASE (eq(cEq)%phys)
       CASE (phys_fluid)
@@ -71,7 +71,7 @@
          IF (.NOT.ntsFlag) THEN
             CALL CONSTRUCT_FSI(lM, Ag, Yg, Dg)
          ELSE 
-            CALL CONSTRUCT_NITSCHE_FSI(lM, Ag, Yg, Dg, lD)
+            CALL CONSTRUCT_NITSCHE_FSI(lM, Ag, Yg, Dg, lD, lY)
          END IF
 
       CASE (phys_mesh)
