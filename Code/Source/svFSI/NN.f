@@ -1813,13 +1813,14 @@ c        N(8) = lx*my*0.5_RKIND
 
          Jac = xXi(1,1)*xXi(2,2) - xXi(1,2)*xXi(2,1)
 
-!        inverse of the deformation gradient 
+!        inverse and transpose of the deformation gradient 
          xiX(1,1) =  xXi(2,2)/Jac
          xiX(1,2) = -xXi(1,2)/Jac
          xiX(2,1) = -xXi(2,1)/Jac
          xiX(2,2) =  xXi(1,1)/Jac
 
-         FinvT = TRANSPOSE(xiX)
+         !FinvT = TRANSPOSE(xiX)
+         FinvT = xiX
 
          DO a=1, eNoN
             Nx(1,a) = Nx(1,a)+ Nxi(1,a)*xiX(1,1) + Nxi(2,a)*xiX(2,1)

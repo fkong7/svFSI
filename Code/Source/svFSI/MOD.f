@@ -970,6 +970,8 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: intFElmFlag(:)
 !     Isolated fluid nodes under solid mesh (0 isolated, 1 normal node) 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ghostFNd(:)
+!     Isolated fluid nodes under solid mesh (0 isolated, 1 normal node) 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: dofToJumpAss(:)
 !     Number of max finite cell sub-division level 
       INTEGER(KIND=IKIND) :: nbrFntCllSD = 4
 

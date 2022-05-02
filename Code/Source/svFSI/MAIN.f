@@ -79,7 +79,8 @@
       stopTS = nTS
 
 !     Initiator step for unfitted FSI with Nitsche 
-      CALL NTS_INIT(Ao, Yo, Do)  
+      write(*,*)" init nitshce "
+      IF ( ntsFlag ) CALL NTS_INIT(Ao, Yo, Do)  
 
       dbg = 'Allocating intermediate variables'
       ALLOCATE(Ag(tDof,tnNo), Yg(tDof,tnNo), Dg(tDof,tnNo),

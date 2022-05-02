@@ -661,11 +661,12 @@ C          write(*,*)" before NTS_LHSA"
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
 
-      IF (ALLOCATED(mapFElmSNd))  DEALLOCATE(mapFElmSNd)
-      IF (ALLOCATED(mapFElmSElm)) DEALLOCATE(mapFElmSElm)
-      IF (ALLOCATED(mapSNdFElm))  DEALLOCATE(mapSNdFElm)
-      IF (ALLOCATED(intFElmFlag)) DEALLOCATE(intFElmFlag)
-      IF (ALLOCATED(ghostFNd))    DEALLOCATE(ghostFNd)
+      IF (ALLOCATED(mapFElmSNd))    DEALLOCATE(mapFElmSNd)
+      IF (ALLOCATED(mapFElmSElm))   DEALLOCATE(mapFElmSElm)
+      IF (ALLOCATED(mapSNdFElm))    DEALLOCATE(mapSNdFElm)
+      IF (ALLOCATED(intFElmFlag))   DEALLOCATE(intFElmFlag)
+      IF (ALLOCATED(ghostFNd))      DEALLOCATE(ghostFNd)
+      IF (ALLOCATED(dofToJumpAss))  DEALLOCATE(dofToJumpAss)
 
       IF (ALLOCATED(Ao))       DEALLOCATE(Ao)
       IF (ALLOCATED(An))       DEALLOCATE(An)

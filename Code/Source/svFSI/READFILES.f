@@ -1081,8 +1081,10 @@
                IF (.NOT.ASSOCIATED(lPtr)) rtmp = 0._RKIND
             CASE (nitsche_param)
                lPtr => lPD%get(rtmp,"Nitsche Param",1,lb=0._RKIND)
+               IF (.NOT.ASSOCIATED(lPtr)) rtmp = 0._RKIND
             CASE (ghostP_param)
                lPtr =>lPD%get(rtmp,"Ghost penalty Param",1,lb=-1._RKIND)
+               IF (.NOT.ASSOCIATED(lPtr)) rtmp = -1._RKIND
             CASE DEFAULT
                err = "Undefined properties"
             END SELECT

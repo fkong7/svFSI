@@ -1100,20 +1100,20 @@
 !####################################################################
 !     This routine return IN_POLY = 1 if a point is inside a polyhedron  
 !     Only for 2D at the moment
-      PURE FUNCTION IN_POLY(P,P1)
+      SUBROUTINE IN_POLY(P,P1, INPOLY)
       IMPLICIT NONE
 
       REAL(KIND=RKIND), INTENT(IN) :: P(:), P1(:,:) ! P1(dimension,node)
+      INTEGER(KIND=IKIND), INTENT(OUT) :: INPOLY
 
       REAL(KIND=RKIND), ALLOCATABLE :: N(:)
       REAL(KIND=RKIND) :: dotP
-      INTEGER(KIND=IKIND) :: IN_POLY
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: nd, i
 
       nd = SIZE(P1,1)
       flag = .TRUE.
-      IN_POLY = 0
+      INPOLY = 0
 
       ALLOCATE(N(nd))
       N = 0._RKIND
@@ -1135,6 +1135,7 @@
                flag = .FALSE.
 C                EXIT
             END IF
+
          END DO
 !      ELSE 
 !         write(*,*)" 3D still to implement"
@@ -1143,12 +1144,87 @@ C                EXIT
 !      if the probe is along the tangent, perform sign check with one
 !      of the vertices of the closest node instead of the centroid
 
-      IF(flag) IN_POLY = 1
+      IF(flag) INPOLY = 1
 
       DEALLOCATE(N)
 
       RETURN
-      END FUNCTION IN_POLY
+      END SUBROUTINE IN_POLY
+!--------------------------------------------------------------
+!--------------------------------------------------------------
+!     This routine return IN_POLY = 1 if a point is inside a polyhedron  
+!     Only for 2D at the moment
+      SUBROUTINE IN_POLY_FV(P,P1, INPOLY, onFace, onVertex)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P(:), P1(:,:) ! P1(dimension,node)
+      INTEGER(KIND=IKIND), INTENT(OUT) :: INPOLY
+      INTEGER(KIND=IKIND), INTENT(OUT) :: onFace, onVertex
+
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:)
+      REAL(KIND=RKIND) :: dotP
+      LOGICAL :: flag
+      INTEGER(KIND=IKIND) :: nd, i
+
+      nd = SIZE(P1,1)
+      flag = .TRUE.
+      INPOLY = 0
+      onFace = -1
+      onVertex = -1
+
+      ALLOCATE(N(nd))
+      N = 0._RKIND
+
+!      IF (nd .EQ. 2) THEN 
+         DO i= 1, nd+1
+   !        compute normal in 2D for P2-P1 P3-P1
+            IF (i .NE. nd+1) THEN
+               N(1) = P1(2,i) - P1(2,i+1)
+               N(2) = P1(1,i+1) - P1(1,i)
+            ELSE 
+               N(1) = P1(2,i) - P1(2,1)
+               N(2) = P1(1,1) - P1(1,i)
+            END IF
+
+   !        test dot product between P-P1 and the normals
+            dotP = N(1)*(P(1)-P1(1,i)) + N(2)*(P(2)-P1(2,i)) 
+            IF( dotP .LT. 0._RKIND ) THEN 
+               flag = .FALSE.
+C                EXIT
+            END IF
+
+            IF( dotP .LT. 1.E-9_RKIND ) THEN 
+               IF( i .EQ. 1) onFace = 3
+               IF( i .EQ. 2) onFace = 1
+               IF( i .EQ. 3) onFace = 2
+C                EXIT
+            END IF
+
+
+         END DO
+!      ELSE 
+!         write(*,*)" 3D still to implement"
+!      END IF
+
+!      if the probe is along the tangent, perform sign check with one
+!      of the vertices of the closest node instead of the centroid
+
+      IF(flag) INPOLY = 1
+
+      IF( onFace .GT. 0) THEN 
+         DO i = 1, 3
+            
+            dotP = DIST(P,P1(:,i))
+
+            IF( dotP .LT. 1.E-9_RKIND ) onVertex = i
+
+         END DO
+      END IF 
+
+      DEALLOCATE(N)
+
+      RETURN
+      END SUBROUTINE IN_POLY_FV
 !####################################################################
 !     This routine gives the distance between two points 
       PURE FUNCTION DIST(P1,P2)

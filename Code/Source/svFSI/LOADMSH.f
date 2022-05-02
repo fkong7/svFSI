@@ -96,6 +96,8 @@
          CALL SELECTELEB(lM, lM%fa(iFa))
       END DO
 
+      write(*,*)" lM%nNtsFa =  ", lM%nNtsFa
+
       RETURN
       END SUBROUTINE READSV
 !--------------------------------------------------------------------

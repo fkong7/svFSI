@@ -2862,15 +2862,40 @@ C       END DO
       END DO
 
 !     Printing neigh 
-      write(*,*)" The neigh are: "
-      DO e=1, lM%nEl
-         write(*,*)" element ", e
-         write(*,*), lM%neigh(e,:)
-      END DO
+C       write(*,*)" The neigh are: "
+C       DO e=1, lM%nEl
+C          write(*,*)" element ", e
+C          write(*,*), lM%neigh(e,:)
+C       END DO
 
       RETURN
       END SUBROUTINE GETNEIGH
 
+!------------------------------------
+      SUBROUTINE IS_NEIGH(lM,id1,id2,isneigh)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(IN) :: lM
+      INTEGER(KIND=IKIND),  INTENT(IN) :: id1,id2
+      LOGICAL,  INTENT(OUT) :: isneigh
+
+      INTEGER(KIND=IKIND) f, eOpp
+
+      isneigh = .FALSE.
+
+      DO f = 1, lM%eNoN
+!        Define the opposite element 
+         eOpp = lM%neigh(id1,f)
+
+         IF( eOpp .EQ. id2 ) THEN 
+            isneigh = .TRUE.
+            EXIT
+         END IF
+
+      END DO
+
+      RETURN
+      END SUBROUTINE IS_NEIGH
 !####################################################################
 !####################################################################
       END MODULE ALLFUN
