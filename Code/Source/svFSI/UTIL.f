@@ -246,6 +246,111 @@
       RETURN
       END FUNCTION CROSS
 !####################################################################
+!     This routine gives the distance between two points 
+      PURE FUNCTION DIST(P1,P2)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P1(:), P2(:)
+
+      REAL(KIND=RKIND) :: DIST
+      INTEGER(KIND=IKIND) :: nd
+
+      nd = SIZE(P1,1)
+
+      IF (nd .EQ. 2) THEN
+         DIST = SQRT( (P1(1)-P2(1))**2 + (P1(2)-P2(2))**2 ) 
+      ELSE 
+         DIST = SQRT( (P1(1)-P2(1))**2 + (P1(2)-P2(2))**2 + 
+     2                                          (P1(3)-P2(3))**2 ) 
+      END IF
+
+      RETURN
+      END FUNCTION DIST
+!####################################################################
+!     This routine gives the distance between two points 
+!     Only for 2D at the moment, IN_POLY = 1 is inside 
+      PURE FUNCTION IN_POLY(P,P1)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P(:), P1(:,:) ! P1(dimension,node)
+
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:)
+      REAL(KIND=RKIND) :: dotP
+      INTEGER(KIND=IKIND) :: IN_POLY
+      LOGICAL :: flag
+      INTEGER(KIND=IKIND) :: nd, i
+
+      nd = SIZE(P1,1)
+      flag = .TRUE.
+      IN_POLY = 0
+
+      ALLOCATE(N(nd))
+      N = 0._RKIND
+
+!      IF (nd .EQ. 2) THEN 
+         DO i= 1, nd+1
+   !        compute normal in 2D for P2-P1 P3-P1
+            IF (i .NE. nd+1) THEN
+               N(1) = P1(2,i) - P1(2,i+1)
+               N(2) = P1(1,i+1) - P1(1,i)
+            ELSE 
+               N(1) = P1(2,i) - P1(2,1)
+               N(2) = P1(1,1) - P1(1,i)
+            END IF
+
+   !        test dot product between P-P1 and the normals
+            dotP = N(1)*(P(1)-P1(1,i)) + N(2)*(P(2)-P1(2,i)) 
+            IF( dotP .LT. 0._RKIND ) THEN 
+               flag = .FALSE.
+C                EXIT
+            END IF
+         END DO
+!      ELSE 
+!         write(*,*)" 3D still to implement"
+!      END IF
+
+!      if the probe is along the tangent, perform sign check with one
+!      of the vertices of the closest node instead of the centroid
+
+      IF(flag) IN_POLY = 1
+
+      DEALLOCATE(N)
+
+      RETURN
+      END FUNCTION IN_POLY
+!####################################################################
+!     Only working for 2D and trianlgula mesh for the moment 
+      PURE FUNCTION CLOSEST_POINT(P,P1)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P(:), P1(:,:) ! P1(dimension,node)
+
+      REAL(KIND=RKIND) :: dismin, dis 
+      INTEGER(KIND=IKIND) :: CLOSEST_POINT, i
+      INTEGER(KIND=IKIND) :: nd, npoint
+      
+      npoint = SIZE(P1,2)
+      nd = SIZE(P1,1)
+      CLOSEST_POINT = 0
+      dismin = HUGE(dismin)
+
+!      IF (nd .EQ. 2) THEN 
+         DO i= 1, npoint
+
+            dis = DIST(P,P1(:,i))
+
+            IF(dis .LE. dismin) THEN
+               dismin = dis
+               CLOSEST_POINT = i
+            END IF
+         END DO
+!      ELSE 
+!         write(*,*)" 3D still to implement"
+!      END IF
+
+      RETURN
+      END FUNCTION CLOSEST_POINT
+!####################################################################
 !     This function removes the leading spaces and tabs
       PURE FUNCTION ADJUSTC(str)
       IMPLICIT NONE
