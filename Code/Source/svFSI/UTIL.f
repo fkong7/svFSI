@@ -267,6 +267,29 @@
       RETURN
       END FUNCTION DIST
 !####################################################################
+!     This routine gives the cubic spline weighting function  
+      PURE FUNCTION WHTFUNC(P1,P2,h)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P1(:), P2(:), h
+
+      REAL(KIND=RKIND) :: WHTFUNC, rn
+
+      rn = DIST(P1,P2)
+      rn = rn / (h)
+
+      IF (rn .LE. 0.5_RKIND) THEN 
+         WHTFUNC = 2._RKIND/3._RKIND - 4._RKIND*rn*rn + 4._RKIND*(rn**3) 
+      ELSE IF (rn .LE. 1._RKIND) THEN 
+         WHTFUNC = 4._RKIND/3._RKIND - 4._RKIND*rn + 4._RKIND*(rn**2) 
+     2             - (4._RKIND/3._RKIND)*(rn**3) 
+      ELSE 
+         WHTFUNC = 0._RKIND
+      END IF
+
+      RETURN
+      END FUNCTION WHTFUNC
+!####################################################################
 !     This routine gives the distance between two points 
 !     Only for 2D at the moment, IN_POLY = 1 is inside 
       PURE FUNCTION IN_POLY(P,P1)

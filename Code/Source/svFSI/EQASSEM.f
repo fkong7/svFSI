@@ -45,8 +45,11 @@
 
       SELECT CASE (eq(cEq)%phys)
       CASE (phys_fluid)
-!         CALL CONSTRUCT_FLUID(lM, Ag, Yg)
-         CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
+         IF( .NOT. mmOpt ) THEN 
+            CALL CONSTRUCT_FLUID(lM, Ag, Yg)
+         ELSE 
+            CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
+         END IF
 
       CASE (phys_heatF)
          CALL CONSTRUCT_HEATF(lM, Ag, Yg)

@@ -546,6 +546,8 @@
          REAL(KIND=RKIND) scF
 !        IB: Mesh size parameter
          REAL(KIND=RKIND) dx
+!        Mesh size parameter computed (TODO check if it whould change with Mesh scale factor scF)
+         REAL(KIND=RKIND) :: diam = -1._RKIND
 !        Element distribution between processors
          INTEGER(KIND=IKIND), ALLOCATABLE :: eDist(:)
 !        Element domain ID number
@@ -618,10 +620,12 @@
 !        List of all fluid elem, 1 if they are intersected from solid
 !         INTEGER(KIND=IKIND), ALLOCATABLE :: lstIntFElm(:)
 !        Needed for MLS 
-!         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)
+         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)
 !        Weight of fem interpolation              
 !         REAL(KIND=RKIND), ALLOCATABLE :: wFEM(:,:)    
-!         INTEGER(KIND=IKIND) :: maxNbrST = 0
+         INTEGER(KIND=IKIND) :: maxNbrST = 0
+!        List hidden background nodes (global ordering)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNd(:)
 
       END TYPE mshType
 

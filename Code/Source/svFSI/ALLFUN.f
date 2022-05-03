@@ -1154,31 +1154,33 @@
       insd = nsd
       IF (lM%lShl) insd = nsd - 1
 
-      IF (ALLOCATED(lM%eDist))   DEALLOCATE(lM%eDist)
-      IF (ALLOCATED(lM%eId))     DEALLOCATE(lM%eId)
-      IF (ALLOCATED(lM%gN))      DEALLOCATE(lM%gN)
-      IF (ALLOCATED(lM%gpN))     DEALLOCATE(lM%gpN)
-      IF (ALLOCATED(lM%gIEN))    DEALLOCATE(lM%gIEN)
-      IF (ALLOCATED(lM%IEN))     DEALLOCATE(lM%IEN)
-      IF (ALLOCATED(lM%otnIEN))  DEALLOCATE(lM%otnIEN)
-      IF (ALLOCATED(lM%INN))     DEALLOCATE(lM%INN)
-      IF (ALLOCATED(lM%lN))      DEALLOCATE(lM%lN)
-      IF (ALLOCATED(lM%eIEN))    DEALLOCATE(lM%eIEN)
-      IF (ALLOCATED(lM%sbc))     DEALLOCATE(lM%sbc)
-      IF (ALLOCATED(lM%iGC))     DEALLOCATE(lM%iGC)
-      IF (ALLOCATED(lM%nW))      DEALLOCATE(lM%nW)
-      IF (ALLOCATED(lM%w))       DEALLOCATE(lM%w)
-      IF (ALLOCATED(lM%xib))     DEALLOCATE(lM%xib)
-      IF (ALLOCATED(lM%xi))      DEALLOCATE(lM%xi)
-      IF (ALLOCATED(lM%x))       DEALLOCATE(lM%x)
-      IF (ALLOCATED(lM%N))       DEALLOCATE(lM%N)
-      IF (ALLOCATED(lM%Nb))      DEALLOCATE(lM%Nb)
-      IF (ALLOCATED(lM%nV))      DEALLOCATE(lM%nV)
-      IF (ALLOCATED(lM%fN))      DEALLOCATE(lM%fN)
-      IF (ALLOCATED(lM%Nx))      DEALLOCATE(lM%Nx)
-      IF (ALLOCATED(lM%Nxx))     DEALLOCATE(lM%Nxx)
-      IF (ALLOCATED(lM%clsBgNd)) DEALLOCATE(lM%clsBgNd)
+      IF (ALLOCATED(lM%eDist))    DEALLOCATE(lM%eDist)
+      IF (ALLOCATED(lM%eId))      DEALLOCATE(lM%eId)
+      IF (ALLOCATED(lM%gN))       DEALLOCATE(lM%gN)
+      IF (ALLOCATED(lM%gpN))      DEALLOCATE(lM%gpN)
+      IF (ALLOCATED(lM%gIEN))     DEALLOCATE(lM%gIEN)
+      IF (ALLOCATED(lM%IEN))      DEALLOCATE(lM%IEN)
+      IF (ALLOCATED(lM%otnIEN))   DEALLOCATE(lM%otnIEN)
+      IF (ALLOCATED(lM%INN))      DEALLOCATE(lM%INN)
+      IF (ALLOCATED(lM%lN))       DEALLOCATE(lM%lN)
+      IF (ALLOCATED(lM%eIEN))     DEALLOCATE(lM%eIEN)
+      IF (ALLOCATED(lM%sbc))      DEALLOCATE(lM%sbc)
+      IF (ALLOCATED(lM%iGC))      DEALLOCATE(lM%iGC)
+      IF (ALLOCATED(lM%nW))       DEALLOCATE(lM%nW)
+      IF (ALLOCATED(lM%w))        DEALLOCATE(lM%w)
+      IF (ALLOCATED(lM%xib))      DEALLOCATE(lM%xib)
+      IF (ALLOCATED(lM%xi))       DEALLOCATE(lM%xi)
+      IF (ALLOCATED(lM%x))        DEALLOCATE(lM%x)
+      IF (ALLOCATED(lM%N))        DEALLOCATE(lM%N)
+      IF (ALLOCATED(lM%Nb))       DEALLOCATE(lM%Nb)
+      IF (ALLOCATED(lM%nV))       DEALLOCATE(lM%nV)
+      IF (ALLOCATED(lM%fN))       DEALLOCATE(lM%fN)
+      IF (ALLOCATED(lM%Nx))       DEALLOCATE(lM%Nx)
+      IF (ALLOCATED(lM%Nxx))      DEALLOCATE(lM%Nxx)
+      IF (ALLOCATED(lM%clsBgNd))  DEALLOCATE(lM%clsBgNd)
       IF (ALLOCATED(lM%clsBgElm)) DEALLOCATE(lM%clsBgElm)
+      IF (ALLOCATED(lM%QMLS))     DEALLOCATE(lM%QMLS)
+      IF (ALLOCATED(lM%lstHdnNd)) DEALLOCATE(lM%lstHdnNd)
 
       IF (ALLOCATED(lM%fs)) THEN
          DO i=1, lM%nFs
@@ -2782,10 +2784,10 @@ C       DO a=1, lM%nNo
 C          write(*,*)"element stc of node ", a , " = ", lm%stn%elmStn(a,:)
 C       END DO 
 
-C       DO a=1, lM%nNo
-C          write(*,*)"node stc of node ",a, " = ", lm%stn%nbrNdStn(a) , 
-C      2       " = ", lm%stn%ndStn(a,:) 
-C       END DO
+      DO a=1, lM%nNo
+         write(*,*)"node stc of node ",a, " = ", lm%stn%nbrNdStn(a) , 
+     2       " = ", lm%stn%ndStn(a,:) 
+      END DO
 !     end printing part
 !     --------------------
 
@@ -2796,6 +2798,44 @@ C       END DO
 
       RETURN
       END SUBROUTINE GETNSTENCIL
+!####################################################################
+!--------------------------------------------------------------------
+!     Compute mesh space discretization, the diam max, given a mesh 
+      SUBROUTINE GETMESHDIAM(lM)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(INOUT) :: lM
+
+      REAL(KIND=RKIND) :: diam, maxDist
+      INTEGER(KIND=IKIND) :: Ac, Acn, e
+
+      IF (lM%diam .LE. 0._RKIND) THEN 
+
+         maxDist = TINY(maxDist)
+
+         DO e=1, lM%nEl
+
+            Ac = lM%IEN(1,e)
+            Acn = lM%IEN(2,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+            Ac = lM%IEN(2,e)
+            Acn = lM%IEN(3,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+            Ac = lM%IEN(1,e)
+            Acn = lM%IEN(3,e)
+            diam = DIST(x(:,Ac),x(:,Acn))
+            IF(diam .GT. maxDist) maxDist = diam
+
+         END DO
+         lM%diam = maxDist
+
+      END IF 
+
+      END SUBROUTINE GETMESHDIAM
 !####################################################################
       END MODULE ALLFUN
 !####################################################################

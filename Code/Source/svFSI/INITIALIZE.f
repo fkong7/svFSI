@@ -356,7 +356,10 @@
 
          DO iM=2, nMsh
             CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Do)
+            CALL IFEM_FINDMLSW(msh(1), msh(iM), Do)
          END DO
+
+         CALL IFEM_FINDHIDDEN(msh(1), msh(2), Do)
       END IF
 
 !     Calculating the volume of each domain
