@@ -130,6 +130,7 @@ set(FSRCS TYPEMOD.f
          EQASSEM.f
          FFT.f
          FLUID.f
+         FLUID_MM.f
          FS.f
          FSI.f
          HEATF.f

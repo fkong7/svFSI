@@ -35,16 +35,18 @@
 !
 !--------------------------------------------------------------------
 
-      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg)
+      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg,iM)
       USE COMMOD
       IMPLICIT NONE
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
 
       SELECT CASE (eq(cEq)%phys)
       CASE (phys_fluid)
-         CALL CONSTRUCT_FLUID(lM, Ag, Yg)
+!         CALL CONSTRUCT_FLUID(lM, Ag, Yg)
+         CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
 
       CASE (phys_heatF)
          CALL CONSTRUCT_HEATF(lM, Ag, Yg)
