@@ -69,8 +69,8 @@
       INTERFACE DESTROY
          MODULE PROCEDURE DESTROYFACE, DESTROYMSH, DESTROYBC, DESTROYBF,
      2      DESTROYDMN, DESTROYEQ, DESTROYBS, DESTROYMB, DESTROYDATA,
-     3      DESTROYADJ, DESTROYSTACK, DESTROYQUEUE, DESTROYTRACE,
-     4      DESTROYIBCM, DESTROYFS
+     3      DESTROYADJ, DESTROYSTN, DESTROYSTACK, DESTROYQUEUE, 
+     4      DESTROYTRACE, DESTROYIBCM, DESTROYFS
       END INTERFACE DESTROY
 
       INTERFACE GETNADJCNCY
@@ -1428,6 +1428,18 @@
       RETURN
       END SUBROUTINE DESTROYADJ
 !--------------------------------------------------------------------
+      PURE SUBROUTINE DESTROYSTN(stc)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(stencilType), INTENT(OUT) :: stc
+
+      IF (ALLOCATED(stc%ndStn)) DEALLOCATE(stc%ndStn)
+      IF (ALLOCATED(stc%nbrNdStn)) DEALLOCATE(stc%nbrNdStn)
+      IF (ALLOCATED(stc%elmStn)) DEALLOCATE(stc%elmStn)
+
+      RETURN
+      END SUBROUTINE DESTROYSTN
+!--------------------------------------------------------------------
       PURE SUBROUTINE DESTROYSTACK(stk)
       USE COMMOD
       IMPLICIT NONE
@@ -2633,6 +2645,156 @@
 
       RETURN
       END SUBROUTINE IB_SYNCGV
+!####################################################################
+!####################################################################
+!     Find nodal stencil/adjacency of a given mesh.  ?? TODO
+!     Computes list of all nodes (just IDs) around a given node of a mesh.
+!     For fsi with IFEM lM is the fluid mesh 
+      SUBROUTINE GETNSTENCIL(lM)
+      USE COMMOD
+      IMPLICIT NONE
+      TYPE(mshType),  INTENT(INOUT) :: lM
+
+      INTEGER(KIND=IKIND) :: a, b, e, Ac, Bc, i, j, k, maxAdj, IdElmF
+      LOGICAL :: flag
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: incNd(:) !nbr of elem included in the stencil 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: idxInsrt(:) !nbr of elem included in the stencil 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: stcNd(:,:) !stencil with node id
+      INTEGER(KIND=IKIND), ALLOCATABLE :: stcElm(:,:) !stencil with element id
+
+      ALLOCATE(incNd(lM%nNo))
+      incNd = 0 !It stores the number of elements that contains that fluid node
+C       write(*,*)"allocating incNd for nNo = ", lM%nNo
+      DO e=1, lM%nEl
+         DO a=1, lM%eNoN
+            ! TODO FOR PARALLEL VERSION
+            Ac = lM%IEN(a,e)
+            Ac = lM%lN(Ac) 
+            incNd(Ac) = incNd(Ac) + 1
+!           CHECK THIS because Ac before and after is the same 
+            IF ((lM%IEN(a,e) .EQ. lM%lN(lM%IEN(a,e))) 
+     2                                  .AND. (cm%np() .GE. 2)) THEN
+               write(*,*)"!!!! WARNING: local and global id are equal!!"
+               write(*,*)"cm%np() = ", cm%np()
+            END IF
+         END DO
+C          write(*,*) " for element ", e , " incNd is ", incNd
+      END DO
+
+C       DO a=1, lM%nNo
+C          write(*,*) "node ", a, " in ", incNd(Ac), " elements"
+C       END DO
+
+!     The number of elements in the stencil is also equal to the 
+!     number of nodes in the stencil (+1 in case we are at the boundary)
+      maxAdj = MAXVAL(incNd)
+      ALLOCATE(stcNd(lM%nNo,maxAdj+1))
+      ALLOCATE(stcElm(lM%nNo,maxAdj))
+      ALLOCATE(idxInsrt(lM%nNo))
+      ALLOCATE(lm%stn%nbrNdStn(lM%nNo)) 
+
+
+      stcNd = 0
+      stcElm = 0
+      idxInsrt = 1
+
+!     Fill stcElm()
+      DO e=1, lM%nEl
+         DO a=1, lM%eNoN
+            ! TODO FOR PARALLEL VERSION
+            Ac = lM%IEN(a,e)
+!             Ac = lM%lN(Ac) 
+            stcElm(Ac,idxInsrt(Ac)) = e
+            idxInsrt(Ac) = idxInsrt(Ac) + 1
+         END DO
+      END DO
+
+C       DO e=1, lM%nNo
+C          a = incNd(e)
+C          write(*,*) " for node ", e , " stcElm is ", stcElm(e,1:a)
+C       END DO
+
+!     Filling stcNd
+      idxInsrt = 1
+      flag = .FALSE.
+
+
+      DO e = 1, lM%nNo ! Fluid Id node
+         DO a = 1, incNd(e) 
+            IdElmF = stcElm(e,a) ! Id fluid element
+         
+            DO i=1, lM%eNoN
+               flag = .FALSE.
+
+               ! TODO FOR PARALLEL VERSION
+               Ac = lM%IEN(i,IdElmF)
+!              Ac = lM%lN(Ac) 
+               IF (Ac .EQ. e) CYCLE
+
+!              check if we have already added 
+               DO j=1, maxAdj+1
+                  IF (stcNd(e,j) == Ac) THEN 
+                     flag = .TRUE. ! we have already added it
+                  END IF
+               END DO
+
+!              we add the new vertex in the stencil
+               IF(.NOT.flag) THEN 
+                  stcNd(e,idxInsrt(e)) = Ac
+                  idxInsrt(e) = idxInsrt(e) + 1
+               END IF
+            END DO
+
+            
+         END DO
+
+      END DO
+
+      DO e=1, lM%nNo
+         a = idxInsrt(e)-1
+         lm%stn%nbrNdStn(e) = a+1
+C          write(*,*) "   "
+C          write(*,*) " for node ", e , " stcNd is ", stcNd(e,1:a)
+      END DO
+
+C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
+
+
+!     insert them into lm%stn
+
+      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+2)) 
+      lm%stn%ndStn = 0
+      ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
+
+
+
+      lm%stn%ndStn(:,1:maxAdj+1) = stcNd
+      DO a=1, lM%nNo
+         lm%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
+      END DO
+      lm%stn%elmStn = stcElm
+
+!     --------------------
+!     Printing stencil mesh 
+      DO a=1, lM%nNo
+         write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
+      END DO 
+
+      DO a=1, lM%nNo
+         write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
+     2       " = ", lm%stn%ndStn(a,:) 
+      END DO
+!     end printing part
+!     --------------------
+
+      DEALLOCATE(incNd)
+      DEALLOCATE(stcNd)
+      DEALLOCATE(stcElm)
+      DEALLOCATE(idxInsrt)
+
+      RETURN
+      END SUBROUTINE GETNSTENCIL
 !####################################################################
       END MODULE ALLFUN
 !####################################################################

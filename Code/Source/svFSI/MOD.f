@@ -497,6 +497,16 @@
          TYPE(cplFaceType), ALLOCATABLE :: fa(:)
       END TYPE cplBCType
 
+!     Mesh stencil for each fluid node 
+      TYPE stencilType
+!        Node stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
+!        Number of node in the stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
+!        Element stencil for each fluid node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
+      END TYPE stencilType
+
 !     This is the container for a mesh or NURBS patch, those specific
 !     to NURBS are noted
       TYPE mshType
@@ -598,6 +608,8 @@
          TYPE(faceType), ALLOCATABLE :: fa(:)
 !        IB: tracers
          TYPE(traceType) :: trc
+!        StencilType for IFEM
+         TYPE(stencilType) :: stn
       END TYPE mshType
 
 !     Equation type
@@ -974,6 +986,14 @@
 
 !     CMM-variable wall properties: 1-thickness, 2-Elasticity modulus
       REAL(KIND=RKIND), ALLOCATABLE :: varWallProps(:,:)
+
+!     Multi mesh fluid / FSI with IFEM variables 
+      LOGICAL :: mmOpt = .TRUE.
+
+
+
+
+
 
 !     DERIVED TYPE VARIABLES
 !     Coupled BCs structures used for multidomain simulations

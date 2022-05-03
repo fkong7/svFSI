@@ -346,6 +346,12 @@
       iblank = 0
       IF (ibFlag) CALL IB_INIT(Do)
 
+!     Initialize stencil 
+      DO iM=1, nMsh
+         msh(iM)%iGC = 0
+         CALL GETNSTENCIL(msh(iM))   
+      END DO   
+
 !     Calculating the volume of each domain
       ALLOCATE(s(1,tnNo))
       s = 1._RKIND
