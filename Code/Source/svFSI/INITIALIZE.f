@@ -346,11 +346,18 @@
       iblank = 0
       IF (ibFlag) CALL IB_INIT(Do)
 
-!     Initialize stencil 
-      DO iM=1, nMsh
-         msh(iM)%iGC = 0
-         CALL GETNSTENCIL(msh(iM))   
-      END DO   
+!     Initialize stencil and closest point 
+      IF( mmOpt ) THEN 
+
+         DO iM=1, nMsh
+            msh(iM)%iGC = 0
+            CALL GETNSTENCIL(msh(iM))   
+         END DO   
+
+         DO iM=2, nMsh
+            CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Do)
+         END DO
+      END IF
 
 !     Calculating the volume of each domain
       ALLOCATE(s(1,tnNo))

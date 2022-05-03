@@ -499,11 +499,11 @@
 
 !     Mesh stencil for each fluid node 
       TYPE stencilType
-!        Node stencil for each fluid node 
+!        Node stencil for each fluid node (local enumeration)
          INTEGER(KIND=IKIND), ALLOCATABLE :: ndStn(:,:)
 !        Number of node in the stencil for each fluid node 
          INTEGER(KIND=IKIND), ALLOCATABLE :: nbrNdStn(:)
-!        Element stencil for each fluid node 
+!        Element stencil for each fluid node (local enumeration)
          INTEGER(KIND=IKIND), ALLOCATABLE :: elmStn(:,:)
       END TYPE stencilType
 
@@ -608,8 +608,21 @@
          TYPE(faceType), ALLOCATABLE :: fa(:)
 !        IB: tracers
          TYPE(traceType) :: trc
+
 !        StencilType for IFEM
          TYPE(stencilType) :: stn
+!        Closest background node for each node, in global ordering 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: clsBgNd(:)
+!        List of fluid element that contains each node 
+         INTEGER(KIND=IKIND), ALLOCATABLE :: clsBgElm(:)
+!        List of all fluid elem, 1 if they are intersected from solid
+!         INTEGER(KIND=IKIND), ALLOCATABLE :: lstIntFElm(:)
+!        Needed for MLS 
+!         REAL(KIND=RKIND), ALLOCATABLE :: QMLS(:,:)
+!        Weight of fem interpolation              
+!         REAL(KIND=RKIND), ALLOCATABLE :: wFEM(:,:)    
+!         INTEGER(KIND=IKIND) :: maxNbrST = 0
+
       END TYPE mshType
 
 !     Equation type

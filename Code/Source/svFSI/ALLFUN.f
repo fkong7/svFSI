@@ -1177,6 +1177,8 @@
       IF (ALLOCATED(lM%fN))      DEALLOCATE(lM%fN)
       IF (ALLOCATED(lM%Nx))      DEALLOCATE(lM%Nx)
       IF (ALLOCATED(lM%Nxx))     DEALLOCATE(lM%Nxx)
+      IF (ALLOCATED(lM%clsBgNd)) DEALLOCATE(lM%clsBgNd)
+      IF (ALLOCATED(lM%clsBgElm)) DEALLOCATE(lM%clsBgElm)
 
       IF (ALLOCATED(lM%fs)) THEN
          DO i=1, lM%nFs
@@ -1202,6 +1204,7 @@
       CALL DESTROYADJ(lM%nAdj)
       CALL DESTROYADJ(lM%eAdj)
       CALL DESTROYTRACE(lM%trc)
+      CALL DESTROYSTN(lM%stn)
 
       lM%lShl  = .FALSE.
       lM%eType = eType_NA
@@ -2655,7 +2658,8 @@
       IMPLICIT NONE
       TYPE(mshType),  INTENT(INOUT) :: lM
 
-      INTEGER(KIND=IKIND) :: a, b, e, Ac, Bc, i, j, k, maxAdj, IdElmF
+      INTEGER(KIND=IKIND) :: a, b, e, Ac, AcL, Bc, i, j, k, maxAdj, 
+     2                       IdElmF
       LOGICAL :: flag
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incNd(:) !nbr of elem included in the stencil 
@@ -2670,14 +2674,11 @@ C       write(*,*)"allocating incNd for nNo = ", lM%nNo
          DO a=1, lM%eNoN
             ! TODO FOR PARALLEL VERSION
             Ac = lM%IEN(a,e)
-            Ac = lM%lN(Ac) 
-            incNd(Ac) = incNd(Ac) + 1
-!           CHECK THIS because Ac before and after is the same 
-            IF ((lM%IEN(a,e) .EQ. lM%lN(lM%IEN(a,e))) 
-     2                                  .AND. (cm%np() .GE. 2)) THEN
-               write(*,*)"!!!! WARNING: local and global id are equal!!"
-               write(*,*)"cm%np() = ", cm%np()
-            END IF
+!            write(*,*)" using IEN Ac = ", Ac 
+            AcL = lM%lN(Ac) 
+!            write(*,*)" using lN Ac = ", Ac 
+            incNd(AcL) = incNd(AcL) + 1
+
          END DO
 C          write(*,*) " for element ", e , " incNd is ", incNd
       END DO
@@ -2704,9 +2705,9 @@ C       END DO
          DO a=1, lM%eNoN
             ! TODO FOR PARALLEL VERSION
             Ac = lM%IEN(a,e)
-!             Ac = lM%lN(Ac) 
-            stcElm(Ac,idxInsrt(Ac)) = e
-            idxInsrt(Ac) = idxInsrt(Ac) + 1
+            AcL = lM%lN(Ac) 
+            stcElm(AcL,idxInsrt(AcL)) = e
+            idxInsrt(AcL) = idxInsrt(AcL) + 1
          END DO
       END DO
 
@@ -2729,19 +2730,19 @@ C       END DO
 
                ! TODO FOR PARALLEL VERSION
                Ac = lM%IEN(i,IdElmF)
-!              Ac = lM%lN(Ac) 
-               IF (Ac .EQ. e) CYCLE
+               AcL = lM%lN(Ac) 
+               IF (AcL .EQ. e) CYCLE
 
 !              check if we have already added 
                DO j=1, maxAdj+1
-                  IF (stcNd(e,j) == Ac) THEN 
+                  IF (stcNd(e,j) == AcL) THEN 
                      flag = .TRUE. ! we have already added it
                   END IF
                END DO
 
 !              we add the new vertex in the stencil
                IF(.NOT.flag) THEN 
-                  stcNd(e,idxInsrt(e)) = Ac
+                  stcNd(e,idxInsrt(e)) = AcL
                   idxInsrt(e) = idxInsrt(e) + 1
                END IF
             END DO
@@ -2777,14 +2778,14 @@ C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
 
 !     --------------------
 !     Printing stencil mesh 
-      DO a=1, lM%nNo
-         write(*,*)" lm%stn%elmStn node ", a , " = ", lm%stn%elmStn(a,:)
-      END DO 
+C       DO a=1, lM%nNo
+C          write(*,*)"element stc of node ", a , " = ", lm%stn%elmStn(a,:)
+C       END DO 
 
-      DO a=1, lM%nNo
-         write(*,*)"lm%stn%ndStn node ",a, " are ", lm%stn%nbrNdStn(a) , 
-     2       " = ", lm%stn%ndStn(a,:) 
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*)"node stc of node ",a, " = ", lm%stn%nbrNdStn(a) , 
+C      2       " = ", lm%stn%ndStn(a,:) 
+C       END DO
 !     end printing part
 !     --------------------
 
