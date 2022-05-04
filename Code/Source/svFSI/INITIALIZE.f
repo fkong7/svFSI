@@ -347,20 +347,7 @@
       IF (ibFlag) CALL IB_INIT(Do)
 
 !     Initialize stencil and closest point 
-      IF( mmOpt ) THEN 
-
-         DO iM=1, nMsh
-            msh(iM)%iGC = 0
-            CALL GETNSTENCIL(msh(iM))   
-         END DO   
-
-         DO iM=2, nMsh
-            CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Do)
-            CALL IFEM_FINDMLSW(msh(1), msh(iM), Do)
-         END DO
-
-         CALL IFEM_FINDHIDDEN(msh(1), msh(2), Do)
-      END IF
+      IF( mmOpt ) CALL IFEM_INIT(Do)
 
 !     Calculating the volume of each domain
       ALLOCATE(s(1,tnNo))

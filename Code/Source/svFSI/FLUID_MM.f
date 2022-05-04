@@ -37,6 +37,37 @@
 !
 !--------------------------------------------------------------------
 
+
+      SUBROUTINE IFEM_INIT(Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) iM
+
+      DO iM=1, nMsh
+         msh(iM)%iGC = 0
+         CALL GETNSTENCIL(msh(iM))   
+      END DO   
+
+      DO iM=2, nMsh
+         CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Dg)
+         CALL IFEM_FINDMLSW(msh(1), msh(iM), Dg)
+      END DO
+
+      CALL IFEM_FINDHIDDEN(msh(1), msh(2), Dg)
+
+!     Allocation of arrays to store unknown in Fg and Bg meshes 
+      ALLOCATE(msh(1)%YgBG(nsd,msh(1)%nNo))
+      ALLOCATE(msh(2)%YgFG(nsd+1,msh(2)%nNo))
+
+      RETURN
+      END SUBROUTINE IFEM_INIT
+
+!####################################################################
+!####################################################################
+
       SUBROUTINE CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
       USE COMMOD
       USE ALLFUN
@@ -46,13 +77,13 @@
       INTEGER(KIND=IKIND), INTENT(IN) :: iM
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, AcLc
       REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), al(:,:), yl(:,:),
-     2   bfl(:,:), lR(:,:), lK(:,:,:)
+     2   bfl(:,:), lR(:,:), lK(:,:,:), ylFg(:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
      2   Nwxx(:,:), Nqx(:,:)
 
@@ -70,6 +101,8 @@
 !     FLUID: dof = nsd+1
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   bfl(nsd,eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN))
+
+      IF( iM .GE. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
@@ -90,6 +123,15 @@
             yl(:,a)  = Yg(:,Ac)
             bfl(:,a) = Bf(:,Ac)
          END DO
+
+!        Create local copies if we are in the FG mesh 
+         IF( iM .GE. 2) THEN 
+            DO a=1, eNoN
+               Ac = lM%IEN(a,e)
+               AcLc = lM%lN(Ac)
+               ylFg(:,a) = lM%YgFG(:,AcLc)
+            END DO
+         END IF
 
 !        Initialize residue and tangents
          lR = 0._RKIND
@@ -130,11 +172,19 @@
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
      3            bfl, lR, lK)
+               IF( iM .GE. 2) THEN 
+                  CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+               END IF
 
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
      3            bfl, lR, lK)
+               IF( iM .GE. 2) THEN 
+                  CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+               END IF
             END IF
          END DO ! g: loop
 
@@ -183,27 +233,174 @@
       END DO ! e: loop
 
       DEALLOCATE(ptr, xl, al, yl, bfl, lR, lK)
+      IF(ALLOCATED(ylFg)) DEALLOCATE(ylFg)  
 
       CALL DESTROY(fs(1))
       CALL DESTROY(fs(2))
 
 
-C !     Additional part for Multimesh strategy with IFEM methodology
-C !     If mesh 1: need to clean the velocity row, we will impose strongly  
-C !     the velocity after the system resolution 
-C       IF( iM .EQ. 1) THEN 
-C         CALL APPLY_DIR
-C       END IF
-
-C !     If mesh 2, use the given vel and pressure to compute FSI res forse 
-C !     and add it to the residue 
-C       IF( iM .EQ. 2) THEN 
-C         CALL APPLY_NEU
-C       END IF
-
-
       RETURN
       END SUBROUTINE CONSTRUCT_FLUID_MM
+!####################################################################
+      SUBROUTINE IFEM_2DRES(eNoNw, eNoNq, w, Nw, Nq, Nwx,
+     2   Nqx, yl, lR)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
+      REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoNw), Nq(eNoNq),
+     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(nsd+1,eNoNw) 
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw) 
+
+      INTEGER(KIND=IKIND) a, b, k
+      REAL(KIND=RKIND) amd, wl, wr, rho, 
+     2   gam, mu, mu_s, mu_g, p, u(2), ux(2,2), es(2,2), rM(2,2), T1
+
+
+      rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
+
+      T1   = eq(cEq)%af * eq(cEq)%gam * dt
+      amd  = eq(cEq)%am/T1
+      wl   = w*T1
+      wr   = w*rho
+
+!     Note that indices are not selected based on the equation because
+!     fluid equation always come first
+!     Velocity and its gradients, inertia (acceleration & body force)
+      u   = 0._RKIND
+      ux  = 0._RKIND
+      DO a=1, eNoNw
+
+         u(1)    = u(1) + Nw(a)*yl(1,a)
+         u(2)    = u(2) + Nw(a)*yl(2,a)
+
+         ux(1,1) = ux(1,1) + Nwx(1,a)*yl(1,a)
+         ux(2,1) = ux(2,1) + Nwx(2,a)*yl(1,a)
+         ux(1,2) = ux(1,2) + Nwx(1,a)*yl(2,a)
+         ux(2,2) = ux(2,2) + Nwx(2,a)*yl(2,a)
+
+      END DO
+
+!     Pressure 
+      p  = 0._RKIND
+      DO a=1, eNoNq
+         p  = p + Nq(a)*yl(3,a)
+      END DO
+
+!     Strain rate tensor 2*e_ij := (u_ij + u_ji)
+      es(1,1) = ux(1,1) + ux(1,1)
+      es(2,2) = ux(2,2) + ux(2,2)
+      es(2,1) = ux(2,1) + ux(1,2)
+      es(1,2) = es(2,1)
+
+!     Shear-rate := (2*e_ij*e_ij)^.5
+      gam = es(1,1)*es(1,1) + es(2,1)*es(2,1)
+     2    + es(1,2)*es(1,2) + es(2,2)*es(2,2)
+      gam = SQRT(0.5_RKIND*gam)
+
+!     Compute viscosity based on shear-rate and chosen viscosity model
+!     The returned mu_g := (d\mu / d\gamma)
+      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+  
+      rM(1,1) = mu*es(1,1) - p
+      rM(2,1) = mu*es(2,1) 
+
+      rM(1,2) = mu*es(1,2) 
+      rM(2,2) = mu*es(2,2) - p
+
+
+!     Local residue
+      DO a=1, eNoNw
+         lR(1,a) = lR(1,a) - w*(Nwx(1,a)*rM(1,1)
+     2      + Nwx(2,a)*rM(2,1))
+
+         lR(2,a) = lR(2,a) - w*(Nwx(1,a)*rM(1,2)
+     2      + Nwx(2,a)*rM(2,2))
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_2DRES
+!####################################################################
+      SUBROUTINE IFEM_2DRES_COMPLETE(eNoNw, eNoNq, w, Nw, Nq, Nwx,
+     2   Nqx, yl, lR)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
+      REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoNw), Nq(eNoNq),
+     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(nsd+1,eNoNw) 
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw) 
+
+      INTEGER(KIND=IKIND) a, b, k
+      REAL(KIND=RKIND) amd, wl, wr, rho, 
+     2   gam, mu, mu_s, mu_g, p, u(2), ux(2,2), es(2,2), rM(2,2), T1
+
+
+      rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
+
+      T1   = eq(cEq)%af * eq(cEq)%gam * dt
+      amd  = eq(cEq)%am/T1
+      wl   = w*T1
+      wr   = w*rho
+
+!     Note that indices are not selected based on the equation because
+!     fluid equation always come first
+!     Velocity and its gradients, inertia (acceleration & body force)
+      u   = 0._RKIND
+      ux  = 0._RKIND
+      DO a=1, eNoNw
+
+         u(1)    = u(1) + Nw(a)*yl(1,a)
+         u(2)    = u(2) + Nw(a)*yl(2,a)
+
+         ux(1,1) = ux(1,1) + Nwx(1,a)*yl(1,a)
+         ux(2,1) = ux(2,1) + Nwx(2,a)*yl(1,a)
+         ux(1,2) = ux(1,2) + Nwx(1,a)*yl(2,a)
+         ux(2,2) = ux(2,2) + Nwx(2,a)*yl(2,a)
+
+      END DO
+
+!     Pressure 
+      p  = 0._RKIND
+      DO a=1, eNoNq
+         p  = p + Nq(a)*yl(3,a)
+      END DO
+
+!     Strain rate tensor 2*e_ij := (u_ij + u_ji)
+      es(1,1) = ux(1,1) + ux(1,1)
+      es(2,2) = ux(2,2) + ux(2,2)
+      es(2,1) = ux(2,1) + ux(1,2)
+      es(1,2) = es(2,1)
+
+!     Shear-rate := (2*e_ij*e_ij)^.5
+      gam = es(1,1)*es(1,1) + es(2,1)*es(2,1)
+     2    + es(1,2)*es(1,2) + es(2,2)*es(2,2)
+      gam = SQRT(0.5_RKIND*gam)
+
+!     Compute viscosity based on shear-rate and chosen viscosity model
+!     The returned mu_g := (d\mu / d\gamma)
+      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+  
+      rM(1,1) = mu*es(1,1) - p
+      rM(2,1) = mu*es(2,1) 
+
+      rM(1,2) = mu*es(1,2) 
+      rM(2,2) = mu*es(2,2) - p
+
+
+!     Local residue
+      DO a=1, eNoNw
+         lR(1,a) = lR(1,a) - w*(Nwx(1,a)*rM(1,1)
+     2      + Nwx(2,a)*rM(2,1))
+
+         lR(2,a) = lR(2,a) - w*(Nwx(1,a)*rM(1,2)
+     2      + Nwx(2,a)*rM(2,2))
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_2DRES_COMPLETE
 !####################################################################
 !####################################################################
 !     Find closest lM node for each node of the foreground mesh lMFg, TODO for parallel
@@ -484,22 +681,20 @@ C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
       DO a=1, lMFg%nNo
 !        Global id closest bg node
          idFCls = lMFg%clsBgNd(a)  
-         write(*,*)" idFCls = ", idFCls
 !        Local id bg node          
          idFCls = lMBg%lN(idFCls)
-         write(*,*)" idFCls = ", idFCls
 
 
  !       Nbr of node in stencil
          nbrSN = lMBg%stn%nbrNdStn(idFCls) 
  !       Update current foreground node coord
          Ac = lMFg%gN(a)
-         write(*,*)" node foreground global ", Ac
+C          write(*,*)" node foreground global ", Ac
          xls = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac) 
 
-         write(*,*)"foreground coord:", xls
-         write(*,*)"id closest point :", idFCls
-         write(*,*)"nmb stencil node", nbrSN 
+C          write(*,*)"foreground coord:", xls
+C          write(*,*)"id closest point :", idFCls
+C          write(*,*)"nmb stencil node", nbrSN 
 
          ALLOCATE(Bmls(nsd+1,nbrSN))
          ALLOCATE(q(1,nbrSN))
@@ -574,107 +769,172 @@ C             write(*,*) ""//""
       IF(.NOT.ALLOCATED(lMFg%QMLS)) ALLOCATE(lMFg%QMLS(mnS,lMFg%nNo))
       lMFg%QMLS = QMLS
 
-      write(*,*)" lMFg%QMLS ", lMFg%QMLS
+C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
 
       DEALLOCATE(Amls, Pmls, PPt, Ai, QMLS)
 
       RETURN
       END SUBROUTINE IFEM_FINDMLSW
 
-
-
-
-
 !####################################################################
-GET VELOCITY FROM FOREGROUND MESH TO BACKGROUND  
 
-      SUBROUTINE IFEM_RASSEMBLY()
+      SUBROUTINE IFEM_EXCHANGE(lA, lY) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-
-      INTEGER(KIND=IKIND) a, is, iM, idFCls, nbrSN, idFStc
-      INTEGER(KIND=IKIND) idFEl, al, Ac
-
-!     TODO for multiple fluid mesh
-      iM = 1
+      REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
 
 
-!     Definiamo un vettore vel lungo quando il numero di nodiu 
-!     in the backgrounf mesh, but we keep the node only if they are 
-!     hidden 
-
-!        Loop over the solid nodes 
-         DO a=1, ifem%tnNo
-C           write(*,*)"inside loop solid node IFEM_CONSTRUCT"
-!           Global id closest fluid node
-            idFCls = ifem%clsFNd(a) 
-!           Nbr of node in stencil
-            nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
-!           Loop over the stencil 
-            DO is = 1, nbrSN
-C              write(*,*) "inside loop stencil"
-!              Extract fluid coordinates xlf
-               idFStc = msh(iM)%stn%ndStn(idFCls,is)
-
-               R(1:nsd,idFStc) = R(1:nsd,idFStc) + 
-     2                              ifem%QMLS(is,a)*ifem%Rsolid(:,a)
-
-            END DO
-         END DO
+C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
+      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lY, msh(2)%YgFG)
+C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
 
+C       write(*,*)" Calling SETBCDIR_BG "
+      CALL SETBCDIR_BG(lA, lY)
 
-!     OLD Final residual assembly 
-C       DO a=1, tnNo
-C          R(1:nsd,a) = R(1:nsd,a) + ifem%Rfluid(:,a)
-C       END DO
 
       RETURN
-      END SUBROUTINE IFEM_RASSEMBLY 
-
-
-
-
-
-
+      END SUBROUTINE IFEM_EXCHANGE
 
 !####################################################################
-GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
 
-!     Interpolate data at IFEM nodes from background mesh using fem
-!     nodal function 
-      SUBROUTINE IFEM_FINDSOLVEL_MLS(m, Ug, Dg, Ub)
+      SUBROUTINE SETBCDIR_BG(lA, lY) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      INTEGER, INTENT(IN) :: m
-      REAL(KIND=RKIND), INTENT(IN) :: Ug(m,tnNo), Dg(tDof,tnNo)
-      REAL(KIND=RKIND), INTENT(OUT) :: Ub(nsd,ifem%tnNo) !new solid vel
+      REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
 
-      INTEGER(KIND=IKIND) :: a, iM, idFCls, nbrSN, idFStc, is
+      INTEGER(KIND=IKIND) :: nbrHid, i, idHdGl, idHdLc
 
-      Ub = 0._RKIND
 
-      !     TODO for multiple fluid mesh
-      iM = 1
-!     Loop over the solid nodes 
-      DO a=1, ifem%tnNo
-C          write(*,*)"inside loop solid node IFEM_CONSTRUCT"
+      nbrHid = SIZE(msh(1)%lstHdnNd)
+
+C       write(*,*)" Yn before ", lY
+C       write(*,*)" Calling IFEM_VEL_FGtoBG "
+      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lY, msh(1)%YgBG)
+C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+      ! put the bc into lY
+      DO i = 1, nbrHid
+         idHdGl = msh(1)%lstHdnNd(i)
+         idHdLc = msh(1)%lN(idHdGl)
+
+C          write(*,*)" local id hidden ", idHdLc
+C          write(*,*)" global id hidden ", idHdGl
+
+         lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+      END DO
+C       write(*,*)" Yn after ", lY
+
+      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lA, msh(1)%YgBG)
+C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+      !  put the bc into lA
+      DO i = 1, nbrHid
+         idHdGl = msh(1)%lstHdnNd(i)
+         idHdLc = msh(1)%lN(idHdGl)
+
+C          write(*,*)" local id hidden ", idHdLc
+C          write(*,*)" global id hidden ", idHdGl
+
+         lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+      END DO
+
+      RETURN
+      END SUBROUTINE SETBCDIR_BG
+
+!####################################################################
+!     GET VELOCITY FROM FOREGROUND MESH TO BACKGROUND using MLS
+      SUBROUTINE IFEM_VEL_FGtoBG(lMBg, lMFg, Yg, Vg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Vg(nsd,lMBg%nNo)
+
+      INTEGER(KIND=IKIND) a, is, idFgGl, idBgClsGl, idBgClsLc, nbrSN, 
+     2                    idFStcLoc, idStcLoc
+
+      Vg = 0._RKIND
+
+!     We define an array with lenght the nbr of nodes  
+!     in the backgrounf mesh, but after we will use only the nodes  
+!     hidden to impose the BC Dir 
+
+!     Loop over foreground  nodes 
+      DO a=1, lMFg%nNo
+
+!        Global Id foreground node
+         idFgGl = lMFg%gN(a)         
+
 !        Global id closest fluid node
-         idFCls = ifem%clsFNd(a) 
+         idBgClsGl = lMFg%clsBgNd(a) 
+!        Local Id, needed because the stencil is locally defined 
+         idBgClsLc = lMBg%lN(idBgClsGl)
+
 !        Nbr of node in stencil
-         nbrSN = msh(iM)%stn%nbrNdStn(idFCls) 
+         nbrSN = lMBg%stn%nbrNdStn(idBgClsLc) 
 !        Loop over the stencil 
          DO is = 1, nbrSN
-C             write(*,*) "inside loop stencil"
-!           Extract fluid coordinates xlf
-            idFStc = msh(iM)%stn%ndStn(idFCls,is)
+C           write(*,*) "inside loop stencil"
+            idStcLoc = lMBg%stn%ndStn(idBgClsLc,is)
 
-            Ub(:,a) = Ub(:,a) + ifem%QMLS(is,a)*Ug(1:nsd,idFStc)
+            Vg(:,idStcLoc) = Vg(:,idStcLoc) + 
+     2                              lMFg%QMLS(is,a) * Yg(1:nsd,idFgGl)
 
          END DO
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_FINDSOLVEL_MLS
+      END SUBROUTINE IFEM_VEL_FGtoBG 
+
+
+!####################################################################
+!     GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
+!     Interpolate data at IFEM nodes from background mesh using MLS
+      SUBROUTINE IFEM_VELPRE_BGtoFG(lMBg, lMFg, Yg, Vg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Vg(nsd+1,lMFg%nNo)
+
+
+      INTEGER(KIND=IKIND) a, is, idFgGl, idFgLc, idBgClsGl, idBgClsLc,  
+     2                    nbrSN, idStcLoc, idStcGl
+
+
+      Vg = 0._RKIND
+
+!     Loop over foreground  nodes 
+      DO idFgLc = 1, lMFg%nNo
+
+!        Global Id foreground node
+         idFgGl = lMFg%gN(idFgLc)         
+
+!        Global id closest fluid node
+         idBgClsGl = lMFg%clsBgNd(idFgLc) 
+!        Local Id, needed because the stencil is locally defined 
+         idBgClsLc = lMBg%lN(idBgClsGl)
+
+!        Nbr of node in stencil
+         nbrSN = lMBg%stn%nbrNdStn(idBgClsLc) 
+!        Loop over the stencil 
+         DO is = 1, nbrSN
+C           write(*,*) "inside loop stencil"
+            idStcLoc = lMBg%stn%ndStn(idBgClsLc,is)
+            idStcGl = lMBg%gN(idStcLoc)
+
+            Vg(:,idFgLc) = Vg(:,idFgLc) + 
+     2                       lMFg%QMLS(is,idFgLc) * Yg(1:nsd+1,idStcGl)
+
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_VELPRE_BGtoFG

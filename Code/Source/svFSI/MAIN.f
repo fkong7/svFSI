@@ -112,6 +112,11 @@
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
 
+!     Compute external Vec ifem multi-mesh 
+         IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn)
+
+         write(*,*)" end CALL IFEM_EXCHANGE"
+
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -120,6 +125,8 @@
                CALL SETBCCPL
                CALL SETBCDIR(An, Yn, Dn)
             END IF
+
+            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn) 
 
 !        Initiator step (quantities at n+am, n+af)
             CALL PICI(Ag, Yg, Dg)
@@ -134,6 +141,8 @@
 !        Compute body forces. If phys is shells or CMM (init), apply
 !        contribution from body forces (pressure) to residue
             CALL SETBF(Dg)
+
+            write(*,*)" before GLOBALEQASSEM "
 
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh

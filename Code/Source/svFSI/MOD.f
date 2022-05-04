@@ -626,7 +626,10 @@
          INTEGER(KIND=IKIND) :: maxNbrST = 0
 !        List hidden background nodes (global ordering)
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNd(:)
-
+!        Velocity from Fg to Bg mesh 
+         REAL(KIND=RKIND), ALLOCATABLE :: YgBG(:,:) 
+!        Velocity and pressure from Bg to Fg mesh                    
+         REAL(KIND=RKIND), ALLOCATABLE :: YgFg(:,:)          
       END TYPE mshType
 
 !     Equation type
@@ -1006,11 +1009,6 @@
 
 !     Multi mesh fluid / FSI with IFEM variables 
       LOGICAL :: mmOpt = .TRUE.
-
-
-
-
-
 
 !     DERIVED TYPE VARIABLES
 !     Coupled BCs structures used for multidomain simulations
