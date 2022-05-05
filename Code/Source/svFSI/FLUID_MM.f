@@ -129,6 +129,10 @@
             DO a=1, eNoN
                Ac = lM%IEN(a,e)
                AcLc = lM%lN(Ac)
+
+C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
+C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
+
                ylFg(:,a) = lM%YgFG(:,AcLc)
             END DO
          END IF
@@ -703,15 +707,12 @@ C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
 
-
 C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
       CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lY, msh(2)%YgFG)
 C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
-
 C       write(*,*)" Calling SETBCDIR_BG "
-      CALL SETBCDIR_BG(lA, lY)
-
+C       CALL SETBCDIR_BG(lA, lY)
 
       RETURN
       END SUBROUTINE IFEM_EXCHANGE
@@ -760,6 +761,40 @@ C          write(*,*)" global id hidden ", idHdGl
 
       RETURN
       END SUBROUTINE SETBCDIR_BG
+
+!####################################################################
+
+      SUBROUTINE IFEM_SETBCDIR_FG(lA, lY) 
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
+
+      INTEGER(KIND=IKIND) :: i, idGl, idLc
+      REAL(KIND=RKIND) :: YgBG(tDof, msh(2)%nNo)
+
+      YgBG = 0._RKIND
+
+      CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lY, YgBG)
+      ! put the bc into lY
+      DO i = 1, msh(2)%nNo
+         idGl = msh(2)%gN(i)
+         idLc = i
+
+         lY(:, idGl) = YgBG(:,idLc)
+      END DO
+
+      CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lA, YgBG)
+      ! put the bc into lY
+      DO i = 1, msh(2)%nNo
+         idGl = msh(2)%gN(i)
+         idLc = i
+
+         lA(:, idGl) = YgBG(:,idLc)
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_SETBCDIR_FG
 
 !####################################################################
 !     GET VELOCITY FROM FOREGROUND MESH TO BACKGROUND using MLS
@@ -857,3 +892,55 @@ C           write(*,*) "inside loop stencil"
 
       RETURN
       END SUBROUTINE IFEM_VELPRE_BGtoFG
+
+!####################################################################
+
+!     GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
+!     Interpolate data at IFEM nodes from background mesh using MLS
+      SUBROUTINE IFEM_UNK_BGtoFG(lMBg, lMFg, Yg, Vg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Vg(tDof,lMFg%nNo)
+
+
+      INTEGER(KIND=IKIND) a, is, idFgGl, idFgLc, idBgClsGl, idBgClsLc,  
+     2                    nbrSN, idStcLoc, idStcGl
+
+
+      Vg = 0._RKIND
+
+!     Loop over foreground  nodes 
+      DO idFgLc = 1, lMFg%nNo
+
+!        Global Id foreground node
+         idFgGl = lMFg%gN(idFgLc)         
+
+!        Global id closest fluid node
+         idBgClsGl = lMFg%clsBgNd(idFgLc) 
+!        Local Id, needed because the stencil is locally defined 
+         idBgClsLc = lMBg%lN(idBgClsGl)
+
+!        Nbr of node in stencil
+         nbrSN = lMBg%stn%nbrNdStn(idBgClsLc) 
+!        Loop over the stencil 
+         DO is = 1, nbrSN
+C           write(*,*) "inside loop stencil"
+            idStcLoc = lMBg%stn%ndStn(idBgClsLc,is)
+            idStcGl = lMBg%gN(idStcLoc)
+
+            Vg(:,idFgLc) = Vg(:,idFgLc) + 
+     2                       lMFg%QMLS(is,idFgLc) * Yg(:,idStcGl)
+
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_UNK_BGtoFG
+
+
+
