@@ -186,6 +186,10 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
      3            bfl, lR, lK)
                IF( iM .GE. 2) THEN 
+
+C                   CALL IFEM_2DRES_PRE(fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
+
                   CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
                END IF
@@ -325,6 +329,58 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
 
       RETURN
       END SUBROUTINE IFEM_2DRES
+!####################################################################
+      SUBROUTINE IFEM_2DRES_PRE(eNoNw, eNoNq, w, Nw, Nq, Nwx,
+     2   Nqx, yl, ylFg, lR)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
+      REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoNw), Nq(eNoNq),
+     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(tDof,eNoNw), ylFg(nsd+1,eNoNw)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw) 
+
+      INTEGER(KIND=IKIND) a, b, k
+      REAL(KIND=RKIND) amd, wl, wr, rho, 
+     2   gam, mu, mu_s, mu_g, p, pbg, u(2), ux(2,2), es(2,2), rM(2,2),T1
+
+
+      rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
+
+      T1   = eq(cEq)%af * eq(cEq)%gam * dt
+      amd  = eq(cEq)%am/T1
+      wl   = w*T1
+      wr   = w*rho
+
+!     Note that indices are not selected based on the equation because
+!     fluid equation always come first
+!     Velocity and its gradients, inertia (acceleration & body force)
+
+
+!     Pressure 
+      p  = 0._RKIND
+      pbg  = 0._RKIND
+      DO a=1, eNoNq
+         pbg  = pbg + Nq(a)*yl(3,a)
+         p  = p + Nq(a)*ylFg(3,a)
+      END DO
+
+  
+      rM(1,1) = - p 
+
+      rM(2,2) = - p 
+
+
+!     Local residue
+      DO a=1, eNoNw
+         lR(1,a) = lR(1,a) - w*(Nwx(1,a)*rM(1,1))
+
+         lR(2,a) = lR(2,a) - w*( Nwx(2,a)*rM(2,2))
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_2DRES_PRE
 !####################################################################
 !     Find closest lM node for each node of the foreground mesh lMFg, TODO for parallel
       SUBROUTINE IFEM_FINDCLOSEST(lMBg, lMFg, lD)
@@ -712,7 +768,7 @@ C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
 C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
 C       write(*,*)" Calling SETBCDIR_BG "
-C       CALL SETBCDIR_BG(lA, lY)
+      CALL SETBCDIR_BG(lA, lY)
 
       RETURN
       END SUBROUTINE IFEM_EXCHANGE
