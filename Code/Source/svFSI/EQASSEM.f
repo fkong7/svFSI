@@ -73,7 +73,11 @@
          CALL CONSTRUCT_SHELL(lM, Ag, Yg, Dg)
 
       CASE (phys_FSI)
-         CALL CONSTRUCT_FSI(lM, Ag, Yg, Dg)
+         IF( .NOT. mmOpt ) THEN 
+            CALL CONSTRUCT_FSI(lM, Ag, Yg, Dg)
+         ELSE 
+            CALL CONSTRUCT_FSI_MM(lM, Ag, Yg, Dg, iM)
+         END IF
 
       CASE (phys_mesh)
          CALL CONSTRUCT_MESH(lM, Ag, Dg)

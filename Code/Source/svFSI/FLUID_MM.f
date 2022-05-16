@@ -57,10 +57,14 @@
       END DO
 
       CALL IFEM_FINDHIDDEN(msh(1), msh(2), Dg)
+      IF( nMsh .EQ. 3) THEN
+         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)
+      END IF
 
 !     Allocation of arrays to store unknown in Fg and Bg meshes 
       ALLOCATE(msh(1)%YgBG(nsd,msh(1)%nNo))
       ALLOCATE(msh(2)%YgFG(nsd+1,msh(2)%nNo))
+      IF( nMsh .EQ. 3) ALLOCATE(msh(3)%YgFG(nsd+1,msh(3)%nNo))
 
       RETURN
       END SUBROUTINE IFEM_INIT
@@ -382,6 +386,270 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
       RETURN
       END SUBROUTINE IFEM_2DRES_PRE
 !####################################################################
+!####################################################################
+
+      SUBROUTINE CONSTRUCT_FSI_MM(lM, Ag, Yg, Dg, iM)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(IN) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
+     2   Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+
+      LOGICAL :: vmsStab
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, AcLc
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
+      TYPE(fsType) :: fs(2)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), al(:,:), yl(:,:),
+     2   dl(:,:), bfl(:,:), fN(:,:), pS0l(:,:), pSl(:), ya_l(:),
+     3   lR(:,:), lK(:,:,:), lKd(:,:,:), ylFg(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
+     2   Nwxx(:,:), Nqx(:,:)
+
+      eNoN = lM%eNoN
+      nFn  = lM%nFn
+      IF (nFn .EQ. 0) nFn = 1
+
+      IF (lM%nFs .EQ. 1) THEN
+         vmsStab = .TRUE.
+      ELSE
+         vmsStab = .FALSE.
+      END IF
+
+!     l = 3, if nsd==2 ; else 6;
+      l = nsymd
+
+      ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
+     2   dl(tDof,eNoN), bfl(nsd,eNoN), fN(nsd,nFn), pS0l(nsymd,eNoN),
+     3   pSl(nsymd), ya_l(eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN),
+     4   lKd(dof*nsd,eNoN,eNoN))
+
+      IF( iM .GE. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
+
+!     Loop over all elements of mesh
+      DO e=1, lM%nEl
+         cDmn  = DOMAIN(lM, cEq, e)
+         cPhys = eq(cEq)%dmn(cDmn)%phys
+         IF ((cPhys .NE. phys_fluid)  .AND.
+     2       (cPhys .NE. phys_lElas)  .AND.
+     3       (cPhys .NE. phys_struct) .AND.
+     4       (cPhys .NE. phys_ustruct)) CYCLE
+
+!        Update shape functions for NURBS
+         IF (lM%eType .EQ. eType_NRB) CALL NRBNNX(lM, e)
+
+!        Create local copies
+         fN   = 0._RKIND
+         pS0l = 0._RKIND
+         ya_l = 0._RKIND
+         DO a=1, eNoN
+            Ac = lM%IEN(a,e)
+            ptr(a)   = Ac
+            xl(:,a)  = x(:,Ac)
+            al(:,a)  = Ag(:,Ac)
+            yl(:,a)  = Yg(:,Ac)
+            dl(:,a)  = Dg(:,Ac)
+            bfl(:,a) = Bf(:,Ac)
+            IF (ALLOCATED(lM%fN)) THEN
+               DO iFn=1, nFn
+                  fN(:,iFn) = lM%fN((iFn-1)*nsd+1:iFn*nsd,e)
+               END DO
+            END IF
+            IF (ALLOCATED(pS0)) pS0l(:,a) = pS0(:,Ac)
+            IF (cem%cpld) ya_l(a) = cem%Ya(Ac)
+         END DO
+
+!        Create local copies if we are in the FG mesh 
+         IF( iM .GE. 2) THEN 
+            DO a=1, eNoN
+               Ac = lM%IEN(a,e)
+               AcLc = lM%lN(Ac)
+
+C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
+C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
+
+               ylFg(:,a) = lM%YgFG(:,AcLc)
+            END DO
+         END IF
+
+!        For FSI, fluid domain should be in the current configuration
+         IF (cPhys .EQ. phys_fluid) THEN
+            xl(:,:) = xl(:,:) + dl(nsd+2:2*nsd+1,:)
+         END IF
+
+!        Initialize residue and tangents
+         lR  = 0._RKIND
+         lK  = 0._RKIND
+         lKd = 0._RKIND
+
+!        Set function spaces for velocity and pressure.
+         CALL GETTHOODFS(fs, lM, vmsStab, 1)
+
+!        Define element coordinates appropriate for function spaces
+         ALLOCATE(xwl(nsd,fs(1)%eNoN), Nwx(nsd,fs(1)%eNoN),
+     2      Nwxx(l,fs(1)%eNoN))
+         ALLOCATE(xql(nsd,fs(2)%eNoN), Nqx(nsd,fs(2)%eNoN))
+         xwl(:,:) = xl(:,:)
+         xql(:,:) = xl(:,1:fs(2)%eNoN)
+         Nwx      = 0._RKIND
+         Nqx      = 0._RKIND
+         Nwxx     = 0._RKIND
+
+!        Gauss integration 1
+         DO g=1, fs(1)%nG
+            IF (g.EQ.1 .OR. .NOT.fs(2)%lShpF) THEN
+               CALL GNN(fs(2)%eNoN, nsd, fs(2)%Nx(:,:,g), xql, Nqx, Jac,
+     2            ksix)
+               IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+            END IF
+
+            IF (g.EQ.1 .OR. .NOT.fs(1)%lShpF) THEN
+               CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xwl, Nwx, Jac,
+     2            ksix)
+               IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+
+               CALL GNNxx(l, fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g),
+     2            fs(1)%Nxx(:,:,g), xwl, Nwx, Nwxx)
+            END IF
+            w = fs(1)%w(g) * Jac
+
+            IF (nsd .EQ. 3) THEN
+               SELECT CASE (cPhys)
+               CASE (phys_fluid)
+                  CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+     3               al, yl, bfl, lR, lK)
+
+               CASE (phys_lElas)
+                  CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
+     2               bfl, pS0l, pSl, lR, lK)
+
+               CASE (phys_struct)
+                  CALL STRUCT3D(fs(1)%eNoN, nFn, w, fs(1)%N(:,g), Nwx,
+     2               al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK)
+
+               CASE (phys_ustruct)
+                  CALL USTRUCT3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, nFn,
+     2               w, Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, al, yl,
+     3               dl, bfl, fN, ya_l, lR, lK, lKd)
+
+               END SELECT
+
+            ELSE IF (nsd .EQ. 2) THEN
+               SELECT CASE (cPhys)
+               CASE (phys_fluid)
+                  CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+     3               al, yl, bfl, lR, lK)
+
+C                   IF( iM .GE. 2) THEN 
+C                      CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+C      2                  fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+C                   END IF
+
+               CASE (phys_lElas)
+                  CALL LELAS2D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
+     2               bfl, pS0l, pSl, lR, lK)
+
+               CASE (phys_struct)
+                  CALL STRUCT2D(fs(1)%eNoN, nFn, w, fs(1)%N(:,g), Nwx,
+     2               al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK)
+
+               CASE (phys_ustruct)
+                  CALL USTRUCT2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, nFn,
+     2               w, Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, al, yl,
+     3               dl, bfl, fN, ya_l, lR, lK, lKd)
+
+                  IF( iM .GE. 2) THEN 
+                     CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+     2                  fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+                  END IF
+
+               END SELECT
+            END IF
+         END DO ! g: loop
+
+!        Set function spaces for velocity and pressure.
+         CALL GETTHOODFS(fs, lM, vmsStab, 2)
+
+!        Gauss integration 2
+         DO g=1, fs(2)%nG
+            IF (g.EQ.1 .OR. .NOT.fs(1)%lShpF) THEN
+               CALL GNN(fs(1)%eNoN, nsd, fs(1)%Nx(:,:,g), xwl, Nwx, Jac,
+     2            ksix)
+               IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+            END IF
+
+            IF (g.EQ.1 .OR. .NOT.fs(2)%lShpF) THEN
+               CALL GNN(fs(2)%eNoN, nsd, fs(2)%Nx(:,:,g), xql, Nqx, Jac,
+     2            ksix)
+               IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
+            END IF
+            w = fs(2)%w(g) * Jac
+
+            IF (nsd .EQ. 3) THEN
+               SELECT CASE (cPhys)
+               CASE (phys_fluid)
+                  CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+     3               al, yl, bfl, lR, lK)
+
+               CASE (phys_ustruct)
+                  CALL USTRUCT3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, al, yl,
+     3               dl, bfl, lR, lK, lKd)
+               END SELECT
+
+            ELSE IF (nsd .EQ. 2) THEN
+               SELECT CASE (cPhys)
+               CASE (phys_fluid)
+                  CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
+     3               al, yl, bfl, lR, lK)
+
+               CASE (phys_ustruct)
+                  CALL USTRUCT2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
+     2               Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, al, yl,
+     3               dl, bfl, lR, lK, lKd)
+               END SELECT
+            END IF
+         END DO ! g: loop
+
+         DEALLOCATE(xwl, xql, Nwx, Nwxx, Nqx)
+
+!        Assembly
+#ifdef WITH_TRILINOS
+         IF (eq(cEq)%assmTLS) THEN
+            IF (cPhys .EQ. phys_ustruct) err = "Cannot assemble "//
+     2         "USTRUCT using Trilinos"
+            CALL TRILINOS_DOASSEM(eNoN, ptr, lK, lR)
+         ELSE
+#endif
+            IF (cPhys .EQ. phys_ustruct) THEN
+               CALL USTRUCT_DOASSEM(eNoN, ptr, lKd, lK, lR)
+            ELSE
+               CALL DOASSEM(eNoN, ptr, lK, lR)
+            END IF
+#ifdef WITH_TRILINOS
+         END IF
+#endif
+      END DO ! e: loop
+
+      DEALLOCATE(ptr, xl, al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK,
+     2   lKd)
+
+      CALL DESTROY(fs(1))
+      CALL DESTROY(fs(2))
+
+      RETURN
+      END SUBROUTINE CONSTRUCT_FSI_MM
+
+
+!####################################################################
+!####################################################################
 !     Find closest lM node for each node of the foreground mesh lMFg, TODO for parallel
       SUBROUTINE IFEM_FINDCLOSEST(lMBg, lMFg, lD)
       USE COMMOD
@@ -627,6 +895,103 @@ C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
       RETURN
       END SUBROUTINE IFEM_FINDHIDDEN
 
+
+!####################################################################
+
+!     Find hidden nodes of background mesh wrt solid foreground mesh, TODO for parallel
+      SUBROUTINE IFEM_FINDHIDDEN_SOL(lMBg, lMFg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+
+      INTEGER(KIND=IKIND) :: a, e, i, Ac, aBg, find, nbrHid, count
+      INTEGER(KIND=IKIND) :: FlagBg(lMBg%nNo)
+      REAL(KIND=RKIND) :: poly(nsd,lMBg%eNoN), xFgCur(nsd,lMFg%nNo)
+      REAL(KIND=RKIND) :: xp(nsd), minb(nsd), maxb(nsd)
+      REAL(KIND=RKIND) :: diam, maxDist
+      LOGICAL :: flag = .FALSE.
+      
+
+!     Create a list of flag of the FlagBg
+      FlagBg = 0
+
+!     Create a BBox around foreground mesh 
+      DO a=1, lMFg%nNo
+         Ac = lMFg%gN(a)
+         xFgCur(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+      END DO
+
+!     Create a bounding box around of the current solid location 
+      minb = HUGE(minb)
+      maxb = TINY(maxb)
+
+      CALL GETMESHDIAM(lMFg)
+
+      DO i=1, nsd
+         minb(i) = MINVAL(xFgCur(i,:)) - lMFg%diam 
+         maxb(i) = MAXVAL(xFgCur(i,:)) + lMFg%diam
+      END DO
+
+!     For each node of the background mesh nMesh
+      DO aBg = 1, lMBg%nNo
+         Ac = lMBg%gN(aBg)
+         xp(:) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+
+
+!        we check if it is inside the augmented bbox, if no, for sure is outside 
+!        if it's inside, we serach an element of the foreground mesh 
+!        that contains the node 
+
+         IF((xp(1) .LE. maxb(1)) .AND. (xp(1) .GE. minb(1)) 
+     2                 .AND. (xp(2) .LE. maxb(2)) 
+     3                 .AND. (xp(2) .GE. minb(2))) THEN 
+!           The node is inside the Bounding Box
+            flag = .TRUE.
+         END IF 
+
+
+         IF (flag) THEN
+
+            DO e=1, lMFg%nEl
+
+                DO a=1, lMFg%eNoN
+                    Ac = lMFg%IEN(a,e)
+                    poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+                END DO  
+
+
+                find = IN_POLY(xp,poly)
+
+!               is the solid node in this fluis element 
+                IF (find .EQ. 1) THEN 
+                    FlagBg(aBg) = 1 
+                    write(*,*)" Found bg node ", aBg, " in fr elm ", e
+                    EXIT
+                END IF
+            END DO
+         END IF
+      END DO
+C       write(*,*)" FlagBg = ", FlagBg
+
+      nbrHid = SUM(FlagBg)
+
+      ALLOCATE(lMBg%lstHdnNdSol(nbrHid))
+      count = 0 
+
+      DO aBg = 1, lMBg%nNo
+        IF( FlagBg(aBg) .EQ. 1 ) THEN 
+            count = count + 1
+            lMBg%lstHdnNdSol(count) = lMBg%gN(aBg)
+        END IF
+      END DO
+
+C       write(*,*)" lMBg%lstHdnNdSol = ", lMBg%lstHdnNdSol
+
+      RETURN
+      END SUBROUTINE IFEM_FINDHIDDEN_SOL
 !####################################################################
 
       SUBROUTINE IFEM_FINDMLSW(lMBg, lMFg, lD)
@@ -765,6 +1130,9 @@ C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
 
 C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
       CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lY, msh(2)%YgFG)
+      IF( nMsh .EQ. 3)  THEN 
+         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lY, msh(3)%YgFG)
+      END IF
 C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
 C       write(*,*)" Calling SETBCDIR_BG "
@@ -783,37 +1151,71 @@ C       write(*,*)" Calling SETBCDIR_BG "
 
       INTEGER(KIND=IKIND) :: nbrHid, i, idHdGl, idHdLc
 
+!---- From fluid 
+C       nbrHid = SIZE(msh(1)%lstHdnNd)
 
-      nbrHid = SIZE(msh(1)%lstHdnNd)
+C C       write(*,*)" Yn before ", lY
+C C       write(*,*)" Calling IFEM_VEL_FGtoBG "
+C       CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lY, msh(1)%YgBG)
+C C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+C       ! put the bc into lY
+C       DO i = 1, nbrHid
+C          idHdGl = msh(1)%lstHdnNd(i)
+C          idHdLc = msh(1)%lN(idHdGl)
+
+C C          write(*,*)" local id hidden ", idHdLc
+C C          write(*,*)" global id hidden ", idHdGl
+
+C          lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+C       END DO
+C C       write(*,*)" Yn after ", lY
+
+C       CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lA, msh(1)%YgBG)
+C C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+C       !  put the bc into lA
+C       DO i = 1, nbrHid
+C          idHdGl = msh(1)%lstHdnNd(i)
+C          idHdLc = msh(1)%lN(idHdGl)
+
+C C          write(*,*)" local id hidden ", idHdLc
+C C          write(*,*)" global id hidden ", idHdGl
+
+C          lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+C       END DO
+
+      IF( nMsh .EQ. 3) THEN 
+!---- From Solid 
+          nbrHid = SIZE(msh(1)%lstHdnNdSol)
 
 C       write(*,*)" Yn before ", lY
 C       write(*,*)" Calling IFEM_VEL_FGtoBG "
-      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lY, msh(1)%YgBG)
+          CALL IFEM_VEL_FGtoBG(msh(1), msh(3), lY, msh(1)%YgBG)
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
-      ! put the bc into lY
-      DO i = 1, nbrHid
-         idHdGl = msh(1)%lstHdnNd(i)
-         idHdLc = msh(1)%lN(idHdGl)
+          ! put the bc into lY
+          DO i = 1, nbrHid
+             idHdGl = msh(1)%lstHdnNdSol(i)
+             idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
-      END DO
+             lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+          END DO
 C       write(*,*)" Yn after ", lY
 
-      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lA, msh(1)%YgBG)
+          CALL IFEM_VEL_FGtoBG(msh(1), msh(3), lA, msh(1)%YgBG)
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
-      !  put the bc into lA
-      DO i = 1, nbrHid
-         idHdGl = msh(1)%lstHdnNd(i)
-         idHdLc = msh(1)%lN(idHdGl)
+          !  put the bc into lA
+          DO i = 1, nbrHid
+             idHdGl = msh(1)%lstHdnNdSol(i)
+             idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
-      END DO
+             lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+          END DO   
+      END IF   
 
       RETURN
       END SUBROUTINE SETBCDIR_BG

@@ -1181,6 +1181,7 @@
       IF (ALLOCATED(lM%clsBgElm)) DEALLOCATE(lM%clsBgElm)
       IF (ALLOCATED(lM%QMLS))     DEALLOCATE(lM%QMLS)
       IF (ALLOCATED(lM%lstHdnNd)) DEALLOCATE(lM%lstHdnNd)
+      IF (ALLOCATED(lM%lstHdnNdSol)) DEALLOCATE(lM%lstHdnNdSol)
       IF (ALLOCATED(lM%YgBG))     DEALLOCATE(lM%YgBG)
       IF (ALLOCATED(lM%YgFg))     DEALLOCATE(lM%YgFg)
 

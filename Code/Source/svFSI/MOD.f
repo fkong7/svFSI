@@ -626,6 +626,7 @@
          INTEGER(KIND=IKIND) :: maxNbrST = 0
 !        List hidden background nodes (global ordering)
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNd(:)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNdSol(:)
 !        Velocity from Fg to Bg mesh 
          REAL(KIND=RKIND), ALLOCATABLE :: YgBG(:,:) 
 !        Velocity and pressure from Bg to Fg mesh                    
