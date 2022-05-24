@@ -120,11 +120,6 @@ C          ELSE
 C             IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C          END IF
 
-         write(*,*)" An = ", An 
-         write(*,*)" Yn = ", Yn
-         write(*,*)" msh(2)%YgFG = ", msh(2)%YgFG
-         write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
-
          write(*,*)" end CALL IFEM_EXCHANGE"
 
 !     Inner loop for iteration
@@ -140,6 +135,7 @@ C             IF( cTS .LE. 2 ) THEN
                IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn)
 C             ELSE 
 C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
+               
 C             END IF
 
 !        Initiator step (quantities at n+am, n+af)
@@ -152,7 +148,9 @@ C             END IF
 C             IF( cTS .LE. 2 ) THEN 
                IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
 C             ELSE 
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(Ag, Yg, Yg)
+C C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(Ag, Yg, Yg)
+C                IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg)
 C             END IF
 
             dbg = 'Allocating the RHS and LHS'
@@ -165,7 +163,7 @@ C             END IF
             write(*,*)" before GLOBALEQASSEM "
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
-               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM)
+               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
                dbg = "Mesh "//iM//" is assembled"
             END DO
             write(*,*)" after GLOBALEQASSEM "
@@ -235,6 +233,8 @@ C             END IF
             CALL OUTRESULT(timeP, 2, iEqOld)
          END DO
 !     End of inner loop
+
+         IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn)
 
 !     IB treatment: interpolate flow data on IB mesh from background
 !     fluid mesh for explicit coupling, update old solution for implicit

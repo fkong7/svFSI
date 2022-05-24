@@ -35,20 +35,20 @@
 !
 !--------------------------------------------------------------------
 
-      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg, Ygo, iM)
+      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg, Ygo, iM, iter)
       USE COMMOD
       IMPLICIT NONE
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo), Ygo(tDof,tnNo)
-      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM, iter
 
       SELECT CASE (eq(cEq)%phys)
       CASE (phys_fluid)
          IF( .NOT. mmOpt ) THEN 
             CALL CONSTRUCT_FLUID(lM, Ag, Yg)
          ELSE 
-            CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
+            CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM, iter)
 
             write(*,*)" just before SET_BG_BCNEU_TO_FG "
 
