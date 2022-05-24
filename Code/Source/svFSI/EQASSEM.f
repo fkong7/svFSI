@@ -35,12 +35,12 @@
 !
 !--------------------------------------------------------------------
 
-      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg,iM)
+      SUBROUTINE GLOBALEQASSEM(lM, Ag, Yg, Dg, Ygo, iM)
       USE COMMOD
       IMPLICIT NONE
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
-     2   Dg(tDof,tnNo)
+     2   Dg(tDof,tnNo), Ygo(tDof,tnNo)
       INTEGER(KIND=IKIND), INTENT(IN) :: iM
 
       SELECT CASE (eq(cEq)%phys)
@@ -49,6 +49,15 @@
             CALL CONSTRUCT_FLUID(lM, Ag, Yg)
          ELSE 
             CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM)
+
+            write(*,*)" just before SET_BG_BCNEU_TO_FG "
+
+!            CALL SET_BG_BCNEU_TO_FG(Yg, Dg, iM) ! just bc strongly
+
+!           To decomment to impose Neu BC 
+            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) ! stresses + bc 
+            write(*,*)" after SET_BG_BCNEU_TO_FG "
+
          END IF
 
       CASE (phys_heatF)

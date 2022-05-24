@@ -112,8 +112,18 @@
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
 
+         write(*,*)" before IFEM_EXCHANGE "
 !     Compute external Vec ifem multi-mesh 
-         IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn)
+C          IF( cTS .LE. 2 ) THEN 
+            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn)
+C          ELSE 
+C             IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
+C          END IF
+
+         write(*,*)" An = ", An 
+         write(*,*)" Yn = ", Yn
+         write(*,*)" msh(2)%YgFG = ", msh(2)%YgFG
+         write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
 
          write(*,*)" end CALL IFEM_EXCHANGE"
 
@@ -126,7 +136,11 @@
                CALL SETBCDIR(An, Yn, Dn)
             END IF
 
-            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn) 
+C             IF( cTS .LE. 2 ) THEN 
+               IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn)
+C             ELSE 
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
+C             END IF
 
 !        Initiator step (quantities at n+am, n+af)
             CALL PICI(Ag, Yg, Dg)
@@ -134,6 +148,12 @@
                Rd = 0._RKIND
                Kd = 0._RKIND
             END IF
+
+C             IF( cTS .LE. 2 ) THEN 
+               IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
+C             ELSE 
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(Ag, Yg, Yg)
+C             END IF
 
             dbg = 'Allocating the RHS and LHS'
             CALL LSALLOC(eq(cEq))
@@ -143,12 +163,12 @@
             CALL SETBF(Dg)
 
             write(*,*)" before GLOBALEQASSEM "
-
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
-               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, iM)
+               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM)
                dbg = "Mesh "//iM//" is assembled"
             END DO
+            write(*,*)" after GLOBALEQASSEM "
 
 !        Treatment of boundary conditions on faces
 !        Apply Neumman or Traction boundary conditions

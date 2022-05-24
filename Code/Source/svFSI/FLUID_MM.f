@@ -180,9 +180,10 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
      3            bfl, lR, lK)
+               
                IF( iM .GE. 2) THEN 
                   CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
                END IF
 
              ELSE IF (nsd .EQ. 2) THEN
@@ -191,11 +192,8 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
      3            bfl, lR, lK)
                IF( iM .GE. 2) THEN 
 
-C                   CALL IFEM_2DRES_PRE(fs(1)%eNoN, fs(2)%eNoN, w,
+C                   CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
 C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
-
-                  CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
                END IF
             END IF
          END DO ! g: loop
@@ -255,14 +253,14 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
       END SUBROUTINE CONSTRUCT_FLUID_MM
 !####################################################################
       SUBROUTINE IFEM_2DRES(eNoNw, eNoNq, w, Nw, Nq, Nwx,
-     2   Nqx, yl, lR)
+     2   Nqx, yl, ylFg, lR)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
 
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoNw), Nq(eNoNq),
-     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(nsd+1,eNoNw) 
+     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(nsd+1,eNoNw), ylFg(nsd+1,eNoNw)
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw) 
 
       INTEGER(KIND=IKIND) a, b, k
@@ -284,20 +282,20 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
       ux  = 0._RKIND
       DO a=1, eNoNw
 
-         u(1)    = u(1) + Nw(a)*yl(1,a)
-         u(2)    = u(2) + Nw(a)*yl(2,a)
+         u(1)    = u(1) + Nw(a)*ylFg(1,a)
+         u(2)    = u(2) + Nw(a)*ylFg(2,a)
 
-         ux(1,1) = ux(1,1) + Nwx(1,a)*yl(1,a)
-         ux(2,1) = ux(2,1) + Nwx(2,a)*yl(1,a)
-         ux(1,2) = ux(1,2) + Nwx(1,a)*yl(2,a)
-         ux(2,2) = ux(2,2) + Nwx(2,a)*yl(2,a)
+         ux(1,1) = ux(1,1) + Nwx(1,a)*ylFg(1,a)
+         ux(2,1) = ux(2,1) + Nwx(2,a)*ylFg(1,a)
+         ux(1,2) = ux(1,2) + Nwx(1,a)*ylFg(2,a)
+         ux(2,2) = ux(2,2) + Nwx(2,a)*ylFg(2,a)
 
       END DO
 
 !     Pressure 
       p  = 0._RKIND
       DO a=1, eNoNq
-         p  = p + Nq(a)*yl(3,a)
+         p  = p + Nq(a)*ylFg(3,a)
       END DO
 
 !     Strain rate tensor 2*e_ij := (u_ij + u_ji)
@@ -333,58 +331,657 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
 
       RETURN
       END SUBROUTINE IFEM_2DRES
+
 !####################################################################
-      SUBROUTINE IFEM_2DRES_PRE(eNoNw, eNoNq, w, Nw, Nq, Nwx,
-     2   Nqx, yl, ylFg, lR)
+!####################################################################
+!     Add contribution from background fluid stresses on the boundary
+      SUBROUTINE SET_BG_BCNEU_TO_FG(Yg, Dg, iM)
       USE COMMOD
-      USE ALLFUN
       IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
 
-      INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
-      REAL(KIND=RKIND), INTENT(IN) :: w, Nw(eNoNw), Nq(eNoNq),
-     2   Nwx(2,eNoNw), Nqx(2,eNoNq), yl(tDof,eNoNw), ylFg(nsd+1,eNoNw)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw) 
+      INTEGER(KIND=IKIND) iFa, jM
 
-      INTEGER(KIND=IKIND) a, b, k
-      REAL(KIND=RKIND) amd, wl, wr, rho, 
-     2   gam, mu, mu_s, mu_g, p, pbg, u(2), ux(2,2), es(2,2), rM(2,2),T1
+      IF( iM .EQ. 1 ) RETURN
+      
+      jM = 2
 
-
-      rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
-
-      T1   = eq(cEq)%af * eq(cEq)%gam * dt
-      amd  = eq(cEq)%am/T1
-      wl   = w*T1
-      wr   = w*rho
-
-!     Note that indices are not selected based on the equation because
-!     fluid equation always come first
-!     Velocity and its gradients, inertia (acceleration & body force)
-
-
-!     Pressure 
-      p  = 0._RKIND
-      pbg  = 0._RKIND
-      DO a=1, eNoNq
-         pbg  = pbg + Nq(a)*yl(3,a)
-         p  = p + Nq(a)*ylFg(3,a)
-      END DO
-
-  
-      rM(1,1) = - p 
-
-      rM(2,2) = - p 
-
-
-!     Local residue
-      DO a=1, eNoNw
-         lR(1,a) = lR(1,a) - w*(Nwx(1,a)*rM(1,1))
-
-         lR(2,a) = lR(2,a) - w*( Nwx(2,a)*rM(2,2))
+      DO iFa = 1, msh(jM)%nFa
+         CALL CONSTRUCT_NEUL(jM, msh(jM)%fa(iFa), Yg, Dg)
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_2DRES_PRE
+      END SUBROUTINE SET_BG_BCNEU_TO_FG
+!####################################################################
+!     Construct Neumann BCs
+      SUBROUTINE CONSTRUCT_NEUL(iM, lFa, Yg, Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+      TYPE(faceType), INTENT(IN) :: lFa
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) a, e, g, Ac, Ec, cPhys, eNoN, AcLc, b, 
+     2             eNoNb
+      REAL(KIND=RKIND) w, h, nV(nsd), y(tDof), Jac, ksix(nsd,nsd), 
+     2             st(nsd), es(nsd,nsd), u(nsd), p, ux(nsd,nsd), vis,
+     3             esN(nsd)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:), ptrBd(:), 
+     2             maplocBdElm(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:), hl(:), yl(:,:), lR(:,:),
+     2             lK(:,:,:), ylFg(:,:), xl(:,:), Nx(:,:), qpBd(:,:), 
+     3             xRefBnd(:,:), RefQp(:,:)
+
+
+      eNoNb = lFa%eNoN
+      eNoN  = msh(iM)%eNoN
+
+      DO e=1, lFa%nEl
+         write(*,*)" face elem local ", e
+!        Get the id element in the global ordering of the element owing this face  
+         Ec    = lFa%gE(e)
+         cDmn  = DOMAIN(msh(iM), cEq, Ec)
+         cPhys = eq(cEq)%dmn(cDmn)%phys
+         vis   = eq(cEq)%dmn(cDmn)%visc%mu_i
+
+         write(*,*)" Ec ", Ec
+         write(*,*)" vis ", vis
+
+         ALLOCATE( ptr(eNoN), ptrBd(eNoNb), N(eNoN), yl(tDof,eNoN),
+     2      lR(dof,eNoN), lK(dof*dof,eNoN,eNoN), ylFg(nsd+1,eNoN), 
+     3      maplocBdElm(eNoNb), Nx(nsd,eNoN), qpBd(nsd,lFa%nG), 
+     4      xRefBnd(nsd,eNoNb), RefQp(nsd-1,lFa%nG), xl(nsd,eNoN) )
+         lK = 0._RKIND
+         lR = 0._RKIND
+         Nx = 0._RKIND
+         N  = 0._RKIND
+
+!        Get coordinates elements, local solution, local bg vel 
+!        and define local map from face to elem 
+         DO a=1, eNoN
+            Ac = msh(iM)%IEN(a,Ec)
+
+            xl(:,a) = x(:,Ac)
+            ptr(a)  = Ac
+            yl(:,a) = Yg(:,Ac)
+            IF (mvMsh) xl(:,a) = xl(:,a) + Do(nsd+2:2*nsd+1,Ac)
+
+!           We store in ylFg the local vel and pressure from the BG mesh 
+            AcLc = msh(iM)%lN(Ac)
+            ylFg(:,a) = msh(iM)%YgFG(:,AcLc)
+         END DO
+
+         DO a=1, eNoNb
+            Ac      = lFa%IEN(a,e)
+            ptrBd(a)  = Ac
+         END DO
+
+!        Building map from local face id to local id in the bulm element 
+         DO a=1, eNoNb
+            Ac = ptrBd(a)
+            DO b=1, eNoN
+               IF( ptr(b) .EQ. Ac ) maplocBdElm(a) = b
+            END DO
+         END DO
+
+
+!        Map quad point into parent bulk element
+!        Fisrt, get coordinates of bnd elem in the ref bulk elem 
+         CALL GETCFace(msh(iM)%eType, eNoN, eNoNb, maplocBdElm, xRefBnd)
+!        Get quad point of the ref bnd elem 
+         CALL GETGIP_RefBDELM(nsd-1, lFa%eType, eNoNb, lFa%nG, RefQp)         
+!        Now, we map the quad point from fre bnd elm to ref bnd face (bulk elm)
+         CALL GETP_BDELM(nsd-1, lFa%eType, eNoNb, lFa%nG, xRefBnd, 
+     2       RefQp, qpBd)
+
+
+         write(*,*)" before mapping "
+            write(*,*)" Ac = ", Ac
+            write(*,*)" xl = ", xl
+            write(*,*)" ptr = ", ptr
+            write(*,*)" yl = ", yl
+            write(*,*)" ylFg = ", ylFg
+            write(*,*)" ptrBd = ", ptrBd
+            write(*,*)" maplocBdElm = ", maplocBdElm
+
+            write(*,*)" xRefBnd = ", xRefBnd
+            write(*,*)" RefQp = ", RefQp
+            write(*,*)" qpBd = ", qpBd
+
+         DO g=1, lFa%nG
+
+!           Evaluate gradient at this quad point 
+!           The grad is const, we can evaluate it in any quad point
+            CALL GNN(eNoN, nsd, msh(iM)%fs(1)%Nx(:,:,g), xl, Nx, Jac,
+     2            ksix)
+
+            write(*,*)" Nx = ", Nx 
+            write(*,*)" Jac = ", Jac 
+
+!           Evaluate test function at this quad point 
+            CALL GETN(nsd, msh(iM)%eType, eNoN, qpBd(:,g), N)
+
+            write(*,*)" N = ", N
+
+            CALL GNNB(lFa, e, g, nsd-1, eNoNb, lFa%Nx(:,:,g), nV)
+            Jac = SQRT(NORM(nV))
+            nV  = nV/Jac
+            w   = lFa%w(g)*Jac
+
+            write(*,*)" nV = ", nV
+            write(*,*)" w = ", w
+
+!           Compute sigma(u,p) n 
+            u = 0._RKIND
+            p = 0._RKIND
+            ux = 0._RKIND
+            es = 0._RKIND
+            esN = 0._RKIND
+            st = 0._RKIND
+
+            DO a=1, eNoN
+               u(1) = u(1) + N(a)*ylFg(1,a)
+               u(2) = u(2) + N(a)*ylFg(2,a)
+
+               p = p + N(a)*ylFg(3,a)
+
+               ux(1,1) = ux(1,1) + Nx(1,a)*ylFg(1,a)
+               ux(2,1) = ux(2,1) + Nx(1,a)*ylFg(2,a)
+               ux(1,2) = ux(1,2) + Nx(2,a)*ylFg(1,a)
+               ux(2,2) = ux(2,2) + Nx(2,a)*ylFg(2,a)
+            END DO
+
+            write(*,*)" u = ", u
+            write(*,*)" p = ", p
+
+!           Strain rate tensor 2*e_ij := (u_ij + u_ji)
+            es(1,1) = ux(1,1) + ux(1,1)
+            es(2,1) = ux(2,1) + ux(1,2)
+            es(2,2) = ux(2,2) + ux(2,2)
+            es(1,2) = es(2,1)
+
+            esN(1) = vis*(es(1,1)*nV(1) + es(1,2)*nV(2))
+            esN(2) = vis*(es(2,1)*nV(1) + es(2,2)*nV(2))
+
+            st(1) = esN(1) - p*nV(1) 
+            st(2) = esN(2) - p*nV(2)
+
+
+            IF (nsd .EQ. 2) THEN
+               DO a=1, eNoN
+                  lR(1,a) = lR(1,a) - w*N(a)*st(1) 
+                  lR(2,a) = lR(2,a) - w*N(a)*st(2) 
+               END DO
+            ELSE
+               DO a=1, eNoN
+                  lR(1,a) = lR(1,a) - w*N(a)*st(1) 
+                  lR(2,a) = lR(2,a) - w*N(a)*st(2) 
+                  lR(3,a) = lR(3,a) - w*N(a)*st(3)
+               END DO
+            END IF
+
+
+         END DO
+
+         write(*,*)" lR = ", lR 
+
+!        Now doing the assembly part
+#ifdef WITH_TRILINOS
+         IF (eq(cEq)%assmTLS) THEN
+            CALL TRILINOS_DOASSEM(eNoN, ptr, lK, lR)
+         ELSE
+#endif
+            CALL DOASSEM(eNoN, ptr, lK,  lR)
+#ifdef WITH_TRILINOS
+         END IF
+#endif
+         DEALLOCATE(ptr, ptrBd, N, yl, lR, lK, ylFg, maplocBdElm, 
+     2              qpBd, xRefBnd, RefQp, xl, Nx)
+
+      END DO
+
+      RETURN
+      END SUBROUTINE CONSTRUCT_NEUL
+
+!####################################################################
+!####################################################################
+!     Add contribution from background fluid stresses on the boundary
+      SUBROUTINE SET_BCNEU_TO_FG(Yg, Dg, iM)
+      USE COMMOD
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+
+      INTEGER(KIND=IKIND) iFa, jM
+
+      IF( iM .EQ. 1 ) RETURN
+      
+      jM = 2
+
+      DO iFa = 1, msh(jM)%nFa
+         CALL CONSTRUCT_NEUL(jM, msh(jM)%fa(iFa), Yg, Dg)
+      END DO
+
+      RETURN
+      END SUBROUTINE SET_BCNEU_TO_FG
+!####################################################################
+!     Construct Neumann BCs
+      SUBROUTINE CONSTRUCT_RK_NEUL(iM, lFa, Yg, Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+      TYPE(faceType), INTENT(IN) :: lFa
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) a, e, g, Ac, Ec, cPhys, eNoN, AcLc, b, 
+     2             eNoNb
+      REAL(KIND=RKIND) w, h, nV(nsd), y(tDof), Jac, ksix(nsd,nsd), 
+     2             st(nsd), es(nsd,nsd), u(nsd), p, ux(nsd,nsd), vis,
+     3             esN(nsd)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:), ptrBd(:), 
+     2             maplocBdElm(:)
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:), hl(:), yl(:,:), lR(:,:),
+     2             lK(:,:,:), ylFg(:,:), xl(:,:), Nx(:,:), qpBd(:,:), 
+     3             xRefBnd(:,:), RefQp(:,:)
+
+
+      eNoNb = lFa%eNoN
+      eNoN  = msh(iM)%eNoN
+
+      DO e=1, lFa%nEl
+         write(*,*)" face elem local ", e
+!        Get the id element in the global ordering of the element owing this face  
+         Ec    = lFa%gE(e)
+         cDmn  = DOMAIN(msh(iM), cEq, Ec)
+         cPhys = eq(cEq)%dmn(cDmn)%phys
+         vis   = eq(cEq)%dmn(cDmn)%visc%mu_i
+
+         write(*,*)" Ec ", Ec
+         write(*,*)" vis ", vis
+
+         ALLOCATE( ptr(eNoN), ptrBd(eNoNb), N(eNoN), yl(tDof,eNoN),
+     2      lR(dof,eNoN), lK(dof*dof,eNoN,eNoN), ylFg(nsd+1,eNoN), 
+     3      maplocBdElm(eNoNb), Nx(nsd,eNoN), qpBd(nsd,lFa%nG), 
+     4      xRefBnd(nsd,eNoNb), RefQp(nsd-1,lFa%nG), xl(nsd,eNoN) )
+         lK = 0._RKIND
+         lR = 0._RKIND
+         Nx = 0._RKIND
+         N  = 0._RKIND
+
+!        Get coordinates elements, local solution, local bg vel 
+!        and define local map from face to elem 
+         DO a=1, eNoN
+            Ac = msh(iM)%IEN(a,Ec)
+
+            xl(:,a) = x(:,Ac)
+            ptr(a)  = Ac
+            yl(:,a) = Yg(:,Ac)
+            IF (mvMsh) xl(:,a) = xl(:,a) + Do(nsd+2:2*nsd+1,Ac)
+
+!           We store in ylFg the local vel and pressure from the BG mesh 
+            AcLc = msh(iM)%lN(Ac)
+            ylFg(:,a) = msh(iM)%YgFG(:,AcLc)
+         END DO
+
+         DO a=1, eNoNb
+            Ac      = lFa%IEN(a,e)
+            ptrBd(a)  = Ac
+         END DO
+
+!        Building map from local face id to local id in the bulm element 
+         DO a=1, eNoNb
+            Ac = ptrBd(a)
+            DO b=1, eNoN
+               IF( ptr(b) .EQ. Ac ) maplocBdElm(a) = b
+            END DO
+         END DO
+
+
+!        Map quad point into parent bulk element
+!        Fisrt, get coordinates of bnd elem in the ref bulk elem 
+         CALL GETCFace(msh(iM)%eType, eNoN, eNoNb, maplocBdElm, xRefBnd)
+!        Get quad point of the ref bnd elem 
+         CALL GETGIP_RefBDELM(nsd-1, lFa%eType, eNoNb, lFa%nG, RefQp)         
+!        Now, we map the quad point from fre bnd elm to ref bnd face (bulk elm)
+         CALL GETP_BDELM(nsd-1, lFa%eType, eNoNb, lFa%nG, xRefBnd, 
+     2       RefQp, qpBd)
+
+
+         write(*,*)" before mapping "
+            write(*,*)" Ac = ", Ac
+            write(*,*)" xl = ", xl
+            write(*,*)" ptr = ", ptr
+            write(*,*)" yl = ", yl
+            write(*,*)" ylFg = ", ylFg
+            write(*,*)" ptrBd = ", ptrBd
+            write(*,*)" maplocBdElm = ", maplocBdElm
+
+            write(*,*)" xRefBnd = ", xRefBnd
+            write(*,*)" RefQp = ", RefQp
+            write(*,*)" qpBd = ", qpBd
+
+         DO g=1, lFa%nG
+
+!           Evaluate gradient at this quad point 
+!           The grad is const, we can evaluate it in any quad point
+            CALL GNN(eNoN, nsd, msh(iM)%fs(1)%Nx(:,:,g), xl, Nx, Jac,
+     2            ksix)
+
+            write(*,*)" Nx = ", Nx 
+            write(*,*)" Jac = ", Jac 
+
+!           Evaluate test function at this quad point 
+            CALL GETN(nsd, msh(iM)%eType, eNoN, qpBd(:,g), N)
+
+            write(*,*)" N = ", N
+
+            CALL GNNB(lFa, e, g, nsd-1, eNoNb, lFa%Nx(:,:,g), nV)
+            Jac = SQRT(NORM(nV))
+            nV  = nV/Jac
+            w   = lFa%w(g)*Jac
+
+            write(*,*)" nV = ", nV
+            write(*,*)" w = ", w
+
+!--         Foreground part
+!           Compute sigma(u,p) n 
+            u = 0._RKIND
+            p = 0._RKIND
+            ux = 0._RKIND
+            es = 0._RKIND
+            esN = 0._RKIND
+            st = 0._RKIND
+
+            DO a=1, eNoN
+               u(1) = u(1) + N(a)*yl(1,a)
+               u(2) = u(2) + N(a)*yl(2,a)
+
+               p = p + N(a)*ylFg(3,a)
+
+               ux(1,1) = ux(1,1) + Nx(1,a)*yl(1,a)
+               ux(2,1) = ux(2,1) + Nx(1,a)*yl(2,a)
+               ux(1,2) = ux(1,2) + Nx(2,a)*yl(1,a)
+               ux(2,2) = ux(2,2) + Nx(2,a)*yl(2,a)
+            END DO
+
+!           Strain rate tensor 2*e_ij := (u_ij + u_ji)
+            es(1,1) = ux(1,1) + ux(1,1)
+            es(2,1) = ux(2,1) + ux(1,2)
+            es(2,2) = ux(2,2) + ux(2,2)
+            es(1,2) = es(2,1)
+
+            esN(1) = vis*(es(1,1)*nV(1) + es(1,2)*nV(2))
+            esN(2) = vis*(es(2,1)*nV(1) + es(2,2)*nV(2))
+
+            st(1) = esN(1) - p*nV(1) 
+            st(2) = esN(2) - p*nV(2)
+
+C !--         Background part
+C             uBG = 0._RKIND
+C             pBG = 0._RKIND
+C             stBG = 0._RKIND
+
+C             DO a = 1, eNoN
+C                uBG(1) = uBG(1) + N(a)*yl(1,a)
+C                uBG(2) = uBG(2) + N(a)*yl(2,a)
+
+C                pBG = pBG + N(a)*yl(3,a)
+
+C                ux(1,1) = ux(1,1) + Nx(1,a)*yl(1,a)
+C                ux(2,1) = ux(2,1) + Nx(1,a)*yl(2,a)
+C                ux(1,2) = ux(1,2) + Nx(2,a)*yl(1,a)
+C                ux(2,2) = ux(2,2) + Nx(2,a)*yl(2,a)
+C             END DO
+
+C !           Strain rate tensor 2*e_ij := (u_ij + u_ji)
+C             es(1,1) = ux(1,1) + ux(1,1)
+C             es(2,1) = ux(2,1) + ux(1,2)
+C             es(2,2) = ux(2,2) + ux(2,2)
+C             es(1,2) = es(2,1)
+
+C             esN(1) = vis*(es(1,1)*nV(1) + es(1,2)*nV(2))
+C             esN(2) = vis*(es(2,1)*nV(1) + es(2,2)*nV(2))
+
+C             st(1) = esN(1) - p*nV(1) 
+C             st(2) = esN(2) - p*nV(2)
+
+
+
+!--         Assembly 
+            IF (nsd .EQ. 2) THEN
+               DO a=1, eNoN
+                  lR(1,a) = lR(1,a) - w*N(a)*st(1) 
+                  lR(2,a) = lR(2,a) - w*N(a)*st(2) 
+               END DO
+            ELSE
+               DO a=1, eNoN
+                  lR(1,a) = lR(1,a) - w*N(a)*st(1) 
+                  lR(2,a) = lR(2,a) - w*N(a)*st(2) 
+                  lR(3,a) = lR(3,a) - w*N(a)*st(3)
+               END DO
+            END IF
+
+
+         END DO
+
+         write(*,*)" lR = ", lR 
+
+!        Now doing the assembly part
+#ifdef WITH_TRILINOS
+         IF (eq(cEq)%assmTLS) THEN
+            CALL TRILINOS_DOASSEM(eNoN, ptr, lK, lR)
+         ELSE
+#endif
+            CALL DOASSEM(eNoN, ptr, lK,  lR)
+#ifdef WITH_TRILINOS
+         END IF
+#endif
+         DEALLOCATE(ptr, ptrBd, N, yl, lR, lK, ylFg, maplocBdElm, 
+     2              qpBd, xRefBnd, RefQp, xl, Nx)
+
+      END DO
+
+      RETURN
+      END SUBROUTINE CONSTRUCT_RK_NEUL
+
+
+!####################################################################
+!     Returns Gauss integration points in current coordinates from 
+!     reference face (dimFace) to current face (dimFace)
+      SUBROUTINE GETGIP_SElmBDELM(insd, eType, eNoNF, nG, crdFace, xi)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, nG, eNoNF
+      REAL(KIND=RKIND), INTENT(IN) :: crdface(insd,eNoNF)
+      REAL(KIND=RKIND), INTENT(OUT) :: xi(insd, nG)
+
+      REAL(KIND=RKIND) :: s, t, in, jq, xiRef(insd,nG), N(eNoNF,nG)
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+C       write(*,*)" inside GETGIP_SELM "
+
+!     3D elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+         s = 2._RKIND/3._RKIND
+         t = 1._RKIND/6._RKIND
+         xiRef(1,1) = t; xiRef(2,1) = t
+         xiRef(1,2) = s; xiRef(2,2) = t
+         xiRef(1,3) = t; xiRef(2,3) = s
+
+!     2D elements
+      CASE(eType_LIN1)
+         s = 1._RKIND/SQRT(3._RKIND)
+         xiRef(1,1) = -s
+         xiRef(1,2) =  s
+
+      END SELECT
+
+C       write(*,*)" sub face ref elemem = ", crdFace
+
+      DO in = 1, eNoNF
+!        Get nodal shape function in the reference face element 
+         CALL GETN(insd, eType, eNoNF, xiRef(:,in), N(:,in))
+      END DO
+
+!     N_ij is the weight that we will use to define the quad point 
+!     in the new subElement in the reference bulk element with 
+!     coordinates = crdFace
+      xi = 0._RKIND
+
+!     Loop over quad point          
+      DO jq = 1, nG
+!        Loop over element nodes 
+         DO in = 1, eNoNF
+            xi(:, jq) = xi(:, jq) + crdFace(:,in)*N(in,jq)
+         END DO
+      END DO  
+
+C       write(*,*)" quad point sub elemem ", xi
+
+      RETURN
+      END SUBROUTINE GETGIP_SElmBDELM
+!--------------------------------------------------------------------
+      SUBROUTINE GETGIP_RefBDELM(insd, eType, eNoNF, nG, xiRef)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, nG, eNoNF
+      REAL(KIND=RKIND), INTENT(OUT) :: xiRef(insd, nG)
+
+      REAL(KIND=RKIND) :: s, t
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+!     3D elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+         s = 2._RKIND/3._RKIND
+         t = 1._RKIND/6._RKIND
+         xiRef(1,1) = t; xiRef(2,1) = t
+         xiRef(1,2) = s; xiRef(2,2) = t
+         xiRef(1,3) = t; xiRef(2,3) = s
+
+!     2D elements
+      CASE(eType_LIN1)
+         s = 1._RKIND/SQRT(3._RKIND)
+         xiRef(1,1) = -s
+         xiRef(1,2) =  s
+
+      END SELECT
+
+      RETURN
+      END SUBROUTINE GETGIP_RefBDELM
+!--------------------------------------------------------------------
+!     Returns shape functions at given point (reference coords)
+      SUBROUTINE GETN(insd, eType, eNoN, xi, N)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, eNoN
+      REAL(KIND=RKIND), INTENT(IN)  :: xi(insd)
+      REAL(KIND=RKIND), INTENT(OUT) :: N(eNoN)
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+!     3D face elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+         N(1) = xi(1)
+         N(2) = xi(2)
+         N(3) = 1._RKIND - xi(1) - xi(2)
+
+!     2D face elements
+      CASE(eType_LIN1)
+         N(1) = (1._RKIND - xi(1))*0.5_RKIND
+         N(2) = (1._RKIND + xi(1))*0.5_RKIND
+
+      CASE(eType_TET4)
+         N(1) = xi(1)
+         N(2) = xi(2)
+         N(3) = xi(3)
+         N(4) = 1._RKIND - xi(1) - xi(2) - xi(3)
+
+      END SELECT
+
+      RETURN
+      END SUBROUTINE GETN
+!--------------------------------------------------------------------
+!     Returns coordinates of a face (with locl id locId) in the ref bulk elem
+      SUBROUTINE GETCFace(eType, eNoN, eNoNb, locId, xi)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: eType, eNoN, eNoNb, 
+     2                                   locId(eNoNb)
+      REAL(KIND=RKIND), INTENT(OUT)  :: xi(nsd,eNoNb)
+      
+      REAL(KIND=RKIND) :: xRefElm(nsd,eNoN)
+
+      IF (eType .EQ. eType_NRB) RETURN
+
+!     2D face elements
+      SELECT CASE(eType)
+      CASE(eType_TRI3)
+
+         xRefElm(:,1) = (/1._RKIND, 0._RKIND/)
+         xRefElm(:,2) = (/0._RKIND, 1._RKIND/)
+         xRefElm(:,3) = (/0._RKIND, 0._RKIND/)
+!     3D face elements
+      CASE(eType_TET4)
+
+         xRefElm(:,1) = (/1._RKIND, 0._RKIND, 0._RKIND/)
+         xRefElm(:,2) = (/0._RKIND, 1._RKIND, 0._RKIND/)
+         xRefElm(:,3) = (/0._RKIND, 0._RKIND, 1._RKIND/)
+         xRefElm(:,4) = (/0._RKIND, 0._RKIND, 0._RKIND/)
+
+      END SELECT
+
+      xi(:,:) = xRefElm(:, locId(:))
+
+      RETURN
+      END SUBROUTINE GETCFace
+!--------------------------------------------------------------------
+!     Returns quad points in current coordinates (current face, dimFace) 
+!     from points (nbr of point = nbr of quad points) in the reference 
+!     face (dimFace-1) 
+      SUBROUTINE GETP_BDELM(insd, eType, eNoNF, nG, crdFace, xin, xout)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: insd, eType, nG, eNoNF
+      REAL(KIND=RKIND), INTENT(IN) :: crdFace(insd+1, eNoNF), 
+     2              xin(insd, nG)
+      REAL(KIND=RKIND), INTENT(OUT) :: xout(insd+1, nG)
+
+      REAL(KIND=RKIND) :: in, jq, N(eNoNF,nG)
+
+C       write(*,*)" face sub elemem = ", crdFace
+
+      DO in = 1, eNoNF
+!        Get nodal shape function in the reference face element 
+         CALL GETN(insd, eType, eNoNF, xin(:,in), N(:,in))
+      END DO
+
+!     N_ij is the weight that we will use to define the quad point 
+!     in the new subElement in the reference bulk element with 
+!     coordinates = crdFace
+      xout = 0._RKIND
+
+!     Loop over quad point          
+      DO jq = 1, nG
+!        Loop over element nodes 
+         DO in = 1, eNoNF
+            xout(:, jq) = xout(:, jq) + crdFace(:,in)*N(in,jq)
+         END DO
+      END DO  
+
+C       write(*,*)" quad point sub elemem ", xout
+
+      RETURN
+      END SUBROUTINE GETP_BDELM
 !####################################################################
 !####################################################################
 
@@ -545,10 +1142,10 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
      3               al, yl, bfl, lR, lK)
 
-C                   IF( iM .GE. 2) THEN 
-C                      CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-C      2                  fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
-C                   END IF
+                  IF( iM .GE. 2) THEN 
+                     CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
+                  END IF
 
                CASE (phys_lElas)
                   CALL LELAS2D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -565,7 +1162,7 @@ C                   END IF
 
                   IF( iM .GE. 2) THEN 
                      CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-     2                  fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, ylFg, lR)
+     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
                   END IF
 
                END SELECT
@@ -1122,16 +1719,37 @@ C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
 
 !####################################################################
 
-      SUBROUTINE IFEM_EXCHANGE(lA, lY) 
+      SUBROUTINE IFEM_EXCHANGE(lA, lY, lYo) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
 
 C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
-      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lY, msh(2)%YgFG)
+      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lYo, msh(2)%YgFG)
       IF( nMsh .EQ. 3)  THEN 
-         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lY, msh(3)%YgFG)
+         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
+      END IF
+C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
+
+C       write(*,*)" Calling SETBCDIR_BG "
+      !CALL SETBCDIR_BG(lA, lY)
+
+      RETURN
+      END SUBROUTINE IFEM_EXCHANGE
+
+      SUBROUTINE IFEM_EXCHANGE_WITHDIRBC(lA, lY, lYo) 
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
+      REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
+
+C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
+      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lYo, msh(2)%YgFG)
+      IF( nMsh .EQ. 3)  THEN 
+         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
       END IF
 C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
@@ -1139,7 +1757,7 @@ C       write(*,*)" Calling SETBCDIR_BG "
       CALL SETBCDIR_BG(lA, lY)
 
       RETURN
-      END SUBROUTINE IFEM_EXCHANGE
+      END SUBROUTINE IFEM_EXCHANGE_WITHDIRBC
 
 !####################################################################
 
@@ -1152,36 +1770,36 @@ C       write(*,*)" Calling SETBCDIR_BG "
       INTEGER(KIND=IKIND) :: nbrHid, i, idHdGl, idHdLc
 
 !---- From fluid 
-C       nbrHid = SIZE(msh(1)%lstHdnNd)
+      nbrHid = SIZE(msh(1)%lstHdnNd)
 
-C C       write(*,*)" Yn before ", lY
-C C       write(*,*)" Calling IFEM_VEL_FGtoBG "
-C       CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lY, msh(1)%YgBG)
-C C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
-C       ! put the bc into lY
-C       DO i = 1, nbrHid
-C          idHdGl = msh(1)%lstHdnNd(i)
-C          idHdLc = msh(1)%lN(idHdGl)
+C       write(*,*)" Yn before ", lY
+C       write(*,*)" Calling IFEM_VEL_FGtoBG "
+      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lY, msh(1)%YgBG)
+C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+      ! put the bc into lY
+      DO i = 1, nbrHid
+         idHdGl = msh(1)%lstHdnNd(i)
+         idHdLc = msh(1)%lN(idHdGl)
 
-C C          write(*,*)" local id hidden ", idHdLc
-C C          write(*,*)" global id hidden ", idHdGl
+C          write(*,*)" local id hidden ", idHdLc
+C          write(*,*)" global id hidden ", idHdGl
 
-C          lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
-C       END DO
-C C       write(*,*)" Yn after ", lY
+         lY(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+      END DO
+C       write(*,*)" Yn after ", lY
 
-C       CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lA, msh(1)%YgBG)
-C C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
-C       !  put the bc into lA
-C       DO i = 1, nbrHid
-C          idHdGl = msh(1)%lstHdnNd(i)
-C          idHdLc = msh(1)%lN(idHdGl)
+      CALL IFEM_VEL_FGtoBG(msh(1), msh(2), lA, msh(1)%YgBG)
+C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
+      !  put the bc into lA
+      DO i = 1, nbrHid
+         idHdGl = msh(1)%lstHdnNd(i)
+         idHdLc = msh(1)%lN(idHdGl)
 
-C C          write(*,*)" local id hidden ", idHdLc
-C C          write(*,*)" global id hidden ", idHdGl
+C          write(*,*)" local id hidden ", idHdLc
+C          write(*,*)" global id hidden ", idHdGl
 
-C          lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
-C       END DO
+         lA(1:nsd, idHdGl) = msh(1)%YgBG(:,idHdLc)
+      END DO
 
       IF( nMsh .EQ. 3) THEN 
 !---- From Solid 
