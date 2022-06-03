@@ -1181,8 +1181,10 @@
       IF (ALLOCATED(lM%clsBgElm)) DEALLOCATE(lM%clsBgElm)
       IF (ALLOCATED(lM%QMLS))     DEALLOCATE(lM%QMLS)
       IF (ALLOCATED(lM%lstHdnNd)) DEALLOCATE(lM%lstHdnNd)
+      IF (ALLOCATED(lM%lstDirNd)) DEALLOCATE(lM%lstDirNd)
       IF (ALLOCATED(lM%lstHdnElm)) DEALLOCATE(lM%lstHdnElm)
       IF (ALLOCATED(lM%lstHdnNdSol)) DEALLOCATE(lM%lstHdnNdSol)
+      IF (ALLOCATED(lM%lstNdToELm)) DEALLOCATE(lM%lstNdToELm)
       IF (ALLOCATED(lM%YgBG))     DEALLOCATE(lM%YgBG)
       IF (ALLOCATED(lM%YgFg))     DEALLOCATE(lM%YgFg)
 
@@ -2699,7 +2701,9 @@ C       END DO
       ALLOCATE(stcNd(lM%nNo,maxAdj+1))
       ALLOCATE(stcElm(lM%nNo,maxAdj))
       ALLOCATE(idxInsrt(lM%nNo))
-      ALLOCATE(lm%stn%nbrNdStn(lM%nNo)) 
+
+      IF( ALLOCATED(lM%stn%nbrNdStn) ) DEALLOCATE(lM%stn%nbrNdStn)
+      ALLOCATE(lM%stn%nbrNdStn(lM%nNo)) 
 
 
       stcNd = 0
@@ -2770,17 +2774,20 @@ C       write(*,*) " node in stencil ", lm%stn%nbrNdStn
 
 !     insert them into lm%stn
 
-      ALLOCATE(lm%stn%ndStn(lM%nNo,maxAdj+2)) 
-      lm%stn%ndStn = 0
-      ALLOCATE(lm%stn%elmStn(lM%nNo,maxAdj))
+      IF(ALLOCATED(lM%stn%ndStn)) DEALLOCATE(lM%stn%ndStn)
+      IF(ALLOCATED(lM%stn%elmStn)) DEALLOCATE(lM%stn%elmStn)
+      
+      ALLOCATE(lM%stn%ndStn(lM%nNo,maxAdj+2)) 
+      lM%stn%ndStn = 0
+      ALLOCATE(lM%stn%elmStn(lM%nNo,maxAdj))
 
 
 
-      lm%stn%ndStn(:,1:maxAdj+1) = stcNd
+      lM%stn%ndStn(:,1:maxAdj+1) = stcNd
       DO a=1, lM%nNo
-         lm%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
+         lM%stn%ndStn(a,lm%stn%nbrNdStn(a)) = a 
       END DO
-      lm%stn%elmStn = stcElm
+      lM%stn%elmStn = stcElm
 
 !     --------------------
 !     Printing stencil mesh 

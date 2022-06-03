@@ -55,7 +55,7 @@
 !            CALL SET_BG_BCNEU_TO_FG(Yg, Dg, iM) ! just bc strongly
 
 !           To decomment to impose Neu BC 
-            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) ! stresses + bc 
+            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) 
             write(*,*)" after SET_BG_BCNEU_TO_FG "
 
          END IF
@@ -86,6 +86,8 @@
             CALL CONSTRUCT_FSI(lM, Ag, Yg, Dg)
          ELSE 
             CALL CONSTRUCT_FSI_MM(lM, Ag, Yg, Dg, iM)
+!           To impose Neu BC on fluid fitted from fluid unfitted
+            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) 
          END IF
 
       CASE (phys_mesh)

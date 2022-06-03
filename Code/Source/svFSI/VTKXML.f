@@ -850,6 +850,27 @@
          DEALLOCATE(tmpI)
       END IF
 
+!     Write element hidden id if necessary
+      IF (mmOpt) THEN
+         ALLOCATE(tmpI(1,nEl))
+         tmpI = 0
+         Ec = 0
+         DO iM=1, nMsh
+            IF( iM .GE. 2) THEN 
+               Ec = Ec + 1
+               CYCLE
+            END IF
+            DO e=1, msh(iM)%nEl
+               Ec = Ec + 1
+               write(*,*)" writing " , msh(iM)%lstHdnElm(e)
+               tmpI(1,Ec) = msh(iM)%lstHdnElm(e)
+            END DO
+         END DO
+         CALL putVTK_elemData(vtu, 'HIDDEN', tmpI, iStat)
+         IF (iStat .LT. 0) err = "VTU file write error (HIDDEN)"
+         DEALLOCATE(tmpI)
+      END IF
+
       DO iM=1, nMsh
          CALL DESTROY(d(iM))
       END DO

@@ -626,8 +626,11 @@
          INTEGER(KIND=IKIND) :: maxNbrST = 0
 !        List hidden background nodes (global ordering)
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNd(:)
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lstDirNd(:)
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnElm(:)
          INTEGER(KIND=IKIND), ALLOCATABLE :: lstHdnNdSol(:)
+!        List of elm in which each node is located in the other mesh          
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lstNdToELm(:)
 !        Velocity from Fg to Bg mesh 
          REAL(KIND=RKIND), ALLOCATABLE :: YgBG(:,:) 
 !        Velocity and pressure from Bg to Fg mesh                    
@@ -1010,7 +1013,9 @@
       REAL(KIND=RKIND), ALLOCATABLE :: varWallProps(:,:)
 
 !     Multi mesh fluid / FSI with IFEM variables 
-      LOGICAL :: mmOpt = .TRUE.
+      LOGICAL :: mmOpt = .FALSE.
+!     IFEM interpolation method
+      INTEGER(KIND=IKIND) :: intrp = ifemIntrp_NA
 
 !     DERIVED TYPE VARIABLES
 !     Coupled BCs structures used for multidomain simulations

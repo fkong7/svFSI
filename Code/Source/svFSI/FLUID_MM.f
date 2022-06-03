@@ -53,12 +53,30 @@
 
       DO iM=2, nMsh
          CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Dg)
-         CALL IFEM_FINDMLSW(msh(1), msh(iM), Dg)
+         IF( intrp .EQ. ifemIntrp_MLS) THEN 
+            CALL IFEM_FINDMLSW(msh(1), msh(iM), Dg)
+         END IF
       END DO
 
-      CALL IFEM_FINDHIDDEN(msh(1), msh(2), Dg)
-      IF( nMsh .EQ. 3) THEN
-         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)
+      IF( nMsh .EQ. 2) THEN
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+         CALL IFEM_FINDHIDDEN_ELM_FLUID(msh(1), msh(2), Dg)
+      ELSE IF( nMsh .EQ. 3) THEN
+
+!        If we need the hidden nodes from the solid
+!         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)
+!        To use lstDirNd
+C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(3), Dg)
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+!        Compute hidden elm and lstDirNd         
+         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg) 
+
+
+      END IF
+
+      IF( intrp .EQ. ifemIntrp_FEM) THEN 
+         CALL IFEM_FIND_Nd2Elm_BG(msh(1), msh(2), Dg)
+         CALL IFEM_FIND_Nd2Elm_FG(msh(1), msh(2), Dg)
       END IF
 
 !     Allocation of arrays to store unknown in Fg and Bg meshes 
@@ -68,6 +86,63 @@
 
       RETURN
       END SUBROUTINE IFEM_INIT
+
+
+!####################################################################
+
+
+      SUBROUTINE IFEM_UPDATE(Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) iM
+
+      DO iM=1, nMsh
+         msh(iM)%iGC = 0
+         CALL GETNSTENCIL(msh(iM))   
+      END DO   
+
+      DO iM=2, nMsh
+         CALL IFEM_FINDCLOSEST(msh(1), msh(iM), Dg)
+         IF( intrp .EQ. ifemIntrp_MLS) THEN 
+            CALL IFEM_FINDMLSW(msh(1), msh(iM), Dg)
+         END IF
+      END DO
+
+      IF( nMsh .EQ. 2) THEN
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+         CALL IFEM_FINDHIDDEN_ELM_FLUID(msh(1), msh(2), Dg)
+      ELSE IF( nMsh .EQ. 3) THEN
+
+!        If we need the hidden nodes from the solid
+!         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg)
+
+      END IF
+
+      IF( intrp .EQ. ifemIntrp_FEM) THEN 
+         CALL IFEM_FIND_Nd2Elm_BG(msh(1), msh(2), Dg)
+         CALL IFEM_FIND_Nd2Elm_FG(msh(1), msh(2), Dg)
+      END IF
+
+!     Allocation of arrays to store unknown in Fg and Bg meshes 
+      IF(.NOT.ALLOCATED(msh(1)%YgBG)) THEN 
+         ALLOCATE(msh(1)%YgBG(nsd,msh(1)%nNo))
+      END IF
+      IF(.NOT.ALLOCATED(msh(2)%YgFG)) THEN 
+         ALLOCATE(msh(2)%YgFG(nsd+1,msh(2)%nNo))
+      END IF
+      IF( nMsh .EQ. 3) THEN 
+         IF( .NOT.ALLOCATED(msh(3)%YgFG) ) THEN 
+            ALLOCATE(msh(3)%YgFG(nsd+1,msh(3)%nNo))
+         END IF 
+      END IF
+
+      RETURN
+      END SUBROUTINE IFEM_UPDATE
 
 !####################################################################
 !####################################################################
@@ -106,7 +181,7 @@
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   bfl(nsd,eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN))
 
-      IF( iM .GE. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
+      IF( iM .EQ. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
@@ -370,7 +445,7 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
       INTEGER(KIND=IKIND) a, e, g, Ac, Ec, cPhys, eNoN, AcLc, b, 
-     2             eNoNb
+     2             eNoNb, bRob 
       REAL(KIND=RKIND) w, h, nV(nsd), y(tDof), Jac, ksix(nsd,nsd), 
      2             st(nsd), es(nsd,nsd), u(nsd), p, ux(nsd,nsd), vis,
      3             esN(nsd)
@@ -384,6 +459,7 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
 
       eNoNb = lFa%eNoN
       eNoN  = msh(iM)%eNoN
+      bRob = 0.5_RKIND
 
       DO e=1, lFa%nEl
 C          write(*,*)" face elem local ", e
@@ -521,6 +597,25 @@ C             write(*,*)" w = ", w
                END DO
             END IF
 
+!           For Robin type BC:  
+C             IF (nsd .EQ. 2) THEN
+C                DO a=1, eNoN
+C                   lR(1,a) = lR(1,a) + 
+C      2               bRob * w * N(a) * u(1) *( u(1)*nV(1) + u(2)*nV(2) )
+C                   lR(2,a) = lR(2,a) + 
+C      2               bRob * w * N(a) * u(2) *( u(1)*nV(1) + u(2)*nV(2) )             
+C                END DO
+C             ELSE
+C                DO a=1, eNoN
+C                   lR(1,a) = lR(1,a) + 
+C      2               bRob * w * N(a) * u(1) *( u(1)*nV(1) + u(2)*nV(2) )
+C                   lR(2,a) = lR(2,a) + 
+C      2               bRob * w * N(a) * u(2) *( u(1)*nV(1) + u(2)*nV(2) )   
+C                   lR(3,a) = lR(3,a) + 
+C      2               bRob * w * N(a) * u(3) *( u(1)*nV(1) + u(2)*nV(2) )     
+C                END DO
+C             END IF           
+
 
          END DO
 
@@ -554,10 +649,12 @@ C             write(*,*)" w = ", w
       INTEGER(KIND=IKIND) iFa, jM
 
       IF( iM .EQ. 1 ) RETURN
+      IF( iM .EQ. 3 ) RETURN
       
       jM = 2
 
       DO iFa = 1, msh(jM)%nFa
+         IF( iFa .LE. 5 ) CYCLE 
          CALL CONSTRUCT_NEUL(jM, msh(jM)%fa(iFa), Yg, Dg)
       END DO
 
@@ -590,15 +687,11 @@ C             write(*,*)" w = ", w
       eNoN  = msh(iM)%eNoN
 
       DO e=1, lFa%nEl
-         write(*,*)" face elem local ", e
 !        Get the id element in the global ordering of the element owing this face  
          Ec    = lFa%gE(e)
          cDmn  = DOMAIN(msh(iM), cEq, Ec)
          cPhys = eq(cEq)%dmn(cDmn)%phys
          vis   = eq(cEq)%dmn(cDmn)%visc%mu_i
-
-         write(*,*)" Ec ", Ec
-         write(*,*)" vis ", vis
 
          ALLOCATE( ptr(eNoN), ptrBd(eNoNb), N(eNoN), yl(tDof,eNoN),
      2      lR(dof,eNoN), lK(dof*dof,eNoN,eNoN), ylFg(nsd+1,eNoN), 
@@ -647,20 +740,6 @@ C             write(*,*)" w = ", w
          CALL GETP_BDELM(nsd-1, lFa%eType, eNoNb, lFa%nG, xRefBnd, 
      2       RefQp, qpBd)
 
-
-         write(*,*)" before mapping "
-            write(*,*)" Ac = ", Ac
-            write(*,*)" xl = ", xl
-            write(*,*)" ptr = ", ptr
-            write(*,*)" yl = ", yl
-            write(*,*)" ylFg = ", ylFg
-            write(*,*)" ptrBd = ", ptrBd
-            write(*,*)" maplocBdElm = ", maplocBdElm
-
-            write(*,*)" xRefBnd = ", xRefBnd
-            write(*,*)" RefQp = ", RefQp
-            write(*,*)" qpBd = ", qpBd
-
          DO g=1, lFa%nG
 
 !           Evaluate gradient at this quad point 
@@ -668,21 +747,14 @@ C             write(*,*)" w = ", w
             CALL GNN(eNoN, nsd, msh(iM)%fs(1)%Nx(:,:,g), xl, Nx, Jac,
      2            ksix)
 
-            write(*,*)" Nx = ", Nx 
-            write(*,*)" Jac = ", Jac 
-
 !           Evaluate test function at this quad point 
             CALL GETN(nsd, msh(iM)%eType, eNoN, qpBd(:,g), N)
 
-            write(*,*)" N = ", N
 
             CALL GNNB(lFa, e, g, nsd-1, eNoNb, lFa%Nx(:,:,g), nV)
             Jac = SQRT(NORM(nV))
             nV  = nV/Jac
             w   = lFa%w(g)*Jac
-
-            write(*,*)" nV = ", nV
-            write(*,*)" w = ", w
 
 !--         Foreground part
 !           Compute sigma(u,p) n 
@@ -764,8 +836,6 @@ C             st(2) = esN(2) - p*nV(2)
 
 
          END DO
-
-         write(*,*)" lR = ", lR 
 
 !        Now doing the assembly part
 #ifdef WITH_TRILINOS
@@ -981,14 +1051,14 @@ C       write(*,*)" quad point sub elemem ", xout
 !####################################################################
 !####################################################################
 
-      SUBROUTINE CONSTRUCT_FSI_MM(lM, Ag, Yg, Dg, iM)
+      SUBROUTINE CONSTRUCT_FSI_MM(lM, Ag, Yg, Dg, iM, iter)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       TYPE(mshType), INTENT(IN) :: lM
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo)
-      INTEGER(KIND=IKIND), INTENT(IN) :: iM
+      INTEGER(KIND=IKIND), INTENT(IN) :: iM, iter
 
       LOGICAL :: vmsStab
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, AcLc
@@ -1024,6 +1094,12 @@ C       write(*,*)" quad point sub elemem ", xout
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
+
+!        Jump alloc if elem is hidden for bh mesh 
+C          IF ( iter .GE. 2) THEN 
+            IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
+C          END IF
+
          cDmn  = DOMAIN(lM, cEq, e)
          cPhys = eq(cEq)%dmn(cDmn)%phys
          IF ((cPhys .NE. phys_fluid)  .AND.
@@ -1138,10 +1214,10 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
      3               al, yl, bfl, lR, lK)
 
-                  IF( iM .GE. 2) THEN 
-                     CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
-                  END IF
+C                   IF( iM .GE. 2) THEN 
+C                      CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
+C                   END IF
 
                CASE (phys_lElas)
                   CALL LELAS2D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -1156,10 +1232,10 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
      2               w, Jac, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, al, yl,
      3               dl, bfl, fN, ya_l, lR, lK, lKd)
 
-                  IF( iM .GE. 2) THEN 
-                     CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
-     2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
-                  END IF
+C                   IF( iM .GE. 2) THEN 
+C                      CALL IFEM_2DRES(fs(1)%eNoN, fs(2)%eNoN, w,
+C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
+C                   END IF
 
                END SELECT
             END IF
@@ -1250,7 +1326,7 @@ C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
       IMPLICIT NONE
       TYPE(mshType), INTENT(INOUT) :: lMBg 
       TYPE(mshType), INTENT(INOUT) :: lMFg 
-      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
 
       INTEGER(KIND=IKIND) :: a, e, i, j, iM, Ac, Acn, find
@@ -1364,6 +1440,8 @@ C                      EXIT
 
       END DO
 
+      IF( ALLOCATED(lMFg%clsBgElm) ) DEALLOCATE(lMFg%clsBgElm)
+      IF( ALLOCATED(lMFg%clsBgNd) ) DEALLOCATE(lMFg%clsBgNd)
 
       ALLOCATE(lMFg%clsBgElm(lMFg%nNo))
       ALLOCATE(lMFg%clsBgNd(lMFg%nNo))
@@ -1373,14 +1451,14 @@ C                      EXIT
 
 !     ---------------------------
 !     Printing 
-      DO a=1, lMFg%nNo
-         write(*,*)"closest foreground mesh id ", a,  
-     2    " is node id ", lMFg%clsBgNd(a), " in elem ", 
-     3    lMFg%clsBgElm(a)
-      END DO
+C       DO a=1, lMFg%nNo
+C          write(*,*)"closest foreground mesh id ", a,  
+C      2    " is node id ", lMFg%clsBgNd(a), " in elem ", 
+C      3    lMFg%clsBgElm(a)
+C       END DO
 
-       write(*,*) "fg nodes are into bg elem: ", lMFg%clsBgElm 
-      write(*,*) "closest local id is : ", lMFg%clsBgNd
+C        write(*,*) "fg nodes are into bg elem: ", lMFg%clsBgElm 
+C       write(*,*) "closest local id is : ", lMFg%clsBgNd
 !     ---------------------------
 
       DEALLOCATE(xFgCur)
@@ -1393,14 +1471,14 @@ C                      EXIT
 
 !####################################################################
 
-!     Find hidden nodes of background mesh wrt foreground mesh, TODO for parallel
-      SUBROUTINE IFEM_FINDHIDDEN(lMBg, lMFg, lD)
+!     Find all hidden nodes of background mesh wrt foreground mesh, TODO for parallel
+      SUBROUTINE IFEM_FINDHIDDEN_ND(lMBg, lMFg, lD)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       TYPE(mshType), INTENT(INOUT) :: lMBg 
       TYPE(mshType), INTENT(INOUT) :: lMFg 
-      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
       INTEGER(KIND=IKIND) :: a, e, i, Ac, aBg, find, nbrHid, count
       INTEGER(KIND=IKIND) :: FlagBg(lMBg%nNo), FlagBgElm(lMBg%nEl)
@@ -1432,10 +1510,10 @@ C                      EXIT
 
 !     Finf hidden nodes 
 !     For each node of the background mesh nMesh
+
       DO aBg = 1, lMBg%nNo
          Ac = lMBg%gN(aBg)
          xp(:) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
-
 
 !        we check if it is inside the augmented bbox, if no, for sure is outside 
 !        if it's inside, we serach an element of the foreground mesh 
@@ -1464,7 +1542,7 @@ C                      EXIT
 !               is the solid node in this fluis element 
                 IF (find .EQ. 1) THEN 
                     FlagBg(aBg) = 1 
-                    write(*,*)" Found bg node ", aBg, " in fr elm ", e
+C                     write(*,*)" node BG ", aBg, " is hidden"
                     EXIT
                 END IF
             END DO
@@ -1474,6 +1552,7 @@ C       write(*,*)" FlagBg = ", FlagBg
 
       nbrHid = SUM(FlagBg)
 
+      IF( ALLOCATED( lMBg%lstHdnNd )) DEALLOCATE(lMBg%lstHdnNd)
       ALLOCATE(lMBg%lstHdnNd(nbrHid))
       count = 0 
 
@@ -1483,9 +1562,122 @@ C       write(*,*)" FlagBg = ", FlagBg
             lMBg%lstHdnNd(count) = lMBg%gN(aBg)
         END IF
       END DO
-C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
 
+
+      RETURN
+      END SUBROUTINE IFEM_FINDHIDDEN_ND
+
+!----------------------------------------------------
+!     Find in which element (of the FG mesh) each hidden node of the BG mesh is 
+!     Find in which element (local ordering of the FG mesh)
+      SUBROUTINE IFEM_FIND_Nd2Elm_BG(lMBg, lMFg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) :: i, e, a, find, aBg, Ac, idBG, nbrHnd
+      REAL(KIND=RKIND) :: xp(nsd), poly(nsd,lMFg%eNoN)
+
+C       nbrHnd = SIZE(lMBg%lstDirNd)
+      nbrHnd = SIZE(lMBg%lstHdnNd)
+
+      IF( ALLOCATED(lMBg%lstNdToELm)) DEALLOCATE(lMBg%lstNdToELm)
+      ALLOCATE(lMBg%lstNdToELm(nbrHnd))
+      lMBg%lstNdToELm = 0
+
+      DO i = 1, nbrHnd
+
+!       Get global id of the hidden node 
+C         idBG = lMBg%lstDirNd(i) 
+        idBG = lMBg%lstHdnNd(i) 
+        xp(:) = x(:,idBG) + lD(nsd+2:2*nsd+1,idBG)
+
+!       Loop over FG mesh to find the belonging element 
+        DO e = 1, lMFg%nEl
+
+            DO a=1, lMFg%eNoN
+                Ac = lMFg%IEN(a,e)
+                poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+            END DO  
+
+            find = IN_POLY(xp,poly)
+
+!           is the node in this fluid element?
+            IF (find .EQ. 1) THEN 
+                lMBg%lstNdToELm(i) = e
+                EXIT
+            END IF
+        END DO
+
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_FIND_Nd2Elm_BG
+
+!----------------------------------------------------
+!     Find in which element (of the BG mesh) each node of the FG mesh is 
+      SUBROUTINE IFEM_FIND_Nd2Elm_FG(lMBg, lMFg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) :: i, e, a, find, aBg, Ac, idFG
+      REAL(KIND=RKIND) :: xp(nsd), poly(nsd,lMBg%eNoN)
+
+      IF( ALLOCATED(lMFg%lstNdToELm)) DEALLOCATE(lMFg%lstNdToELm)
+      ALLOCATE(lMFg%lstNdToELm(lMFg%nNo))
+      lMFg%lstNdToELm = 0
+
+      DO i = 1, lMFg%nNo
+
+!       Get global id of the hidden node 
+        idFG = lMFg%gN(i) 
+        xp(:) = x(:,idFG) + lD(nsd+2:2*nsd+1,idFG)
+
+!       Loop over BG mesh to find the belonging element 
+        DO e = 1, lMBg%nEl
+
+            DO a=1, lMBg%eNoN
+                Ac = lMBg%IEN(a,e)
+                poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+            END DO  
+
+            find = IN_POLY(xp,poly)
+
+!           is the node in this fluid element?
+            IF (find .EQ. 1) THEN 
+                lMFg%lstNdToELm(i) = e
+                EXIT
+            END IF
+        END DO
+
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_FIND_Nd2Elm_FG
+
+!----------------------------------------------------
+!     Find hidden nodes of background mesh wrt foreground mesh, TODO for parallel
+      SUBROUTINE IFEM_FINDHIDDEN_ELM_FLUID(lMBg, lMFg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) :: a, e, i, Ac, nbrHid, count
+
+      nbrHid = SIZE(lMBg%lstHdnNd)
 !     Find hidden element 
+
+      IF( ALLOCATED( lMBg%lstHdnElm )) DEALLOCATE(lMBg%lstHdnElm)
       ALLOCATE( lMBg%lstHdnElm(lMBg%nEl) )
       lMBg%lstHdnElm = 0
 
@@ -1503,15 +1695,321 @@ C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
          END DO
 
          IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
-         IF( count .EQ. lMBg%eNoN ) THEN 
+C          IF( count .EQ. lMBg%eNoN ) THEN 
+C             write(*,*)" lMBg%lstHdnElm(", e, ") = 1"
+C          END IF
+
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_FINDHIDDEN_ELM_FLUID
+
+!----------------------------------------------------
+!     Find hidden nodes of background mesh wrt foreground mesh, TODO for parallel
+      SUBROUTINE IFEM_FINDHIDDEN_ELM_FS_DIR(lMBg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+!     Find fluid node that are inside the bbxom simply, not also inside any element of the fluid mesh 
+
+      INTEGER(KIND=IKIND) :: a, e, i, Ac, aBg, find, nbrHid, count, AcL
+      INTEGER(KIND=IKIND) :: FlagBg(lMBg%nNo), FlagBgElm(lMBg%nEl)
+      INTEGER(KIND=IKIND) :: FlagBgDIR(lMBg%nNo), nbrDir
+      REAL(KIND=RKIND) :: poly(nsd,lMBg%eNoN), xFgCur(nsd,msh(1)%nNo)
+      REAL(KIND=RKIND) :: xp(nsd), minb(nsd), maxb(nsd)
+      REAL(KIND=RKIND) :: diam, maxDist
+      LOGICAL :: flag = .FALSE.
+      
+
+!     Create a list of flag of the FlagBg
+      FlagBg = 0
+      FlagBgDIR = 0
+
+!     Create a BBox around foreground mesh 
+      DO a=1, msh(2)%nNo
+         Ac = msh(2)%gN(a)
+         xFgCur(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+      END DO
+
+      CALL GETMESHDIAM(msh(2))
+
+!     Create a bounding box around of the current solid location 
+      minb = HUGE(minb)
+      maxb = TINY(maxb)
+
+      DO i=1, nsd
+         minb(i) = MINVAL(xFgCur(i,:)) - msh(2)%diam 
+         maxb(i) = MAXVAL(xFgCur(i,:)) + msh(2)%diam
+      END DO
+
+!     Finf hidden nodes 
+!     For each node of the background mesh nMesh
+      DO aBg = 1, lMBg%nNo
+         Ac = lMBg%gN(aBg)
+         xp(:) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+
+
+!        we check if it is inside the augmented bbox, if no, for sure is outside 
+!        if it's inside, we serach an element of the foreground mesh 
+!        that contains the node 
+
+         IF((xp(1) .LE. maxb(1)) .AND. (xp(1) .GE. minb(1)) 
+     2                 .AND. (xp(2) .LE. maxb(2)) 
+     3                 .AND. (xp(2) .GE. minb(2))) THEN 
+!           The node is inside the Bounding Box
+            flag = .TRUE.
+         END IF 
+
+
+         IF (flag) THEN
+
+!           Add also mesh 2 to compute hidden 
+C             DO e=1, msh(2)%nEl
+
+C                 DO a=1, msh(2)%eNoN
+C                     Ac = msh(2)%IEN(a,e)
+C                     poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+C                 END DO  
+
+
+C                 find = IN_POLY(xp,poly)
+
+C !               is the solid node in this fluis element 
+C                 IF (find .EQ. 1) THEN 
+C                     FlagBg(aBg) = 1 
+C                     EXIT
+C                 END IF
+C             END DO
+
+C             IF (find .NE. 1) THEN 
+        
+                DO e=1, msh(3)%nEl
+                    DO a=1, msh(3)%eNoN
+                        Ac = msh(3)%IEN(a,e)
+                        poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+                    END DO  
+
+                    find = IN_POLY(xp,poly)
+
+    !               is the solid node in this fluis element 
+                    IF (find .EQ. 1) THEN 
+                        FlagBg(aBg) = 1 
+                        EXIT
+                    END IF
+                END DO
+
+C             END IF
+
+         END IF
+      END DO
+C       write(*,*)" FlagBg = ", FlagBg
+
+      IF( ALLOCATED(lMBg%lstHdnElm)) DEALLOCATE(lMBg%lstHdnElm)
+      ALLOCATE( lMBg%lstHdnElm(lMBg%nEl) )
+      lMBg%lstHdnElm = 0
+      
+!     For each element of the background mesh nMesh
+      DO e = 1, lMBg%nEl
+
+!        Loop on the nodes and check if they are all hidden, if yes, that's an hidden elm 
+         count = 0 
+
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,e)
+            AcL = lMBg%lN(Ac)
+
+!           Check how many nodes are in the BBox            
+            IF( FlagBg(AcL) .EQ. 1) count = count + 1
+         END DO
+
+C          IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
+         IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
+         IF( count .GT. 0 ) THEN 
+            write(*,*)" lMBg%lstHdnElm(", e, ") = 1"
+         END IF
+
+      END DO
+
+
+!     Find BC dir node
+!     Loop over hidden element from fg solid mesh  
+!     For each element of the background mesh nMesh
+      DO e = 1, lMBg%nEl
+
+         IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
+!        Loop on the nodes and check if they are all hidden, if yes, that's an hidden elm 
+         count = 0 
+
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,e)
+            AcL = lMBg%lN(Ac)
+
+!           Check how many nodes are in the BBox            
+            IF( FlagBg(AcL) .EQ. 1) count = count + 1
+         END DO
+
+         IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN 
+            FlagBgDIR(AcL) = 1
+            write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
+         END IF
+
+      END DO
+
+!     Count how many nodes are hidden, if > 0 but < eNon, it's a DIR node 
+      nbrDir = SUM(FlagBgDIR)
+
+      IF( ALLOCATED( lMBg%lstDirNd )) DEALLOCATE(lMBg%lstDirNd)
+      ALLOCATE(lMBg%lstDirNd(nbrDir))
+      count = 0 
+
+      DO aBg = 1, lMBg%nNo
+        IF( FlagBgDIR(aBg) .EQ. 1 ) THEN 
+            write(*,*)" DIR loc node mesh 1: ", aBg
+            count = count + 1
+            lMBg%lstDirNd(count) = lMBg%gN(aBg)
+        END IF
+      END DO
+
+
+      RETURN
+      END SUBROUTINE IFEM_FINDHIDDEN_ELM_FS_DIR
+
+!----------------------------------------------------
+!     Find hidden nodes of background mesh wrt foreground mesh, TODO for parallel
+      SUBROUTINE IFEM_FINDHIDDEN_ELM_FS(lMBg, lD)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+
+!     Find fluid node that are inside the bbxom simply, not also inside any element of the fluid mesh 
+
+      INTEGER(KIND=IKIND) :: a, e, i, Ac, aBg, find, nbrHid, count, AcL
+      INTEGER(KIND=IKIND) :: FlagBg(lMBg%nNo), FlagBgElm(lMBg%nEl)
+      INTEGER(KIND=IKIND) :: FlagBgDIR(lMBg%nNo), nbrDir
+      REAL(KIND=RKIND) :: poly(nsd,lMBg%eNoN), xFgCur(nsd,msh(1)%nNo)
+      REAL(KIND=RKIND) :: xp(nsd), minb(nsd), maxb(nsd)
+      REAL(KIND=RKIND) :: diam, maxDist
+      LOGICAL :: flag = .FALSE.
+      
+
+!     Create a list of flag of the FlagBg
+      FlagBg = 0
+
+!     Create a BBox around foreground mesh 
+      DO a=1, msh(2)%nNo
+         Ac = msh(2)%gN(a)
+         xFgCur(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+      END DO
+
+      CALL GETMESHDIAM(msh(2))
+
+!     Create a bounding box around of the current solid location 
+      minb = HUGE(minb)
+      maxb = TINY(maxb)
+
+      DO i=1, nsd
+         minb(i) = MINVAL(xFgCur(i,:)) - msh(2)%diam 
+         maxb(i) = MAXVAL(xFgCur(i,:)) + msh(2)%diam
+      END DO
+
+!     Find hidden nodes 
+!     For each node of the background mesh nMesh
+      DO aBg = 1, lMBg%nNo
+         Ac = lMBg%gN(aBg)
+         xp(:) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+
+
+!        we check if it is inside the augmented bbox, if no, for sure is outside 
+!        if it's inside, we serach an element of the foreground mesh 
+!        that contains the node 
+
+         IF((xp(1) .LE. maxb(1)) .AND. (xp(1) .GE. minb(1)) 
+     2                 .AND. (xp(2) .LE. maxb(2)) 
+     3                 .AND. (xp(2) .GE. minb(2))) THEN 
+!           The node is inside the Bounding Box
+            flag = .TRUE.
+         END IF 
+
+
+         IF (flag) THEN
+
+!           Add also mesh 2 to compute hidden 
+C             DO e=1, msh(2)%nEl
+
+C                 DO a=1, msh(2)%eNoN
+C                     Ac = msh(2)%IEN(a,e)
+C                     poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+C                 END DO  
+
+
+C                 find = IN_POLY(xp,poly)
+
+C !               is the solid node in this fluis element 
+C                 IF (find .EQ. 1) THEN 
+C                     FlagBg(aBg) = 1 
+C                     EXIT
+C                 END IF
+C             END DO
+
+C             IF (find .NE. 1) THEN 
+        
+                DO e=1, msh(3)%nEl
+                    DO a=1, msh(3)%eNoN
+                        Ac = msh(3)%IEN(a,e)
+                        poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+                    END DO  
+
+                    find = IN_POLY(xp,poly)
+
+    !               is the solid node in this fluis element 
+                    IF (find .EQ. 1) THEN 
+                        FlagBg(aBg) = 1 
+                        EXIT
+                    END IF
+                END DO
+
+C             END IF
+
+         END IF
+      END DO
+C       write(*,*)" FlagBg = ", FlagBg
+
+      IF( ALLOCATED(lMBg%lstHdnElm)) DEALLOCATE(lMBg%lstHdnElm)
+      ALLOCATE( lMBg%lstHdnElm(lMBg%nEl) )
+      lMBg%lstHdnElm = 0
+      
+!     For each element of the background mesh nMesh
+      DO e = 1, lMBg%nEl
+
+!        Loop on the nodes and check if they are all hidden, if yes, that's an hidden elm 
+         count = 0 
+
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,e)
+            AcL = lMBg%lN(Ac)
+
+!           Check how many nodes are in the BBox            
+            IF( FlagBg(AcL) .EQ. 1) count = count + 1
+         END DO
+
+         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1 
+!        To use with hiddenDR
+C          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
+
+C          IF( count .GT. 0 ) THEN 
+         IF( count .EQ. lMBg%eNoN  ) THEN 
             write(*,*)" lMBg%lstHdnElm(", e, ") = 1"
          END IF
 
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_FINDHIDDEN
-
+      END SUBROUTINE IFEM_FINDHIDDEN_ELM_FS
 
 !####################################################################
 
@@ -1522,7 +2020,7 @@ C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
       IMPLICIT NONE
       TYPE(mshType), INTENT(INOUT) :: lMBg 
       TYPE(mshType), INTENT(INOUT) :: lMFg 
-      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
       INTEGER(KIND=IKIND) :: a, e, i, Ac, aBg, find, nbrHid, count
       INTEGER(KIND=IKIND) :: FlagBg(lMBg%nNo)
@@ -1585,7 +2083,7 @@ C       write(*,*)" lMBg%lstHdnNd = ", lMBg%lstHdnNd
 !               is the solid node in this fluis element 
                 IF (find .EQ. 1) THEN 
                     FlagBg(aBg) = 1 
-                    write(*,*)" Found bg node ", aBg, " in fr elm ", e
+C                     write(*,*)" Found bg node ", aBg, " in fr elm ", e
                     EXIT
                 END IF
             END DO
@@ -1617,7 +2115,7 @@ C       write(*,*)" lMBg%lstHdnNdSol = ", lMBg%lstHdnNdSol
       IMPLICIT NONE
       TYPE(mshType), INTENT(INOUT) :: lMBg 
       TYPE(mshType), INTENT(INOUT) :: lMFg 
-      REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
       INTEGER(KIND=IKIND) Ac, a, is, iM, mnS, idFCls, nbrSN, idFStc, nd
 
@@ -1684,11 +2182,11 @@ C                write(*,*)"xlf = ", xlf
 C                write(*,*)" Pmls ", Pmls
             
  !              Compute cubic spline value
-            rnorm = lMBg%diam*1.2
+            rnorm = lMBg%diam*1.3
             Wmls(is) = WHTFUNC(xls,xlf,rnorm)
  !              Check that rnorm is good 
             rnorm = DIST(xls,xlf)
-            rnorm = rnorm / (lMBg%diam*1.15)
+            rnorm = rnorm / (lMBg%diam*1.3)
 C                write(*,*)"rnorm is ", rnorm
 C                write(*,*)"Wmls is ", Wmls(is) 
  
@@ -1704,7 +2202,7 @@ C                write(*,*)"Matrix A inside is ",Amls
             sum = sum + Wmls(is)
          END DO 
 
-            write(*,*)"Sum W = ", sum
+C             write(*,*)"Sum W = ", sum
          nd = nsd+1
 C             write(*,*)"Matrix A is ", Amls
 C             write(*,*) ""//""
@@ -1727,7 +2225,9 @@ C             write(*,*) ""//""
 
       END DO
 
-      IF(.NOT.ALLOCATED(lMFg%QMLS)) ALLOCATE(lMFg%QMLS(mnS,lMFg%nNo))
+      IF( ALLOCATED(lMFg%QMLS) ) DEALLOCATE(lMFg%QMLS) 
+
+      ALLOCATE(lMFg%QMLS(mnS,lMFg%nNo))
       lMFg%QMLS = QMLS
 
 C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
@@ -1739,18 +2239,25 @@ C       write(*,*)" lMFg%QMLS ", lMFg%QMLS
 
 !####################################################################
 
-      SUBROUTINE IFEM_EXCHANGE(lA, lY, lYo) 
+      SUBROUTINE IFEM_EXCHANGE(lA, lY, lYo, lD) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
       REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
 C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
-      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lYo, msh(2)%YgFG)
-      IF( nMsh .EQ. 3)  THEN 
-         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
-      END IF
+      IF ( intrp .EQ. ifemIntrp_MLS ) THEN 
+         CALL IFEM_VELPRE_BGtoFG_mls(msh(1), msh(2), lYo, msh(2)%YgFG)
+      ELSE 
+         CALL IFEM_VELPRE_BGtoFG_fem(msh(1), msh(2),lYo,lD,msh(2)%YgFG)
+      END IF 
+
+!     To also do the solid 
+C       IF( nMsh .EQ. 3)  THEN 
+C          CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
+C       END IF
 C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
 C       write(*,*)" Calling SETBCDIR_BG "
@@ -1760,68 +2267,86 @@ C       write(*,*)" Calling SETBCDIR_BG "
       END SUBROUTINE IFEM_EXCHANGE
 
 !####################################################################
-      SUBROUTINE IFEM_EXCHANGE_WITHDIRBC(lA, lY, lYo) 
-      USE COMMOD
-      USE ALLFUN
-      IMPLICIT NONE
-      REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
-      REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
+C       SUBROUTINE IFEM_EXCHANGE_WITHDIRBC(lA, lY, lYo) 
+C       USE COMMOD
+C       USE ALLFUN
+C       IMPLICIT NONE
+C       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
+C       REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
 
-C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
-      CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lYo, msh(2)%YgFG)
-      IF( nMsh .EQ. 3)  THEN 
-         CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
-      END IF
-C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
+C C       write(*,*)" Calling IFEM_VELPRE_BGtoFG "
+C       CALL IFEM_VELPRE_BGtoFG(msh(1), msh(2), lYo, msh(2)%YgFG)
+C       IF( nMsh .EQ. 3)  THEN 
+C          CALL IFEM_VELPRE_BGtoFG(msh(1), msh(3), lYo, msh(3)%YgFG)
+C       END IF
+C C       write(*,*)"  msh(2)%YgFG = ",  msh(2)%YgFG
 
-C       write(*,*)" Calling SETBCDIR_BG "
-      CALL SETBCDIR_BG(lA, lY)
+C C       write(*,*)" Calling SETBCDIR_BG "
+C       CALL SETBCDIR_BG(lA, lY)
 
-      RETURN
-      END SUBROUTINE IFEM_EXCHANGE_WITHDIRBC
+C       RETURN
+C       END SUBROUTINE IFEM_EXCHANGE_WITHDIRBC
 
 !####################################################################
-      SUBROUTINE IFEM_EXCHANGE_BG(lA, lY, lYo) 
+      SUBROUTINE IFEM_EXCHANGE_BG(lA, lY, lYo, lD) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
       REAL(KIND=RKIND), INTENT(INOUT) :: lYo(tDof, tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
 
 C       write(*,*)" Calling IFEM_EXCHANGE_BG "
 
       INTEGER(KIND=IKIND) :: nbrHid, i, idHdGl, idHdLc
-      REAL(KIND=RKIND) :: Vg(tDof,msh(1)%nNo)
+      REAL(KIND=RKIND) :: Vg(tDof,msh(1)%nNo), tet 
 
+      tet = 1._RKIND
+
+C       nbrHid = SIZE(msh(1)%lstDirNd)
       nbrHid = SIZE(msh(1)%lstHdnNd)
 
-C       write(*,*)" Yn before ", lY
-C       write(*,*)" Calling IFEM_VEL_FGtoBG "
-      CALL IFEM_UNK_FGtoBG(msh(1), msh(2), lY, Vg)
+      write(*,*)" Calling IFEM_VEL_FGtoBG "
+      IF( intrp .EQ. ifemIntrp_MLS) THEN 
+         CALL IFEM_UNK_FGtoBG_mls(msh(1), msh(2), lY, Vg)
+      ELSE
+         CALL IFEM_UNK_FGtoBG_fem(msh(1), msh(2), lY, lD, Vg)
+      END IF
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
       ! put the bc into lY
       DO i = 1, nbrHid
+C          idHdGl = msh(1)%lstDirNd(i)
          idHdGl = msh(1)%lstHdnNd(i)
          idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lY(1:nsd, idHdGl) = Vg(1:nsd,idHdLc)
+C          lY(:, idHdGl) = Vg(:,idHdLc) ! with pressure 
+C          lY(1:nsd, idHdGl) = Vg(1:nsd,idHdLc) ! just vel
+         lY(1:nsd, idHdGl) = (1.0_RKIND - tet) * lY(1:nsd, idHdGl) 
+     2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
       END DO
 C       write(*,*)" Yn after ", lY
 
-      CALL IFEM_UNK_FGtoBG(msh(1), msh(2), lA, Vg)
+      IF( intrp .EQ. ifemIntrp_MLS) THEN 
+         CALL IFEM_UNK_FGtoBG_mls(msh(1), msh(2), lA, Vg)
+      ELSE
+         CALL IFEM_UNK_FGtoBG_fem(msh(1), msh(2), lA, lD, Vg)
+      END IF
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
       !  put the bc into lA
       DO i = 1, nbrHid
+C          idHdGl = msh(1)%lstDirNd(i)
          idHdGl = msh(1)%lstHdnNd(i)
          idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lA(1:nsd, idHdGl) = Vg(1:nsd,idHdLc) 
+C          lA(:, idHdGl) = Vg(:,idHdLc) 
+         lA(1:nsd, idHdGl) = (1.0_RKIND - tet) * lA(1:nsd, idHdGl) 
+     2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
       END DO
 
 
@@ -1991,7 +2516,7 @@ C           write(*,*) "inside loop stencil"
       END SUBROUTINE IFEM_VEL_FGtoBG 
 !------------------------------------------------
 !     GET VELOCITY FROM FOREGROUND MESH TO BACKGROUND using MLS
-      SUBROUTINE IFEM_UNK_FGtoBG(lMBg, lMFg, Yg, Vg)
+      SUBROUTINE IFEM_UNK_FGtoBG_mls(lMBg, lMFg, Yg, Vg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -2035,12 +2560,67 @@ C           write(*,*) "inside loop stencil"
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_UNK_FGtoBG 
+      END SUBROUTINE IFEM_UNK_FGtoBG_mls 
+
+!------------------------------------------------
+!     GET VELOCITY FROM FOREGROUND MESH TO BACKGROUND using MLS
+      SUBROUTINE IFEM_UNK_FGtoBG_fem(lMBg, lMFg, Yg, lD, Vg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Vg(tDof,lMBg%nNo)
+
+      INTEGER(KIND=IKIND) a, i, nbrHid, Ac, eFg, idHdGl, idHdLc
+      REAL(KIND=RKIND) :: wFem(lMBg%eNoN), xl(nsd,lMBg%eNoN), xiCur(nsd)
+      REAL(KIND=RKIND) :: xiRef(nsd)
+
+      Vg = 0._RKIND
+
+C       nbrHid = SIZE(lMBg%lstDirNd)
+      nbrHid = SIZE(lMBg%lstHdnNd)
+
+!     Loop over hidden background nodes  
+      DO i = 1, nbrHid
+C          idHdGl = lMBg%lstDirNd(i)
+         idHdGl = lMBg%lstHdnNd(i)
+         idHdLc = lMBg%lN(idHdGl)
+
+!        Update coordinates FG node
+         xiCur(:) = x(:,idHdGl) + lD(nsd+2:2*nsd+1,idHdGl)
+
+         eFg = lMBg%lstNdToELm(i)
+
+         DO a=1, lMFg%eNoN
+            Ac = lMFg%IEN(a,eFg)   
+            xl(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+         END DO  
+
+!        Get coord point in the parent element 
+         CALL GET_PntCurToRef(lMFg, xl, xiCur, xiRef)         
+
+!        Compute fem weights 
+         CALL GETN(nsd, lMFg%eType, lMFg%eNoN, xiRef, wFem)
+
+!        Compute unknowns at FG point via fem proj
+         DO a=1, lMFg%eNoN
+            Ac = lMFg%IEN(a,eFg)
+            
+            Vg(:,idHdLc) = Vg(:,idHdLc) + wFem(a) * Yg(1:nsd+1,Ac)
+         END DO  
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_UNK_FGtoBG_fem
 
 !####################################################################
 !     GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
 !     Interpolate data at IFEM nodes from background mesh using MLS
-      SUBROUTINE IFEM_VELPRE_BGtoFG(lMBg, lMFg, Yg, Vg)
+      SUBROUTINE IFEM_VELPRE_BGtoFG_mls(lMBg, lMFg, Yg, Vg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -2083,8 +2663,61 @@ C           write(*,*) "inside loop stencil"
       END DO
 
       RETURN
-      END SUBROUTINE IFEM_VELPRE_BGtoFG
+      END SUBROUTINE IFEM_VELPRE_BGtoFG_mls
+!--------------------------------------------------------------------
+!     GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
+!     Interpolate data at IFEM nodes from background mesh using MLS
+      SUBROUTINE IFEM_VELPRE_BGtoFG_fem(lMBg, lMFg, Yg, lD, Vg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
 
+      TYPE(mshType), INTENT(INOUT) :: lMBg 
+      TYPE(mshType), INTENT(INOUT) :: lMFg 
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(IN) :: lD(tDof,tnNo)
+      REAL(KIND=RKIND), INTENT(OUT) :: Vg(nsd+1,lMFg%nNo)
+
+      INTEGER(KIND=IKIND) a, is, idFgGl, idFgLc, idBgClsGl, idBgClsLc,  
+     2                    nbrSN, idStcLoc, idStcGl, Ac, eBg
+      REAL(KIND=RKIND) :: wFem(lMFg%eNoN), xl(nsd,lMFg%eNoN), xiCur(nsd)
+      REAL(KIND=RKIND) :: xiRef(nsd)
+
+
+      Vg = 0._RKIND
+
+!     Loop over foreground nodes 
+      DO idFgLc = 1, lMFg%nNo
+
+!        Global Id foreground node
+         idFgGl = lMFg%gN(idFgLc)         
+
+!        Update coordinates FG node
+         xiCur(:) = x(:,idFgGl) + lD(nsd+2:2*nsd+1,idFgGl)
+
+!        Get coordinates of the BG elm containing FG node 
+         eBg = lMFg%lstNdToELm(idFgLc)
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,eBg)
+            xl(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+         END DO  
+
+!        Get coord point in the parent element 
+         CALL GET_PntCurToRef(lMBg, xl, xiCur, xiRef)         
+
+!        Compute fem weights 
+         CALL GETN(nsd, lMBg%eType, lMBg%eNoN, xiRef, wFem)
+
+!        Compute unknowns at FG point via fem proj
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,eBg)
+            
+            Vg(:,idFgLc) = Vg(:,idFgLc) + wFem(a) * Yg(1:nsd+1,Ac)
+         END DO  
+      END DO
+
+      RETURN
+      END SUBROUTINE IFEM_VELPRE_BGtoFG_fem
 !####################################################################
 
 !     GET VELOCITY AND PRSSURE FROM BACKGROUND MESH 
@@ -2134,5 +2767,140 @@ C           write(*,*) "inside loop stencil"
       RETURN
       END SUBROUTINE IFEM_UNK_BGtoFG
 
+!####################################################################
+!####################################################################
 
+      SUBROUTINE GET_PntCurToRef(lM, xl, xiCur, xiRef)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
 
+      TYPE(mshType), INTENT(IN) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: xl(nsd,lM%eNoN)
+      REAL(KIND=RKIND), INTENT(IN) :: xiCur(nsd)
+      REAL(KIND=RKIND), INTENT(OUT) :: xiRef(nsd)
+
+      INTEGER(KIND=IKIND) :: g
+      REAL(KIND=RKIND) :: Def(nsd,nsd), invDef(nsd,nsd), rhsD(nsd) 
+
+      IF (nsd .EQ. 2) THEN
+         Def(1,1) = xl(1,1) - xl(1,3) 
+         Def(1,2) = xl(1,2) - xl(1,3) 
+         Def(2,1) = xl(2,1) - xl(2,3) 
+         Def(2,2) = xl(2,2) - xl(2,3) 
+         
+      ELSE 
+         write(*,*)"****** 3D implementation still TODO *****" 
+!           Need to check how the basis function are ordered
+!           and rewrite Def and rhsD            
+      END IF 
+
+!     Find the coordinates in the current element 
+      rhsD(:) = xiCur(:) - xl(:,3) 
+      invDef = MAT_INV(Def,nsd)
+      xiRef = MATMUL(invDef,rhsD)
+C       write(*,*)" xiCur = " , xiCur, "xiRef coord are ", xiRef
+
+      RETURN
+      END SUBROUTINE GET_PntCurToRef
+
+!--------------------------------------------------------------------
+!####################################################################
+!     This routine reads IFEM options
+      SUBROUTINE IFEM_READOPTS(list)
+      USE COMMOD
+      USE LISTMOD
+      IMPLICIT NONE
+      TYPE(listType), INTENT(INOUT) :: list
+
+      CHARACTER(LEN=stdL) :: ctmp
+      TYPE(listType), POINTER :: lPtr
+
+      lPtr => list%get(ctmp, "IFEM interpolation method")
+      CALL TO_LOWER(ctmp)
+            write(*,*)" ctmp  ", ctmp
+
+      SELECT CASE (ctmp)
+      CASE ("fem")
+         intrp = ifemIntrp_FEM
+         std = " IFEM interpolation method: "//CLR("Finite Element",3)
+      CASE ("mls")
+         intrp = ifemIntrp_MLS
+         std = " IFEM interpolation method: "
+     2                     //CLR("Moving Leas-squares",3)
+      CASE DEFAULT
+         err = " Invalid IFEM interpolation chosen"
+      END SELECT
+
+      RETURN
+      END SUBROUTINE IFEM_READOPTS
+!####################################################################
+!####################################################################
+
+      SUBROUTINE PLOT_LOC_GLOB
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+!     Plot info mesh 1 
+      write(*,*)" ------- PRINT msh 1 : "
+      CALL PRINT_MESH(msh(1))
+      write(*,*)"-------"
+
+!     Plot info mesh 2 
+      write(*,*)" ------- PRINT msh 2 : "
+      CALL PRINT_MESH(msh(2))
+      write(*,*)"-------"
+
+!     Plot info mesh 3 
+      write(*,*)" ------- PRINT msh 3 : "
+      CALL PRINT_MESH(msh(3))
+      write(*,*)"-------"
+
+      RETURN
+      END SUBROUTINE PLOT_LOC_GLOB
+!####################################################################
+
+      SUBROUTINE PRINT_MESH(lM)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      TYPE(mshType), INTENT(IN) :: lM
+
+      write(*,*) " gnEl =  ", lM%gnEl
+      write(*,*) " gnNo =  ", lM%gnNo
+      write(*,*) " nEl =  ", lM%nEl
+      write(*,*) " nFa =  ", lM%nFa
+      write(*,*) " nNo =  ", lM%nNo
+
+      write(*,*)""
+
+      write(*,*)" gN size  = ", SIZE(lM%gN)
+      write(*,*)" gN(:) = ", lM%gN(:)
+      write(*,*)""
+      write(*,*)" gpN size = ", SIZE(lM%gpN)
+      write(*,*)" gpN(:) = ", lM%gpN(:) 
+      write(*,*)""
+      write(*,*)" lN size = ", SIZE(lM%lN)
+      write(*,*)" lN(:) = ", lM%lN(:)
+      write(*,*)""
+
+      write(*,*)" Coord elm 1 gIEN "
+      write(*,*) x(:,lM%gIEN(1,1))
+      write(*,*) x(:,lM%gIEN(2,1))
+      write(*,*) x(:,lM%gIEN(3,1))
+      write(*,*)" gIEN(:,1) = ", lM%gIEN(:,1)
+      write(*,*)""
+
+      write(*,*)" Coord elm 1 IEN "
+      write(*,*) x(:,lM%IEN(1,1))
+      write(*,*) x(:,lM%IEN(2,1))
+      write(*,*) x(:,lM%IEN(3,1))
+      write(*,*)" IEN(:,1) = ", lM%IEN(:,1)
+      write(*,*)""
+
+      RETURN
+      END SUBROUTINE PRINT_MESH
+
+!####################################################################

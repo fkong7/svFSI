@@ -221,6 +221,12 @@
          CALL IB_READOPTS(list)
       END IF
 
+      i = list%srch("IFEM interpolation method")
+      IF (i .GT. 0) THEN
+         mmOpt = .TRUE.
+         CALL IFEM_READOPTS(list)
+      END IF
+
 !--------------------------------------------------------------------
 !     Reading equations
       nEq = list%srch("Add equation",ll=1)

@@ -73,6 +73,10 @@
 !     Processors
       CALL DISTRIBUTE
 
+
+!     Plot all mesh related infos: 
+!      CALL PLOT_LOC_GLOB
+
 !     Initializing the solution vectors and constructing LHS matrix
 !     format
       CALL INITIALIZE(timeP)
@@ -115,7 +119,9 @@
          write(*,*)" before IFEM_EXCHANGE "
 !     Compute external Vec ifem multi-mesh 
 C          IF( cTS .LE. 2 ) THEN 
-            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn)
+            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
+            write(*,*)" IFEM_EXCHANGE done "
+            IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 C          ELSE 
 C             IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C          END IF
@@ -132,11 +138,15 @@ C          END IF
             END IF
 
 C             IF( cTS .LE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn)
+               IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
 C             ELSE 
 C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
-               
 C             END IF
+
+C             IF( cTS .GE. 2 ) THEN 
+               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+C             END IF
+
 
 !        Initiator step (quantities at n+am, n+af)
             CALL PICI(Ag, Yg, Dg)
@@ -146,11 +156,15 @@ C             END IF
             END IF
 
 C             IF( cTS .LE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
+               IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg, Dn)
 C             ELSE 
 C C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(Ag, Yg, Yg)
 C                IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
 C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg)
+C             END IF
+
+C             IF( cTS .GE. 2 ) THEN 
+               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg, Dn)
 C             END IF
 
             dbg = 'Allocating the RHS and LHS'
@@ -234,7 +248,7 @@ C             END IF
          END DO
 !     End of inner loop
 
-         IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn)
+         IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 
 !     IB treatment: interpolate flow data on IB mesh from background
 !     fluid mesh for explicit coupling, update old solution for implicit
@@ -305,6 +319,9 @@ C             END IF
          Yo = Yn
          IF (dFlag) Do = Dn
          cplBC%xo = cplBC%xn
+
+!     Call IFEM update 
+         IF( mmOpt ) CALL IFEM_UPDATE(Dn)
       END DO
 !     End of outer loop
 
