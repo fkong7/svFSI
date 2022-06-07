@@ -242,7 +242,9 @@ C             END IF
             IF( (cEq .EQ. 2) .AND. (cTSInn .LT. InM) ) THEN 
                cTSInn = cTSInn + 1 
                write(*,*)" cTSInn = ", cTSInn
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+C                IF( mmOpt .AND. (cTSInn .EQ. 5)) THEN 
+C                   CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+C                END IF
                cEq = 1
                GOTO 111
             ELSE 

@@ -1782,24 +1782,24 @@ C          END IF
          IF (flag) THEN
 
 !           Add also mesh 2 to compute hidden 
-C             DO e=1, msh(2)%nEl
+            DO e=1, msh(2)%nEl
 
-C                 DO a=1, msh(2)%eNoN
-C                     Ac = msh(2)%IEN(a,e)
-C                     poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
-C                 END DO  
+                DO a=1, msh(2)%eNoN
+                    Ac = msh(2)%IEN(a,e)
+                    poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+                END DO  
 
 
-C                 find = IN_POLY(xp,poly)
+                find = IN_POLY(xp,poly)
 
-C !               is the solid node in this fluis element 
-C                 IF (find .EQ. 1) THEN 
-C                     FlagBg(aBg) = 1 
-C                     EXIT
-C                 END IF
-C             END DO
+!               is the solid node in this fluis element 
+                IF (find .EQ. 1) THEN 
+                    FlagBg(aBg) = 1 
+                    EXIT
+                END IF
+            END DO
 
-C             IF (find .NE. 1) THEN 
+            IF (find .NE. 1) THEN 
         
                 DO e=1, msh(3)%nEl
                     DO a=1, msh(3)%eNoN
@@ -1816,7 +1816,7 @@ C             IF (find .NE. 1) THEN
                     END IF
                 END DO
 
-C             END IF
+            END IF
 
          END IF
       END DO
@@ -1840,11 +1840,9 @@ C       write(*,*)" FlagBg = ", FlagBg
             IF( FlagBg(AcL) .EQ. 1) count = count + 1
          END DO
 
-C          IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
-         IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
-C          IF( count .GT. 0 ) THEN 
-C             write(*,*)" lMBg%lstHdnElm(", e, ") = 1"
-C          END IF
+         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
+!        For the elem intersected by msh(3)         
+C          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
 
       END DO
 
@@ -1854,7 +1852,11 @@ C          END IF
 !     For each element of the background mesh nMesh
       DO e = 1, lMBg%nEl
 
-         IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
+!        For the elem intersected by msh(3)  
+C          IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
+        
+!        For the elem intersected by msh(2) and 3  
+         IF( lMBg%lstHdnElm(e) .EQ. 1) CYCLE
 
          count = 0 
 
@@ -1866,10 +1868,18 @@ C          END IF
             IF( FlagBg(AcL) .EQ. 1) count = count + 1
          END DO
 
-         IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN 
-            FlagBgDIR(AcL) = 1
-            write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
-         END IF
+         DO a=1, lMBg%eNoN
+            Ac = lMBg%IEN(a,e)
+            AcL = lMBg%lN(Ac)
+!        Partially hidden and outside 
+C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN 
+!        Partially hidden and inside    
+C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 1) ) THEN 
+            IF( FlagBg(AcL) .EQ. 1 ) THEN 
+               FlagBgDIR(AcL) = 1
+               write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
+            END IF
+         END DO
 
       END DO
 
@@ -2337,10 +2347,10 @@ C          idHdGl = msh(1)%lstHdnNd(i)
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lY(:, idHdGl) = Vg(:,idHdLc) ! with pressure 
+C          lY(:, idHdGl) = Vg(:,idHdLc) ! with pressure 
 C          lY(1:nsd, idHdGl) = Vg(1:nsd,idHdLc) ! just vel
-C          lY(1:nsd, idHdGl) = (1.0_RKIND - tet) * lY(1:nsd, idHdGl) 
-C      2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
+         lY(1:nsd, idHdGl) = (1.0_RKIND - tet) * lY(1:nsd, idHdGl) 
+     2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
       END DO
 C       write(*,*)" Yn after ", lY
 
@@ -2359,9 +2369,9 @@ C          idHdGl = msh(1)%lstHdnNd(i)
 C          write(*,*)" local id hidden ", idHdLc
 C          write(*,*)" global id hidden ", idHdGl
 
-         lA(:, idHdGl) = Vg(:,idHdLc) 
-C          lA(1:nsd, idHdGl) = (1.0_RKIND - tet) * lA(1:nsd, idHdGl) 
-C      2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
+C          lA(:, idHdGl) = Vg(:,idHdLc) 
+         lA(1:nsd, idHdGl) = (1.0_RKIND - tet) * lA(1:nsd, idHdGl) 
+     2                                + tet * Vg(1:nsd,idHdLc) ! relaxed 
       END DO
 
 
