@@ -68,15 +68,13 @@
 C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(3), Dg)
 
 !        To use lstHidNd  
-!         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
-!         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg) 
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg) 
 
 
 !        To use lstDirNd      
-!        Compute hidden elm and lstDirNd   
-C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(3), Dg)        
-C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)        
-         CALL IFEM_FINDHIDDEN_ELM_FS_DIR(msh(1), Dg) 
+!        Compute hidden elm and lstDirNd         
+!         CALL IFEM_FINDHIDDEN_ELM_FS_DIR(msh(1), Dg) 
 
 
       END IF
@@ -127,14 +125,12 @@ C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
 !         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)
 
 !        To use lstHidNd  
-!         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
-!         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg)
+         CALL IFEM_FINDHIDDEN_ND(msh(1), msh(2), Dg)
+         CALL IFEM_FINDHIDDEN_ELM_FS(msh(1), Dg)
 
 !        To use lstDirNd      
-!        Compute hidden elm and lstDirNd     
-!         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(3), Dg)      
-!         CALL IFEM_FINDHIDDEN_SOL(msh(1), msh(2), Dg)      
-         CALL IFEM_FINDHIDDEN_ELM_FS_DIR(msh(1), Dg) 
+!        Compute hidden elm and lstDirNd         
+!         CALL IFEM_FINDHIDDEN_ELM_FS_DIR(msh(1), Dg) 
 
       END IF
 
@@ -1112,7 +1108,7 @@ C       write(*,*)" quad point sub elemem ", xout
 
 !        Jump alloc if elem is hidden for bh mesh 
 C          IF ( iter .GE. 2) THEN 
-            IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
+C             IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
 C          END IF
 
          cDmn  = DOMAIN(lM, cEq, e)
@@ -1596,8 +1592,8 @@ C       write(*,*)" FlagBg = ", FlagBg
       INTEGER(KIND=IKIND) :: i, e, a, find, aBg, Ac, idBG, nbrHnd
       REAL(KIND=RKIND) :: xp(nsd), poly(nsd,lMFg%eNoN)
 
-      nbrHnd = SIZE(lMBg%lstDirNd)
-C       nbrHnd = SIZE(lMBg%lstHdnNd)
+C       nbrHnd = SIZE(lMBg%lstDirNd)
+      nbrHnd = SIZE(lMBg%lstHdnNd)
 
       IF( ALLOCATED(lMBg%lstNdToELm)) DEALLOCATE(lMBg%lstNdToELm)
       ALLOCATE(lMBg%lstNdToELm(nbrHnd))
@@ -1606,8 +1602,8 @@ C       nbrHnd = SIZE(lMBg%lstHdnNd)
       DO i = 1, nbrHnd
 
 !       Get global id of the hidden node 
-        idBG = lMBg%lstDirNd(i) 
-C         idBG = lMBg%lstHdnNd(i) 
+C         idBG = lMBg%lstDirNd(i) 
+        idBG = lMBg%lstHdnNd(i) 
         xp(:) = x(:,idBG) + lD(nsd+2:2*nsd+1,idBG)
 
 !       Loop over FG mesh to find the belonging element 
@@ -1877,7 +1873,7 @@ C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN
 C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 1) ) THEN 
             IF( FlagBg(AcL) .EQ. 1 ) THEN 
                FlagBgDIR(AcL) = 1
-               write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
+C                write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
             END IF
          END DO
 
@@ -2328,8 +2324,8 @@ C       write(*,*)" Calling IFEM_EXCHANGE_BG "
 
       tet = 1._RKIND
 
-      nbrHid = SIZE(msh(1)%lstDirNd)
-C       nbrHid = SIZE(msh(1)%lstHdnNd)
+C       nbrHid = SIZE(msh(1)%lstDirNd)
+      nbrHid = SIZE(msh(1)%lstHdnNd)
 
 C       write(*,*)" Calling IFEM_VEL_FGtoBG "
       IF( intrp .EQ. ifemIntrp_MLS) THEN 
@@ -2340,8 +2336,8 @@ C       write(*,*)" Calling IFEM_VEL_FGtoBG "
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
       ! put the bc into lY
       DO i = 1, nbrHid
-         idHdGl = msh(1)%lstDirNd(i)
-C          idHdGl = msh(1)%lstHdnNd(i)
+C          idHdGl = msh(1)%lstDirNd(i)
+         idHdGl = msh(1)%lstHdnNd(i)
          idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
@@ -2362,8 +2358,8 @@ C       write(*,*)" Yn after ", lY
 C       write(*,*)" msh(1)%YgBG = ", msh(1)%YgBG
       !  put the bc into lA
       DO i = 1, nbrHid
-         idHdGl = msh(1)%lstDirNd(i)
-C          idHdGl = msh(1)%lstHdnNd(i)
+C          idHdGl = msh(1)%lstDirNd(i)
+         idHdGl = msh(1)%lstHdnNd(i)
          idHdLc = msh(1)%lN(idHdGl)
 
 C          write(*,*)" local id hidden ", idHdLc
@@ -2606,13 +2602,13 @@ C           write(*,*) "inside loop stencil"
 
       Vg = 0._RKIND
 
-      nbrHid = SIZE(lMBg%lstDirNd)
-C       nbrHid = SIZE(lMBg%lstHdnNd)
+C       nbrHid = SIZE(lMBg%lstDirNd)
+      nbrHid = SIZE(lMBg%lstHdnNd)
 
 !     Loop over hidden background nodes  
       DO i = 1, nbrHid
-         idHdGl = lMBg%lstDirNd(i)
-C          idHdGl = lMBg%lstHdnNd(i)
+C          idHdGl = lMBg%lstDirNd(i)
+         idHdGl = lMBg%lstHdnNd(i)
          idHdLc = lMBg%lN(idHdGl)
 
 !        Update coordinates FG node

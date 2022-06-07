@@ -144,9 +144,9 @@ C             ELSE
 C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C             END IF
 
-C             IF( cTS .GE. 2 ) THEN 
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
-C             END IF
+            IF( cTS .GE. 2 ) THEN 
+               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+            END IF
 
 111         CONTINUE
 
@@ -241,10 +241,9 @@ C             END IF
 
             IF( (cEq .EQ. 2) .AND. (cTSInn .LT. InM) ) THEN 
                cTSInn = cTSInn + 1 
-               write(*,*)" cTSInn = ", cTSInn
-C                IF( mmOpt .AND. (cTSInn .EQ. 5)) THEN 
-C                   CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
-C                END IF
+               IF( mmOpt .AND. (cTSInn .GT. 8)) THEN 
+                  CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+               END IF
                cEq = 1
                GOTO 111
             ELSE 
@@ -259,8 +258,6 @@ C                END IF
             CALL OUTRESULT(timeP, 2, iEqOld)
          END DO
 !     End of inner loop
-
-         IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 
 !     IB treatment: interpolate flow data on IB mesh from background
 !     fluid mesh for explicit coupling, update old solution for implicit
