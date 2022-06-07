@@ -862,7 +862,6 @@
             END IF
             DO e=1, msh(iM)%nEl
                Ec = Ec + 1
-               write(*,*)" writing " , msh(iM)%lstHdnElm(e)
                tmpI(1,Ec) = msh(iM)%lstHdnElm(e)
             END DO
          END DO

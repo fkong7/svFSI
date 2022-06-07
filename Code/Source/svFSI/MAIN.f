@@ -42,7 +42,7 @@
       IMPLICIT NONE
 
       LOGICAL l1, l2, l3
-      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS
+      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, cTSInn, InM
       REAL(KIND=RKIND) timeP(3)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
@@ -55,6 +55,9 @@
       l1 = .FALSE.
       l2 = .FALSE.
       l3 = .FALSE.
+
+      InM = 10
+
 
       savedOnce = .FALSE.
       CALL MPI_INIT(i)
@@ -99,6 +102,7 @@
 !     Incrementing time step, hence cTS will be associated with new
 !     variables, i.e. An, Yn, and Dn
          cTS    = cTS + 1
+         cTSInn = 0
          time   = time + dt
          cEq    = 1
          eq%itr = 0
@@ -116,17 +120,14 @@
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
 
-         write(*,*)" before IFEM_EXCHANGE "
 !     Compute external Vec ifem multi-mesh 
 C          IF( cTS .LE. 2 ) THEN 
             IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
-            write(*,*)" IFEM_EXCHANGE done "
-            IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+C             IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 C          ELSE 
 C             IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C          END IF
 
-         write(*,*)" end CALL IFEM_EXCHANGE"
 
 !     Inner loop for iteration
          DO
@@ -144,9 +145,10 @@ C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C             END IF
 
 C             IF( cTS .GE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 C             END IF
 
+111         CONTINUE
 
 !        Initiator step (quantities at n+am, n+af)
             CALL PICI(Ag, Yg, Dg)
@@ -164,7 +166,7 @@ C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg)
 C             END IF
 
 C             IF( cTS .GE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg, Dn)
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg, Dn)
 C             END IF
 
             dbg = 'Allocating the RHS and LHS'
@@ -174,13 +176,11 @@ C             END IF
 !        contribution from body forces (pressure) to residue
             CALL SETBF(Dg)
 
-            write(*,*)" before GLOBALEQASSEM "
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
                CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
                dbg = "Mesh "//iM//" is assembled"
             END DO
-            write(*,*)" after GLOBALEQASSEM "
 
 !        Treatment of boundary conditions on faces
 !        Apply Neumman or Traction boundary conditions
@@ -238,6 +238,16 @@ C             END IF
 
 !        Solution is obtained, now updating (Corrector)
             CALL PICC
+
+            IF( (cEq .EQ. 2) .AND. (cTSInn .LT. InM) ) THEN 
+               cTSInn = cTSInn + 1 
+               write(*,*)" cTSInn = ", cTSInn
+C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+               cEq = 1
+               GOTO 111
+            ELSE 
+               cTSInn = 0
+            END IF
 
 !        Checking for exceptions
             CALL EXCEPTIONS

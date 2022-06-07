@@ -2795,10 +2795,10 @@ C       DO a=1, lM%nNo
 C          write(*,*)"element stc of node ", a , " = ", lm%stn%elmStn(a,:)
 C       END DO 
 
-      DO a=1, lM%nNo
-         write(*,*)"node stc of node ",a, " = ", lm%stn%nbrNdStn(a) , 
-     2       " = ", lm%stn%ndStn(a,:) 
-      END DO
+C       DO a=1, lM%nNo
+C          write(*,*)"node stc of node ",a, " = ", lm%stn%nbrNdStn(a) , 
+C      2       " = ", lm%stn%ndStn(a,:) 
+C       END DO
 !     end printing part
 !     --------------------
 
