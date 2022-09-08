@@ -75,6 +75,7 @@
 !        Update domain and proceed if domain phys and eqn phys match
          cDmn  = DOMAIN(lM, cEq, e)
          cPhys = eq(cEq)%dmn(cDmn)%phys
+
          IF (cPhys .NE. phys_fluid) CYCLE
 
 !        Update shape functions for NURBS

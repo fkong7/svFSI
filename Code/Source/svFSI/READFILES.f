@@ -245,7 +245,7 @@
          END IF
 
          IF (eq(iEq)%phys .EQ. phys_fluid) THEN
-            IF (iEq .NE. 1) err = "fluid equation must come first"
+C             IF (iEq .NE. 1) err = "fluid equation must come first"
          END IF
          IF (eq(iEq)%phys .EQ. phys_CMM) THEN
             IF (iEq .NE. 1) err = "CMM equation must come first"
@@ -255,8 +255,11 @@
          IF (eq(iEq)%phys .EQ. phys_FSI) THEN
             IF (iEq .NE. 1) err = "FSI equation must come first"
             lPtr => list%get(ctmp,"Add equation",2)
-            IF (ctmp .NE. "mesh") err = "mesh equation"//
-     2         " has to be specified after FSI equation"
+C             IF (ctmp .NE. "mesh") THEN 
+               lPtr => list%get(ctmp,"Add equation",3)
+C                IF (ctmp .NE. "mesh") err = "mesh equation"//
+C      2              " has to be specified after FSI equation"
+C             END IF
          END IF
          IF (rmsh%isReqd .AND. eq(1)%phys.NE.phys_FSI) THEN
             err = "Remeshing is applicable only for FSI equation"

@@ -43,6 +43,7 @@
 
       LOGICAL l1, l2, l3
       INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, cTSInn, InM
+      INTEGER(KIND=IKIND) iIt, iItInt
       REAL(KIND=RKIND) timeP(3)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
@@ -122,142 +123,381 @@
 
 !     Compute external Vec ifem multi-mesh 
 C          IF( cTS .LE. 2 ) THEN 
-            IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
+C             IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
 C             IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 C          ELSE 
 C             IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
 C          END IF
 
+         CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 
-!     Inner loop for iteration
-         DO
-            iEqOld = cEq
+         DO iIt = 1, 20
+!-----      Solve FSI FG
 
-            IF (cplBC%coupled .AND. cEq.EQ.1) THEN
-               CALL SETBCCPL
-               CALL SETBCDIR(An, Yn, Dn)
-            END IF
+!            CALL IFEM_SETBCDIR_FG(An, Yn)
 
-C             IF( cTS .LE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
-C             ELSE 
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(An, Yn, Yn)
-C             END IF
+            cEq = 2
+!-----------------------------
+!           Inner loop for iteration
+            write(*,*)" Starting inner loop eq ", cEq
+            DO iItInt = 1, 5
+               iEqOld = cEq
 
-            IF( cTS .GE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
-            END IF
+               IF (cplBC%coupled .AND. cEq.EQ.1) THEN
+                  CALL SETBCCPL
+                  CALL SETBCDIR(An, Yn, Dn)
+               END IF
 
-111         CONTINUE
+   !        Initiator step (quantities at n+am, n+af)
+               write(*,*)" before Initiator step eq ", cEq
+               CALL PICI(Ag, Yg, Dg)
+               IF (ALLOCATED(Rd)) THEN
+                  Rd = 0._RKIND
+                  Kd = 0._RKIND
+               END IF
 
-!        Initiator step (quantities at n+am, n+af)
-            CALL PICI(Ag, Yg, Dg)
-            IF (ALLOCATED(Rd)) THEN
-               Rd = 0._RKIND
-               Kd = 0._RKIND
-            END IF
+               dbg = 'Allocating the RHS and LHS'
+               write(*,*)" before LSALLOC "
+               CALL LSALLOC(eq(cEq))
 
-C             IF( cTS .LE. 2 ) THEN 
-               IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg, Dn)
-C             ELSE 
-C C                IF( mmOpt ) CALL IFEM_EXCHANGE_WITHDIRBC(Ag, Yg, Yg)
-C                IF( mmOpt ) CALL IFEM_EXCHANGE(Ag, Yg, Yg)
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg)
-C             END IF
+   !        Compute body forces. If phys is shells or CMM (init), apply
+   !        contribution from body forces (pressure) to residue
+               CALL SETBF(Dg)
 
-C             IF( cTS .GE. 2 ) THEN 
-C                IF( mmOpt ) CALL IFEM_EXCHANGE_BG(Ag, Yg, Yg, Dn)
-C             END IF
+               dbg = "Assembling equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling eq assembly "
+               IF( cEq .EQ. 1 ) THEN 
+                  DO iM=2, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               ELSE IF ( cEq .EQ. 2 ) THEN 
+                  iM = 1
+                  CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+               ELSE 
+                  DO iM=1, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               END IF
 
-            dbg = 'Allocating the RHS and LHS'
-            CALL LSALLOC(eq(cEq))
 
-!        Compute body forces. If phys is shells or CMM (init), apply
-!        contribution from body forces (pressure) to residue
-            CALL SETBF(Dg)
+   !        Treatment of boundary conditions on faces
+   !        Apply Neumman or Traction boundary conditions
+               CALL SETBCNEU(Yg, Dg)
 
-            dbg = "Assembling equation <"//eq(cEq)%sym//">"
-            DO iM=1, nMsh
-               CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
-               dbg = "Mesh "//iM//" is assembled"
-            END DO
+   !        Apply CMM BC conditions
+               IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
 
-!        Treatment of boundary conditions on faces
-!        Apply Neumman or Traction boundary conditions
-            CALL SETBCNEU(Yg, Dg)
+   !        Apply weakly applied Dirichlet BCs
+               CALL SETBCDIRW(Yg, Dg)
 
-!        Apply CMM BC conditions
-            IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
+   !        Apply contact model and add its contribution to residue
+               IF (iCntct) CALL CONTACTFORCES(Dg)
 
-!        Apply weakly applied Dirichlet BCs
-            CALL SETBCDIRW(Yg, Dg)
+   !        Synchronize R across processes. Note: that it is important
+   !        to synchronize residue, R before treating immersed bodies as
+   !        ib%R is already communicated across processes
+               IF (.NOT.eq(cEq)%assmTLS) CALL COMMU(R)
 
-!        Apply contact model and add its contribution to residue
-            IF (iCntct) CALL CONTACTFORCES(Dg)
+   !        Update residue in displacement equation for USTRUCT phys.
+   !        Note that this step is done only first iteration. Residue
+   !        will be 0 for subsequent iterations
+               IF (sstEq) CALL USTRUCTR(Yg)
 
-!        Synchronize R across processes. Note: that it is important
-!        to synchronize residue, R before treating immersed bodies as
-!        ib%R is already communicated across processes
-            IF (.NOT.eq(cEq)%assmTLS) CALL COMMU(R)
-
-!        Update residue in displacement equation for USTRUCT phys.
-!        Note that this step is done only first iteration. Residue
-!        will be 0 for subsequent iterations
-            IF (sstEq) CALL USTRUCTR(Yg)
-
-            IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.
+               IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.
      2          (eq(cEq)%phys .EQ. phys_fluid)  .OR.
      3          (eq(cEq)%phys .EQ. phys_ustruct).OR.
      4          (eq(cEq)%phys .EQ. phys_fsi)) THEN
-               CALL THOOD_ValRC()
-            END IF
-
-            CALL SETBCUNDEFNEU()
-
-!        IB treatment: for explicit coupling, simply construct residue.
-            IF (ibFlag) THEN
-               IF (ib%cpld .EQ. ibCpld_I) THEN
-                  CALL IB_IMPLICIT(Ag, Yg, Dg)
+                  CALL THOOD_ValRC()
                END IF
-               CALL IB_CONSTRUCT()
-            END IF
 
-            incL = 0
-            IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
-            IF (cmmInit) incL(nFacesLS) = 1
-            DO iBc=1, eq(cEq)%nBc
-               i = eq(cEq)%bc(iBc)%lsPtr
-               IF (i .NE. 0) THEN
-                  res(i) = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
-                  incL(i) = 1
+               CALL SETBCUNDEFNEU()
+
+   !        IB treatment: for explicit coupling, simply construct residue.
+               IF (ibFlag) THEN
+                  IF (ib%cpld .EQ. ibCpld_I) THEN
+                     CALL IB_IMPLICIT(Ag, Yg, Dg)
+                  END IF
+                  CALL IB_CONSTRUCT()
                END IF
-            END DO
 
-            dbg = "Solving equation <"//eq(cEq)%sym//">"
-            CALL LSSOLVE(eq(cEq), incL, res)
+               incL = 0
+               IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
+               IF (cmmInit) incL(nFacesLS) = 1
+               DO iBc=1, eq(cEq)%nBc
+                  i = eq(cEq)%bc(iBc)%lsPtr
+                  IF (i .NE. 0) THEN
+                     res(i) = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
+                     incL(i) = 1
+                  END IF
+               END DO
 
-!        Solution is obtained, now updating (Corrector)
-            CALL PICC
+               dbg = "Solving equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling LSSOLVE eq ", cEq
+               CALL LSSOLVE(eq(cEq), incL, res)
 
-            IF( (cEq .EQ. 2) .AND. (cTSInn .LT. InM) ) THEN 
-               cTSInn = cTSInn + 1 
-               IF( mmOpt .AND. (cTSInn .GT. 8)) THEN 
-                  CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
-               END IF
-               cEq = 1
-               GOTO 111
-            ELSE 
-               cTSInn = 0
-            END IF
+   !        Solution is obtained, now updating (Corrector)
+               write(*,*)" before PICC"
+               CALL PICC
 
 !        Checking for exceptions
-            CALL EXCEPTIONS
+               CALL EXCEPTIONS
 
 !        Writing out the time passed, residual, and etc.
-            IF (ALL(eq%ok)) EXIT
-            CALL OUTRESULT(timeP, 2, iEqOld)
-         END DO
+               IF (ALL(eq%ok)) EXIT
+               CALL OUTRESULT(timeP, 2, iEqOld)
+            END DO
 !     End of inner loop
+!---------------------------------
+
+!-----      Solve Fluid BG
+            eq(cEq)%ok = .FALSE.
+!            CALL PICC_iEQ
+            CALL IFEM_EXCHANGE(An, Yn, Yn, Dn)
+
+            cEq = 1
+!-----------------------------
+!           Inner loop for iteration
+            write(*,*)" Starting inner loop eq ", cEq
+            DO iItInt = 1, 40
+               iEqOld = cEq
+
+               IF (cplBC%coupled .AND. cEq.EQ.1) THEN
+                  CALL SETBCCPL
+                  CALL SETBCDIR(An, Yn, Dn)
+               END IF
+
+   !        Initiator step (quantities at n+am, n+af)
+               write(*,*)" before Initiator step eq ", cEq
+               CALL PICI(Ag, Yg, Dg)
+               IF (ALLOCATED(Rd)) THEN
+                  Rd = 0._RKIND
+                  Kd = 0._RKIND
+               END IF
+
+               dbg = 'Allocating the RHS and LHS'
+               write(*,*)" before LSALLOC "
+               CALL LSALLOC(eq(cEq))
+
+   !        Compute body forces. If phys is shells or CMM (init), apply
+   !        contribution from body forces (pressure) to residue
+               CALL SETBF(Dg)
+
+               dbg = "Assembling equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling eq assembly "
+               IF( cEq .EQ. 1 ) THEN 
+                  DO iM=2, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               ELSE IF ( cEq .EQ. 2 ) THEN 
+                  iM = 1
+                  CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+               ELSE 
+                  DO iM=1, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               END IF
+
+
+   !        Treatment of boundary conditions on faces
+   !        Apply Neumman or Traction boundary conditions
+               CALL SETBCNEU(Yg, Dg)
+
+   !        Apply CMM BC conditions
+               IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
+
+   !        Apply weakly applied Dirichlet BCs
+               CALL SETBCDIRW(Yg, Dg)
+
+   !        Apply contact model and add its contribution to residue
+               IF (iCntct) CALL CONTACTFORCES(Dg)
+
+   !        Synchronize R across processes. Note: that it is important
+   !        to synchronize residue, R before treating immersed bodies as
+   !        ib%R is already communicated across processes
+               IF (.NOT.eq(cEq)%assmTLS) CALL COMMU(R)
+
+   !        Update residue in displacement equation for USTRUCT phys.
+   !        Note that this step is done only first iteration. Residue
+   !        will be 0 for subsequent iterations
+               IF (sstEq) CALL USTRUCTR(Yg)
+
+               IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.
+     2          (eq(cEq)%phys .EQ. phys_fluid)  .OR.
+     3          (eq(cEq)%phys .EQ. phys_ustruct).OR.
+     4          (eq(cEq)%phys .EQ. phys_fsi)) THEN
+                  CALL THOOD_ValRC()
+               END IF
+
+               CALL SETBCUNDEFNEU()
+
+   !        IB treatment: for explicit coupling, simply construct residue.
+               IF (ibFlag) THEN
+                  IF (ib%cpld .EQ. ibCpld_I) THEN
+                     CALL IB_IMPLICIT(Ag, Yg, Dg)
+                  END IF
+                  CALL IB_CONSTRUCT()
+               END IF
+
+               incL = 0
+               IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
+               IF (cmmInit) incL(nFacesLS) = 1
+               DO iBc=1, eq(cEq)%nBc
+                  i = eq(cEq)%bc(iBc)%lsPtr
+                  IF (i .NE. 0) THEN
+                     res(i) = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
+                     incL(i) = 1
+                  END IF
+               END DO
+
+               dbg = "Solving equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling LSSOLVE eq ", cEq
+               CALL LSSOLVE(eq(cEq), incL, res)
+
+   !        Solution is obtained, now updating (Corrector)
+               write(*,*)" before PICC"
+               CALL PICC
+
+!        Checking for exceptions
+               CALL EXCEPTIONS
+
+!        Writing out the time passed, residual, and etc.
+               IF (ALL(eq%ok)) EXIT
+               CALL OUTRESULT(timeP, 2, iEqOld)
+            END DO
+!     End of inner loop
+!---------------------------------
+
+            CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
+
+
+!-----      Solve Mesh
+            eq(cEq)%ok = .FALSE.
+ !           CALL PICC_iEQ
+            cEq = 3
+!-----------------------------
+!           Inner loop for iteration
+            write(*,*)" Starting inner loop eq ", cEq
+            DO iItInt = 1, 5
+               iEqOld = cEq
+
+               IF (cplBC%coupled .AND. cEq.EQ.1) THEN
+                  CALL SETBCCPL
+                  CALL SETBCDIR(An, Yn, Dn)
+               END IF
+
+   !        Initiator step (quantities at n+am, n+af)
+               write(*,*)" before Initiator step eq ", cEq
+               CALL PICI(Ag, Yg, Dg)
+               IF (ALLOCATED(Rd)) THEN
+                  Rd = 0._RKIND
+                  Kd = 0._RKIND
+               END IF
+
+               dbg = 'Allocating the RHS and LHS'
+               write(*,*)" before LSALLOC "
+               CALL LSALLOC(eq(cEq))
+
+   !        Compute body forces. If phys is shells or CMM (init), apply
+   !        contribution from body forces (pressure) to residue
+               CALL SETBF(Dg)
+
+               dbg = "Assembling equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling eq assembly "
+               IF( cEq .EQ. 1 ) THEN 
+                  DO iM=2, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               ELSE IF ( cEq .EQ. 2 ) THEN 
+                  iM = 1
+                  CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+               ELSE 
+                  DO iM=1, nMsh
+                   CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg, Yo, iM, cTS)
+                     dbg = "Mesh "//iM//" is assembled"
+                  END DO
+               END IF
+
+
+   !        Treatment of boundary conditions on faces
+   !        Apply Neumman or Traction boundary conditions
+               CALL SETBCNEU(Yg, Dg)
+
+   !        Apply CMM BC conditions
+               IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
+
+   !        Apply weakly applied Dirichlet BCs
+               CALL SETBCDIRW(Yg, Dg)
+
+   !        Apply contact model and add its contribution to residue
+               IF (iCntct) CALL CONTACTFORCES(Dg)
+
+   !        Synchronize R across processes. Note: that it is important
+   !        to synchronize residue, R before treating immersed bodies as
+   !        ib%R is already communicated across processes
+               IF (.NOT.eq(cEq)%assmTLS) CALL COMMU(R)
+
+   !        Update residue in displacement equation for USTRUCT phys.
+   !        Note that this step is done only first iteration. Residue
+   !        will be 0 for subsequent iterations
+               IF (sstEq) CALL USTRUCTR(Yg)
+
+               IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.
+     2          (eq(cEq)%phys .EQ. phys_fluid)  .OR.
+     3          (eq(cEq)%phys .EQ. phys_ustruct).OR.
+     4          (eq(cEq)%phys .EQ. phys_fsi)) THEN
+                  CALL THOOD_ValRC()
+               END IF
+
+               CALL SETBCUNDEFNEU()
+
+   !        IB treatment: for explicit coupling, simply construct residue.
+               IF (ibFlag) THEN
+                  IF (ib%cpld .EQ. ibCpld_I) THEN
+                     CALL IB_IMPLICIT(Ag, Yg, Dg)
+                  END IF
+                  CALL IB_CONSTRUCT()
+               END IF
+
+               incL = 0
+               IF (eq(cEq)%phys .EQ. phys_mesh) incL(nFacesLS) = 1
+               IF (cmmInit) incL(nFacesLS) = 1
+               DO iBc=1, eq(cEq)%nBc
+                  i = eq(cEq)%bc(iBc)%lsPtr
+                  IF (i .NE. 0) THEN
+                     res(i) = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
+                     incL(i) = 1
+                  END IF
+               END DO
+
+               dbg = "Solving equation <"//eq(cEq)%sym//">"
+               write(*,*)" calling LSSOLVE eq ", cEq
+               CALL LSSOLVE(eq(cEq), incL, res)
+
+   !        Solution is obtained, now updating (Corrector)
+               write(*,*)" before PICC"
+               CALL PICC
+
+!        Checking for exceptions
+               CALL EXCEPTIONS
+
+!        Writing out the time passed, residual, and etc.
+               IF (ALL(eq%ok)) EXIT
+               CALL OUTRESULT(timeP, 2, iEqOld)
+            END DO
+!     End of inner loop
+!---------------------------------
+
+            eq(cEq)%ok = .FALSE.
+!            CALL PICC_iEQ
+
+         END DO
+
+!         CALL IFEM_EXCHANGE_BG(An, Yn, Yn, Dn)
 
 !     IB treatment: interpolate flow data on IB mesh from background
 !     fluid mesh for explicit coupling, update old solution for implicit

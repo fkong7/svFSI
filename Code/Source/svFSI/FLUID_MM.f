@@ -192,15 +192,15 @@ C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(3), Dg)
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   bfl(nsd,eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN))
 
-      IF( iM .EQ. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
+C       IF( iM .EQ. 2) ALLOCATE(ylFg(nsd+1,eNoN)) 
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
 
 !        Jump alloc if elem is hidden for bh mesh 
-         IF ( iter .GE. 3) THEN 
+C          IF ( iter .GE. 3) THEN 
             IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
-         END IF
+C          END IF
 
 !        Update domain and proceed if domain phys and eqn phys match
          cDmn  = DOMAIN(lM, cEq, e)
@@ -221,17 +221,17 @@ C        CALL IFEM_FINDHIDDEN_ND(msh(1), msh(3), Dg)
          END DO
 
 !        Create local copies if we are in the FG mesh 
-         IF( iM .GE. 2) THEN 
-            DO a=1, eNoN
-               Ac = lM%IEN(a,e)
-               AcLc = lM%lN(Ac)
+C          IF( iM .GE. 2) THEN 
+C             DO a=1, eNoN
+C                Ac = lM%IEN(a,e)
+C                AcLc = lM%lN(Ac)
 
-C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
-C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
+C C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
+C C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
 
-               ylFg(:,a) = lM%YgFG(:,AcLc)
-            END DO
-         END IF
+C                ylFg(:,a) = lM%YgFG(:,AcLc)
+C             END DO
+C          END IF
 
 !        Initialize residue and tangents
          lR = 0._RKIND
@@ -335,7 +335,7 @@ C      2               fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, yl, ylFg, lR)
       END DO ! e: loop
 
       DEALLOCATE(ptr, xl, al, yl, bfl, lR, lK)
-      IF(ALLOCATED(ylFg)) DEALLOCATE(ylFg)  
+C       IF(ALLOCATED(ylFg)) DEALLOCATE(ylFg)  
 
       CALL DESTROY(fs(1))
       CALL DESTROY(fs(2))
@@ -1108,7 +1108,7 @@ C       write(*,*)" quad point sub elemem ", xout
 
 !        Jump alloc if elem is hidden for bh mesh 
 C          IF ( iter .GE. 2) THEN 
-C             IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
+            IF((iM .EQ. 1) .AND. (lM%lstHdnElm(e) .EQ. 1)) CYCLE
 C          END IF
 
          cDmn  = DOMAIN(lM, cEq, e)
@@ -1143,17 +1143,17 @@ C          END IF
          END DO
 
 !        Create local copies if we are in the FG mesh 
-         IF( iM .GE. 2) THEN 
-            DO a=1, eNoN
-               Ac = lM%IEN(a,e)
-               AcLc = lM%lN(Ac)
+C          IF( iM .GE. 2) THEN 
+C             DO a=1, eNoN
+C                Ac = lM%IEN(a,e)
+C                AcLc = lM%lN(Ac)
 
-C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
-C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
+C C                ylFg(1:nsd,a) = Yg(1:nsd,Ac)
+C C                ylFg(nsd+1,a) = lM%YgFG(nsd+1,AcLc)
 
-               ylFg(:,a) = lM%YgFG(:,AcLc)
-            END DO
-         END IF
+C                ylFg(:,a) = lM%YgFG(:,AcLc)
+C             END DO
+C          END IF
 
 !        For FSI, fluid domain should be in the current configuration
          IF (cPhys .EQ. phys_fluid) THEN
@@ -1778,24 +1778,24 @@ C          END IF
          IF (flag) THEN
 
 !           Add also mesh 2 to compute hidden 
-            DO e=1, msh(2)%nEl
+C             DO e=1, msh(2)%nEl
 
-                DO a=1, msh(2)%eNoN
-                    Ac = msh(2)%IEN(a,e)
-                    poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
-                END DO  
+C                 DO a=1, msh(2)%eNoN
+C                     Ac = msh(2)%IEN(a,e)
+C                     poly(:,a) = x(:,Ac) + lD(nsd+2:2*nsd+1,Ac)
+C                 END DO  
 
 
-                find = IN_POLY(xp,poly)
+C                 find = IN_POLY(xp,poly)
 
-!               is the solid node in this fluis element 
-                IF (find .EQ. 1) THEN 
-                    FlagBg(aBg) = 1 
-                    EXIT
-                END IF
-            END DO
+C !               is the solid node in this fluis element 
+C                 IF (find .EQ. 1) THEN 
+C                     FlagBg(aBg) = 1 
+C                     EXIT
+C                 END IF
+C             END DO
 
-            IF (find .NE. 1) THEN 
+C             IF (find .NE. 1) THEN 
         
                 DO e=1, msh(3)%nEl
                     DO a=1, msh(3)%eNoN
@@ -1812,7 +1812,7 @@ C          END IF
                     END IF
                 END DO
 
-            END IF
+C             END IF
 
          END IF
       END DO
@@ -1836,9 +1836,9 @@ C       write(*,*)" FlagBg = ", FlagBg
             IF( FlagBg(AcL) .EQ. 1) count = count + 1
          END DO
 
-         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
+!         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1
 !        For the elem intersected by msh(3)         
-C          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
+          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
 
       END DO
 
@@ -1849,10 +1849,10 @@ C          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
       DO e = 1, lMBg%nEl
 
 !        For the elem intersected by msh(3)  
-C          IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
+          IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
         
 !        For the elem intersected by msh(2) and 3  
-         IF( lMBg%lstHdnElm(e) .EQ. 1) CYCLE
+!         IF( lMBg%lstHdnElm(e) .EQ. 1) CYCLE
 
          count = 0 
 
@@ -1868,12 +1868,11 @@ C          IF( lMBg%lstHdnElm(e) .NE. 1) CYCLE
             Ac = lMBg%IEN(a,e)
             AcL = lMBg%lN(Ac)
 !        Partially hidden and outside 
-C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN 
+          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 0) ) THEN 
 !        Partially hidden and inside    
 C          IF( (count .LT. lMBg%eNoN) .AND. (FlagBg(AcL) .EQ. 1) ) THEN 
-            IF( FlagBg(AcL) .EQ. 1 ) THEN 
+!            IF( FlagBg(AcL) .EQ. 1 ) THEN 
                FlagBgDIR(AcL) = 1
-C                write(*,*)" lMBg%FlagBgDIR AcL ", AcL, " = 1"
             END IF
          END DO
 
@@ -2018,9 +2017,9 @@ C       write(*,*)" FlagBg = ", FlagBg
             IF( FlagBg(AcL) .EQ. 1) count = count + 1
          END DO
 
-         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1 
+!         IF( count .EQ. lMBg%eNoN ) lMBg%lstHdnElm(e) = 1 
 !        To use with hiddenDR
-C          IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
+         IF( count .GT. 0 ) lMBg%lstHdnElm(e) = 1
 
 C          IF( count .GT. 0 ) THEN 
 C          IF( count .EQ. lMBg%eNoN  ) THEN 
@@ -2322,7 +2321,7 @@ C       write(*,*)" Calling IFEM_EXCHANGE_BG "
       INTEGER(KIND=IKIND) :: nbrHid, i, idHdGl, idHdLc
       REAL(KIND=RKIND) :: Vg(tDof,msh(1)%nNo), tet 
 
-      tet = 1._RKIND
+      tet = 0.5_RKIND
 
 C       nbrHid = SIZE(msh(1)%lstDirNd)
       nbrHid = SIZE(msh(1)%lstHdnNd)
@@ -2456,33 +2455,77 @@ C          write(*,*)" global id hidden ", idHdGl
 
 !####################################################################
 
+C       SUBROUTINE IFEM_SETBCDIR_FG(lA, lY) 
+C       USE COMMOD
+C       USE ALLFUN
+C       IMPLICIT NONE
+C       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
+
+C       INTEGER(KIND=IKIND) :: i, idGl, idLc
+C       REAL(KIND=RKIND) :: YgBG(tDof, msh(2)%nNo)
+
+C       YgBG = 0._RKIND
+
+C       CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lY, YgBG)
+C       ! put the bc into lY
+C       DO i = 1, msh(2)%nNo
+C          idGl = msh(2)%gN(i)
+C          idLc = i
+
+C          lY(:, idGl) = YgBG(:,idLc)
+C       END DO
+
+C       CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lA, YgBG)
+C       ! put the bc into lY
+C       DO i = 1, msh(2)%nNo
+C          idGl = msh(2)%gN(i)
+C          idLc = i
+
+C          lA(:, idGl) = YgBG(:,idLc)
+C       END DO
+
+C       RETURN
+C       END SUBROUTINE IFEM_SETBCDIR_FG
+
+
       SUBROUTINE IFEM_SETBCDIR_FG(lA, lY) 
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo)
 
-      INTEGER(KIND=IKIND) :: i, idGl, idLc
+      INTEGER(KIND=IKIND) :: i, idGl, idLc, iFa, jM
       REAL(KIND=RKIND) :: YgBG(tDof, msh(2)%nNo)
 
       YgBG = 0._RKIND
 
       CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lY, YgBG)
       ! put the bc into lY
-      DO i = 1, msh(2)%nNo
-         idGl = msh(2)%gN(i)
-         idLc = i
 
-         lY(:, idGl) = YgBG(:,idLc)
+      jM = 2
+
+      DO iFa = 1, msh(jM)%nFa
+         IF( iFa .LE. 5 ) CYCLE 
+         DO i = 1, msh(jM)%fa(iFa)%nNo
+            idGl = msh(jM)%fa(iFa)%gN(i)
+            idLc = i
+
+            lY(:, idGl) = YgBG(:,idLc)
+         END DO
+
       END DO
 
       CALL IFEM_UNK_BGtoFG(msh(1), msh(2), lA, YgBG)
       ! put the bc into lY
-      DO i = 1, msh(2)%nNo
-         idGl = msh(2)%gN(i)
-         idLc = i
+      DO iFa = 1, msh(jM)%nFa
+         IF( iFa .LE. 5 ) CYCLE 
+         DO i = 1, msh(jM)%fa(iFa)%nNo
+            idGl = msh(jM)%fa(iFa)%gN(i)
+            idLc = i
 
-         lA(:, idGl) = YgBG(:,idLc)
+            lA(:, idGl) = YgBG(:,idLc)
+         END DO
+
       END DO
 
       RETURN

@@ -135,10 +135,23 @@
          eq(iEq)%beta  = 0.25_RKIND*(1._RKIND + eq(iEq)%am -
      2      eq(iEq)%af)**2._RKIND
          eq(iEq)%gam   = 0.5_RKIND + eq(iEq)%am - eq(iEq)%af
-         eq(iEq)%s     = tDof + 1
-         eq(iEq)%e     = tDof + eq(iEq)%dof
+         IF( iEq .EQ. 2 ) THEN 
+            eq(iEq)%s     = eq(iEq-1)%s
+            eq(iEq)%e     = eq(iEq-1)%e
+         ELSE 
+            eq(iEq)%s     = tDof + 1
+            eq(iEq)%e     = tDof + eq(iEq)%dof
+         END IF
          tDof          = eq(iEq)%e
          IF (eq(iEq)%useTLS) flag = .TRUE.
+      END DO
+
+      write(*,*)" tnNo = ", tnNo
+      DO iEq=1, nEq
+         write(*,*)" eq ", iEq
+         write(*,*)" eq(iEq)%dof = ", eq(iEq)%dof  
+         write(*,*)" eq(iEq)%s = ", eq(iEq)%s
+         write(*,*)" eq(iEq)%e = " , eq(iEq)%e
       END DO
 
       ierr = 0

@@ -48,15 +48,12 @@
          IF( .NOT. mmOpt ) THEN 
             CALL CONSTRUCT_FLUID(lM, Ag, Yg)
          ELSE 
+!            CALL CONSTRUCT_FLUID(lM, Ag, Yg, iM, iter)
+            write(*,*)" Calling CONSTRUCT_FLUID_MM "
             CALL CONSTRUCT_FLUID_MM(lM, Ag, Yg, iM, iter)
 
-            write(*,*)" just before SET_BG_BCNEU_TO_FG "
-
-!            CALL SET_BG_BCNEU_TO_FG(Yg, Dg, iM) ! just bc strongly
-
 !           To decomment to impose Neu BC 
-            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) 
-            write(*,*)" after SET_BG_BCNEU_TO_FG "
+!            CALL SET_BCNEU_TO_FG(Yg, Dg, iM) 
 
          END IF
 

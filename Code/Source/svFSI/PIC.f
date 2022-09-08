@@ -171,6 +171,10 @@
       coef(3) = 1._RKIND / eq(cEq)%am
       coef(4) = eq(cEq)%af*coef(1)*coef(3)
 
+      write(*,*)" cEq = ", cEq
+      write(*,*)" s = ", s
+      write(*,*)" e = ", e
+
       IF (sstEq) THEN
 !        ustruct, FSI (ustruct)
          IF (eq(cEq)%phys .EQ. phys_ustruct .OR.
@@ -189,12 +193,47 @@
                Dn(s:e,a)   = Dn(s:e,a) - R(:,a)*coef(2)
             END DO
          END IF
-      ELSE
-         DO a=1, tnNo
-            An(s:e,a) = An(s:e,a) - R(:,a)
-            Yn(s:e,a) = Yn(s:e,a) - R(:,a)*coef(1)
-            Dn(s:e,a) = Dn(s:e,a) - R(:,a)*coef(2)
-         END DO
+      ELSE 
+
+         IF (eq(cEq)%phys .EQ. phys_FSI) THEN
+   !        mesh 2 and 3   
+
+            write(*,*)" Doing PICC phys_FSI "
+            DO Ac = 1, msh(2)%nNo
+               a = msh(2)%gN(Ac)
+
+               An(s:e,a)   = An(s:e,a) - R(:,a)
+               Yn(s:e,a)   = Yn(s:e,a) - R(:,a)*coef(1)
+               Dn(s:e,a)   = Dn(s:e,a) - R(:,a)*coef(2)
+            END DO
+
+            DO Ac = 1, msh(3)%nNo
+               a = msh(3)%gN(Ac)
+
+               An(s:e,a)   = An(s:e,a) - R(:,a)
+               Yn(s:e,a)   = Yn(s:e,a) - R(:,a)*coef(1)
+               Dn(s:e,a)   = Dn(s:e,a) - R(:,a)*coef(2)
+            END DO
+
+         ELSE IF (eq(cEq)%phys .EQ. phys_fluid) THEN
+   !        mesh 1   
+            write(*,*)" Doing PICC phys_fluid "
+            DO Ac = 1, msh(1)%nNo
+               a = msh(1)%gN(Ac)
+
+               An(s:e,a)   = An(s:e,a) - R(:,a)
+               Yn(s:e,a)   = Yn(s:e,a) - R(:,a)*coef(1)
+               Dn(s:e,a)   = Dn(s:e,a) - R(:,a)*coef(2)
+            END DO
+         ELSE 
+            write(*,*)" Doing PICC phys_mesh "
+            DO a=1, tnNo
+               An(s:e,a) = An(s:e,a) - R(:,a)
+               Yn(s:e,a) = Yn(s:e,a) - R(:,a)*coef(1)
+               Dn(s:e,a) = Dn(s:e,a) - R(:,a)*coef(2)
+            END DO
+         END IF
+
       END IF
 
       IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.
@@ -205,8 +244,8 @@
       END IF
 
       IF (eq(cEq)%phys .EQ. phys_FSI) THEN
-         s = eq(2)%s
-         e = eq(2)%e
+         s = eq(3)%s
+         e = eq(3)%e
          DO Ac=1, tnNo
             IF (ISDOMAIN(cEq, Ac, phys_struct) .OR.
      2          ISDOMAIN(cEq, Ac, phys_ustruct) .OR.
@@ -263,6 +302,15 @@
       IF (l1 .OR. ((l2.OR.l3).AND.l4)) eq(cEq)%ok = .TRUE.
       IF (ALL(eq%ok)) RETURN
 
+      RETURN
+      END SUBROUTINE PICC
+
+
+      SUBROUTINE PICC_iEQ
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
       IF (eq(cEq)%coupled) THEN
          cEq = cEq + 1
          IF (ALL(.NOT.eq%coupled .OR. eq%ok)) THEN
@@ -281,8 +329,10 @@
          IF (eq(cEq)%ok) cEq = cEq + 1
       END IF
 
+      write(*,*)" next eq is cEq ", cEq
+
       RETURN
-      END SUBROUTINE PICC
+      END SUBROUTINE PICC_iEQ
 !====================================================================
 !     Pressure correction at edge nodes for Taylor-Hood type element.
 !     Here, we interpolate pressure at the edge nodes by interpolating
