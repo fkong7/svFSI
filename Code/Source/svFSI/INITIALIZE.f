@@ -42,7 +42,7 @@
       REAL(KIND=RKIND), INTENT(OUT) :: timeP(3)
 
       LOGICAL :: flag
-      INTEGER(KIND=IKIND) :: i, a, iEq, iDmn, iM, iFa, ierr, nnz, gnnz
+      INTEGER(KIND=IKIND) :: i,j, a, iEq, iDmn, iM, iFa, ierr, nnz, gnnz
       CHARACTER(LEN=stdL) :: fTmp, sTmp
       REAL(KIND=RKIND) :: am
       TYPE(FSILS_commuType) :: communicator
@@ -181,6 +181,25 @@
             END IF
          END DO
       END IF
+
+      IF(risFlag) THEN 
+!        Building the global risMap with total nodes enumeration
+         DO i = 1, nMsh
+            print*, " mesh ", i
+            DO j = 1, SIZE(risMap,2)
+               IF( risMap(i,j) .NE. 0) THEN 
+                  grisMap(i,j) = msh(i)%gN(risMap(i,j))
+               END IF
+            END DO
+         END DO  
+
+         print*, " Finally the gmap is: "
+         print*, grisMap(1,:) 
+         print*, grisMap(2,:) 
+
+      END IF  
+
+
 
 !     Initialize tensor operations
       CALL TEN_INIT(nsd)
@@ -362,6 +381,17 @@
      2            "domain "//iDmn//" of equation "//iEq//" is zero >>"
             END IF
          END DO
+      END DO
+
+!     Calculating the volume of each mesh
+      s = 1._RKIND
+      DO iM=1, nMsh
+         print*, " Compute volume for iMsh ", iM
+         msh(iM)%v = Integ(iM, s)
+         std = "    Volume of mesh <"//STR(iM)//"> is "//
+     2            STR(msh(iM)%v)
+            IF (ISZERO(msh(iM)%v)) wrn = "<< Volume of "//
+     2            "mesh "//iM//" is zero >>"
       END DO
 
 !     Preparing faces and BCs
@@ -645,6 +675,9 @@
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
 
+      IF (ALLOCATED(risMap))   DEALLOCATE(risMap)
+      IF (ALLOCATED(grisMap))  DEALLOCATE(grisMap)
+
       IF (ALLOCATED(Ao))       DEALLOCATE(Ao)
       IF (ALLOCATED(An))       DEALLOCATE(An)
       IF (ALLOCATED(Do))       DEALLOCATE(Do)
@@ -710,6 +743,12 @@
          DEALLOCATE(ib%msh)
 
          DEALLOCATE(ib)
+      END IF
+
+!     RIS model 
+      IF (risFlag) THEN
+         IF(ALLOCATED(RIS%lst))    DEALLOCATE(RIS%lst)
+         DEALLOCATE(RIS)
       END IF
 
 !     Closing the output channels

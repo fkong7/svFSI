@@ -43,7 +43,7 @@
 
       LOGICAL flag
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic
+     2   mnnzeic, mapIdx(2), jM
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
@@ -67,6 +67,26 @@
                   colN = msh(iM)%IEN(b,e)
                   CALL ADDCOL(rowN, colN)
                END DO
+
+!              Add extra connections for cooresponding nodes in case of RIS
+               IF( risFlag ) THEN 
+!                 If rowN is in the list of ris nodes   
+                  mapIdx = FINDLOC(grisMap, rowN)
+                  IF(mapIdx(1).NE.0) THEN 
+C                      print*,rowN, "RIS found ", rowN
+                     DO jM=1, nMsh  
+                        IF(jM .EQ. iM) CYCLE
+                        rowN = grisMap(jM, mapIdx(2))
+
+                        DO b=1, msh(iM)%eNoN
+                           colN = msh(iM)%IEN(b,e)
+C                            write(*,*)" adding node ", colN
+                           CALL ADDCOL(rowN, colN)
+                        END DO
+                     END DO
+                  END IF
+               END IF
+
             END DO
          END DO
       END DO
@@ -297,3 +317,5 @@
       RETURN
       END SUBROUTINE DOASSEM
 !####################################################################
+
+

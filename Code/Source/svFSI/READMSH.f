@@ -170,6 +170,10 @@ c               END IF
          END DO
       END IF ! resetSim
 
+!     Examining the existance of a RIS surface and setting %risMap.
+!     Reseting gtnNo and recounting nodes that are not duplicated
+      CALL SETRISPROJECTOR(list)
+
 !     Examining the existance of projection faces and setting %gN.
 !     Reseting gtnNo and recounting nodes that are not duplicated
       gtnNo = 0
@@ -461,6 +465,259 @@ c               END IF
 
       RETURN
       END SUBROUTINE READMSH
+!####################################################################
+!     This routines associates two faces with each other for the RIS proj
+      SUBROUTINE SETRISPROJECTOR(list)
+      USE COMMOD
+      USE LISTMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(listType), INTENT(INOUT) :: list
+
+      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, iPrj, nStk, i, j
+      REAL(KIND=RKIND) tol
+      CHARACTER(LEN=stdL) ctmpi, ctmpj
+C       TYPE(stackType) lPrj
+      TYPE(listType), POINTER :: lPtr, lPP
+
+      nStk = 0
+      nPrj = list%srch("Add RIS projection")
+
+!     This is something still to define, ideally we need a connection from  
+!     the local nodes on one mesh and the global id on the other. 
+!     ?? what if they belong to differnt processors ?? 
+
+      IF (nPrj .GT. 0) THEN
+         risFlag = .TRUE.
+
+         ALLOCATE(RIS)
+         RIS%nbrRIS = nPrj
+         ALLOCATE( RIS%lst(2,2,nPrj) )
+         RIS%lst(2,2,nPrj) = 0
+         write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
+
+      END IF
+
+      IF(.NOT.risFlag) RETURN
+
+!     Create nStk = total number of nodes to match at the RIS interface 
+      DO iPrj=1, nPrj
+         lPP => list%get(ctmpi,"Add RIS projection",iPrj)
+         CALL FINDFACE(ctmpi, iM, iFa)
+         nStk = nStk + msh(iM)%fa(iFa)%nNo
+      END DO
+     
+      ALLOCATE(risMap(nMsh,nStk), grisMap(nMsh,nStk))
+      risMap = 0
+      grisMap = 0
+
+      DO iPrj=1, nPrj
+!        iM will be the face id in which we want to project from id face jM        
+         lPP => list%get(ctmpi,"Add RIS projection",iPrj)
+         CALL FINDFACE(ctmpi, iM, iFa)
+
+         lPtr => lPP%get(ctmpj,"Project from face",1)
+         CALL FINDFACE(ctmpj, jM, jFa)
+
+         msh(jM)%tol = 0._RKIND
+         lPtr => lPP%get(msh(jM)%tol,"Projection tolerance")
+         msh(jM)%res = 0._RKIND
+
+         lPtr => lPP%get(msh(jM)%res,"Resistance")
+         RIS%Res = msh(jM)%res
+         CALL MATCHNODES(msh(iM)%fa(iFa), msh(jM)%fa(jFa), msh(jM)%tol, 
+     2       nStk, risMap)
+
+         RIS%lst(1,1,nPrj) = iM 
+         RIS%lst(2,1,nPrj) = jM 
+         RIS%lst(1,2,nPrj) = iFa
+         RIS%lst(2,2,nPrj) = jFa  
+
+         print*, " ** Need to match face ", jFa, " of "//
+     2           " mesh ", jM, " into face ", iFa, " msh ", iM 
+         print*, " ** The nbr of nodes to proj is ", nStk 
+         print*, " ** The res is ", msh(jM)%res 
+      END DO
+
+!     Building the ris map between corresponding node with total enumeration
+      DO i = 1, nMsh
+         print*, " mesh ", i
+         DO j = 1, nStk
+            IF( risMap(i,j) .NE. 0) THEN 
+               grisMap(i,j) = msh(i)%gN(risMap(i,j))
+               print*,"local node ", risMap(i,j)," global ",grisMap(i,j)
+            END IF
+         END DO
+      END DO
+
+      RETURN
+      END SUBROUTINE SETRISPROJECTOR
+!--------------------------------------------------------------------
+!     This is match isoparameteric faces to each other. Project nodes
+!     from two adjacent meshes to each other based on a L2 norm.
+      SUBROUTINE MATCHNODES(lFa, pFa, ptol, nNds, map)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(faceType), INTENT(INOUT) :: lFa, pFa
+      INTEGER(KIND=IKIND), INTENT(IN) :: nNds
+      INTEGER(KIND=IKIND), INTENT(OUT) :: map(nMsh,nNds)
+      REAL(KIND=RKIND), INTENT(IN) :: ptol
+
+      TYPE blkType
+         INTEGER(KIND=IKIND) :: n = 0
+         INTEGER(KIND=IKIND), ALLOCATABLE :: gN(:)
+      END TYPE
+
+      LOGICAL nFlt(nsd)
+      INTEGER(KIND=IKIND) nBkd, i, a, b, Ac, Bc, iBk, nBk, iM, jM, iSh,
+     2   jSh, cnt
+      REAL(KIND=RKIND) tol, ds, minS, xMin(nsd), xMax(nsd), dx(nsd)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: nodeBlk(:)
+      TYPE(blkType), ALLOCATABLE :: blk(:)
+
+      iM  = lFa%iM
+      jM  = pFa%iM
+      iSh = 0
+      jSh = 0
+      DO i=1, iM-1
+         iSh = iSh + msh(i)%gnNo
+      END DO
+      DO i=1, jM-1
+         jSh = jSh + msh(i)%gnNo
+      END DO
+
+      print*, " mesh iM ", iM, " nbr nodes ", msh(iM)%gnNo
+      print*, " mesh iM ", iM, " nodes start at tot nbr ", iSh
+      print*, " mesh jM ", jM, " nbr nodes ", msh(jM)%gnNo
+      print*, " mesh jM ", jM, " nodes start at tot nbr ", jSh
+
+      IF (ISZERO(ptol)) THEN
+         tol = 1.e3_RKIND * eps
+      ELSE
+         tol = ptol
+      END IF
+
+!     We want to have approximately 1000 nodes in each block. So we
+!     calculate nBkd, which is the number of separate blockes in each
+!     direction, based on that.
+      a    = pFa%nNo
+      nBkd = NINT( (REAL(a, KIND=RKIND)/
+     2   1000._RKIND)**(0.333_RKIND),  KIND=IKIND)
+      IF (nBkd .EQ. 0) nBkd = 1
+      nBk  = nBkd**nsd
+      ALLOCATE(nodeBlk(a), blk(nBk))
+
+!     Finding the extends of the domain and size of each block
+      DO i=1, nsd
+         xMin(i) = MIN(MINVAL(x(i,iSh+lFa%gN)), MINVAL(x(i,jSh+pFa%gN)))
+         xMax(i) = MAX(MAXVAL(x(i,iSh+lFa%gN)), MAXVAL(x(i,jSh+pFa%gN)))
+         IF (xMin(i) .LT. 0._RKIND) THEN
+            xMin(i) = xMin(i)*(1._RKIND+eps)
+         ELSE
+            xMin(i) = xMin(i)*(1._RKIND-eps)
+         END IF
+         IF (xMax(i) .LT. 0._RKIND) THEN
+            xMax(i) = xMax(i)*(1._RKIND-eps)
+         ELSE
+            xMax(i) = xMax(i)*(1._RKIND+eps)
+         END IF
+      END DO
+      dx = (xMax - xMin)/REAL(nBkd, KIND=RKIND)
+      nFlt = .TRUE.
+      DO i=1, nsd
+         IF (ISZERO(dx(i))) nFlt(i) = .FALSE.
+      END DO
+
+      print*, " xMax ", xMax
+      print*, " xMin ", xMin
+      print*, " dx ", dx
+
+!     First finding an estimation for size of each block
+      blk%n = 0
+      DO a=1, pFa%nNo
+         Ac  = pFa%gN(a) + jSh
+         iBk = FINDBLK(x(:,Ac))
+         nodeBlk(a) = iBk
+         blk(iBk)%n = blk(iBk)%n + 1
+      END DO
+      DO iBk=1, nBk
+         ALLOCATE(blk(iBk)%gN(blk(iBk)%n))
+      END DO
+      blk%n = 0
+      DO a=1, pFa%nNo
+         Ac  = pFa%gN(a)
+         iBk = nodeBlk(a)
+         blk(iBk)%n = blk(iBk)%n + 1
+         blk(iBk)%gN(blk(iBk)%n) = Ac
+      END DO
+
+!     Doing the calculation for every single node on this face
+      cnt  = 0
+      DO a=1, lFa%nNo
+         Ac  = lFa%gN(a)
+         iBk = FINDBLK(x(:,Ac+iSh))
+!     Checking every single node on the other face
+         minS = HUGE(minS)
+         DO b=1, blk(iBk)%n
+            Bc = blk(iBk)%gN(b)
+            IF (iM.EQ.jM .AND. Ac.EQ.Bc) CYCLE
+            ds = SQRT(SUM( (x(:,Bc+jSh) - x(:,Ac+iSh))**2._RKIND ))
+            IF (ds .LT. minS) THEN
+               minS = ds
+               i = Bc
+            END IF
+         END DO
+         Bc = i
+         IF (tol < 0._RKIND) THEN
+            print*, " adding connection (/Ac,Bc/)) = (",Ac,",",Bc,")"
+            cnt = cnt + 1
+            map(iM,cnt) = Ac
+            map(jM,cnt) = Bc
+         ELSE IF (minS .LT. tol) THEN
+            print*, " adding connection (/Ac,Bc/)) = (",Ac,",",Bc,")"
+            cnt = cnt + 1
+            map(iM,cnt) = Ac
+            map(jM,cnt) = Bc
+         END IF
+      END DO
+
+      IF (cnt .NE. lFa%nNo) err = " Failed to project faces between <"//
+     2   TRIM(lFa%name)//"> and <"//TRIM(pFa%name)//">"
+
+      print*, " Finally the map is: "
+      print*, map(1,:) 
+      print*, map(2,:) 
+
+      RETURN
+      CONTAINS
+!--------------------------------------------------------------------
+      INTEGER(KIND=IKIND) FUNCTION FINDBLK(x)
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: x(nsd)
+
+      INTEGER(KIND=IKIND) i, j, k
+
+      i = 1
+      j = 1
+      k = 1
+      IF (nFlt(1)) i = INT((x(1) - xMin(1))/dx(1), KIND=IKIND)
+      IF (nFlt(2)) j = INT((x(2) - xMin(2))/dx(2), KIND=IKIND)
+      IF (i .EQ. nBkd) i = nBkd - 1
+      IF (j .EQ. nBkd) j = nBkd - 1
+      IF (nsd .EQ. 3) THEN
+         IF (nFlt(3)) k = INT((x(3) - xMin(3))/dx(3), KIND=IKIND)
+         IF (k .EQ. nBkd) k = nBkd - 1
+         FINDBLK = k + (j + i*nBkd)*nBkd + 1
+      ELSE ! nsd .EQ. 2
+         FINDBLK = j + i*nBkd + 1
+      END IF
+
+      RETURN
+      END FUNCTION FINDBLK
+!--------------------------------------------------------------------
+      END SUBROUTINE MATCHNODES
 !####################################################################
 !     This routines associates two faces with each other and sets gN
       SUBROUTINE SETPROJECTOR(list, avNds)

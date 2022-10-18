@@ -536,6 +536,14 @@
          REAL(KIND=RKIND) scF
 !        IB: Mesh size parameter
          REAL(KIND=RKIND) dx
+
+!        RIS resistance value
+         REAL(KIND=RKIND) res
+!        RIS projection tolerance 
+         REAL(KIND=RKIND) tol
+
+!        The volume of this mesh
+         REAL(KIND=RKIND) :: v = 0._RKIND         
 !        Element distribution between processors
          INTEGER(KIND=IKIND), ALLOCATABLE :: eDist(:)
 !        Element domain ID number
@@ -810,6 +818,27 @@
 !        Residue
          REAL(KIND=RKIND), ALLOCATABLE :: R(:,:)
       END TYPE tlsType
+
+!     Data type for Resistive Immersed Surface 
+      TYPE risFace
+!        Number of RIS surface 
+         INTEGER(KIND=IKIND) :: nbrRIS = 0
+!        Count time steps where no check is needed         
+         INTEGER(KIND=IKIND) :: nbrIter = 100
+!        List of meshes, and faces connected. The first face is the 
+!        proximal pressure's face, while the second is the distal one
+         INTEGER(KIND=IKIND), ALLOCATABLE :: lst(:,:,:)
+!        Resistance value 
+         REAL(KIND=RKIND) :: Res = 0._RKIND
+!        Flag closed surface active, the valve is considerd open initially 
+         INTEGER(KIND=IKIND) :: clsFlg = 0
+!        Mean distal and proximal pressure (1: distal, 2: proximal)
+         REAL(KIND=RKIND) :: meanP(2) = 0._RKIND
+!        Mean flux on the RIS surface 
+         REAL(KIND=RKIND) :: meanFl = 0._RKIND
+!        Status RIS interface 
+         LOGICAL :: status = .TRUE.     
+      END TYPE risFace
 !--------------------------------------------------------------------
 !     All the types are defined, time to use them
 
@@ -852,6 +881,8 @@
       LOGICAL ibFlag
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
+!     Whether any Immersed Boundary (IB) treatment is required
+      LOGICAL risFlag
 
 !     INTEGER(KIND=IKIND) VARIABLES
 !     Current domain
@@ -932,6 +963,12 @@
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)
       INTEGER, ALLOCATABLE :: iblank(:)
 
+!     RIS mapping array, with local (mesh) enumeration
+      INTEGER, ALLOCATABLE :: risMap(:,:)
+!     RIS mapping array, with global (total) enumeration
+      INTEGER, ALLOCATABLE :: grisMap(:,:)
+    
+
 !     Old time derivative of variables (acceleration)
       REAL(KIND=RKIND), ALLOCATABLE :: Ao(:,:)
 !     New time derivative of variables
@@ -998,5 +1035,7 @@
       TYPE(ibType), ALLOCATABLE :: ib
 !     Trilinos Linear Solver data type
       TYPE(tlsType), ALLOCATABLE :: tls
+!     risFace object
+      TYPE(risFace), ALLOCATABLE :: RIS  
 
       END MODULE COMMOD

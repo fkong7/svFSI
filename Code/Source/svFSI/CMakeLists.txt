@@ -152,6 +152,7 @@ set(FSRCS TYPEMOD.f
          READFILES.f
          READMSH.f
          REMESH.f
+         RIS.f
          SETBC.f
          SHELLS.f
          STOKES.f

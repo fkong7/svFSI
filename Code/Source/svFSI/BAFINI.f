@@ -41,7 +41,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) iM, iFa, iEq, i, a, iBc, lsPtr
+      INTEGER(KIND=IKIND) iM, iFa, iEq, i, a, iBc, lsPtr, M,Fa,found
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: gNodes(:)
 

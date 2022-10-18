@@ -440,8 +440,10 @@
 
          do iatt=1, nPieceAtts
             vtk%pcAtt(iatt)%pName  = ""
+            vtk%pcAtt(iatt)%pName  = ""
             vtk%pcAtt(iatt)%ptClField(:) = ""
             vtk%pcAtt(iatt)%ptClFieldName(:) = ""
+            vtk%pcAtt(iatt)%n = 0
          end do
 
          do fid=11, 1024

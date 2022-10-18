@@ -176,6 +176,12 @@
          ELSE
 #endif
             CALL DOASSEM(eNoN, ptr, lK, lR)
+            IF( risFlag .AND. (RIS%clsFlg.EQ.0)) THEN 
+                CALL DOASSEM_RIS(eNoN, ptr, lK, lR)
+            END IF
+C             IF( risFlag .AND. (RIS%clsFlg.EQ.1)) THEN 
+C                 CALL DOASSEM_VELRIS(eNoN, ptr, lK, lR)
+C             END IF
 #ifdef WITH_TRILINOS
          END IF
 #endif
@@ -221,6 +227,7 @@
       amd  = eq(cEq)%am/T1
       wl   = w*T1
       wr   = w*rho
+      gam  = 0._RKIND
 
 !     Note that indices are not selected based on the equation because
 !     fluid equation always come first

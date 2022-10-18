@@ -42,7 +42,7 @@
       IMPLICIT NONE
 
       LOGICAL l1, l2, l3
-      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS
+      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, j
       REAL(KIND=RKIND) timeP(3)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
@@ -96,7 +96,9 @@
 !     variables, i.e. An, Yn, and Dn
          cTS    = cTS + 1
          time   = time + dt
-         cEq    = 1
+
+! --- RIS GOTO 1 should be here, we do not update the time but we redo all the rest          
+11       cEq    = 1
          eq%itr = 0
          eq%ok  = .FALSE.
 
@@ -150,6 +152,7 @@
 
 !        Apply weakly applied Dirichlet BCs
             CALL SETBCDIRW(Yg, Dg)
+            IF (risFlag)  CALL RIS_RESBC(Yg, Dg)
 
 !        Apply contact model and add its contribution to residue
             IF (iCntct) CALL CONTACTFORCES(Dg)
@@ -276,6 +279,25 @@
          Yo = Yn
          IF (dFlag) Do = Dn
          cplBC%xo = cplBC%xn
+
+
+! ---- Here we probably have to update the ris resistance value
+! ---- If the state has to change, we recompute this time step GOTO 1
+! ---- Control where if the time and the new has changed! 
+         IF ((cEq.EQ.1) .AND. risFlag ) THEN 
+            CALL RIS_MEANQ
+            CALL RIS_UPDATER
+
+            write(*,*)" Iteration : " , cTS
+            write(*,*)" Is the valve close? ", RIS%clsFlg
+            CALL RIS_STATUS
+            write(*,*)" The status is ", RIS%status
+            IF( RIS%nbrIter .LE. 6) GOTO 11
+C             IF( RIS%nbrIter .EQ. 0) GOTO 11
+
+         END IF
+
+
       END DO
 !     End of outer loop
 

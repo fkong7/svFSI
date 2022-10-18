@@ -49,6 +49,8 @@
 
       REAL(KIND=RKIND), ALLOCATABLE :: tmpA(:,:), tmpY(:,:)
 
+      INTEGER(KIND=IKIND) found, M, Fa
+
       DO iEq=1, nEq
          DO iBc=1, eq(iEq)%nBc
             IF(BTEST(eq(iEq)%bc(iBc)%bType,bType_CMM)) THEN
@@ -711,11 +713,37 @@
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
       INTEGER(KIND=IKIND) :: iBc, iFa, iM
+      INTEGER(KIND=IKIND) :: i, j, M, Fa, found
 
       DO iBc=1, eq(cEq)%nBc
          iM  = eq(cEq)%bc(iBc)%iM
          iFa = eq(cEq)%bc(iBc)%iFa
          IF (.NOT.eq(cEq)%bc(iBc)%weakDir) CYCLE
+
+!        IF we are in ris and the valve isn't close, cycle 
+         IF( risFlag ) THEN 
+            found = 0
+            DO i = 1, 2 
+               M = RIS%lst(i,1,1)
+               IF( M .EQ. iM ) THEN 
+C                   write(*,*)" looking mesh iM "
+                  Fa = RIS%lst(i,2,1)
+                  IF( (Fa .EQ. iFa ) ) 
+     2                       THEN 
+                     found = 1 
+C                      write(*,*)" We have find the face " 
+                  END IF
+               END IF
+            END DO
+         END IF
+
+         IF( (found .EQ. 1).AND.(RIS%clsFlg.EQ.0)) THEN 
+            CYCLE
+         END IF 
+
+         IF( found .EQ. 1) write(*,*)" We do weakly RIS BC "
+
+
          CALL SETBCDIRWL(eq(cEq)%bc(iBc), msh(iM), msh(iM)%fa(iFa), Yg,
      2      Dg)
       END DO
