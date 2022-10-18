@@ -138,6 +138,7 @@ set(FSRCS TYPEMOD.f
          INITIALIZE.f
          LELAS.f
          LHSA.f
+         LINCONTACT.f
          LOADMSH.f
          LOADNRB.f
          LS.f

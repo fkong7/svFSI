@@ -852,6 +852,8 @@
       LOGICAL ibFlag
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
+!     Flag for linear contact with a wall 
+      LOGICAL :: flagLCONT = .FALSE. 
 
 !     INTEGER(KIND=IKIND) VARIABLES
 !     Current domain

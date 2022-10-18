@@ -145,6 +145,9 @@
 !        Apply Neumman or Traction boundary conditions
             CALL SETBCNEU(Yg, Dg)
 
+!        If linear contact, call compute linear contact force      
+            IF( flagLCONT ) CALL LCONTACTFORCES(Yg,Dg)
+
 !        Apply CMM BC conditions
             IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
 
