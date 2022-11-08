@@ -79,7 +79,7 @@
       sOut = " "//eq(iEq)%sym//" "//STR(cTS,5)//"-"//STR(eq(iEq)%itr)//
      2   c1//" "//STR(timeP(3),6)
 
-      IF (ISZERO(eq(iEq)%iNorm) .OR. eq(iEq)%FSILS%RI%iNorm) THEN
+      IF (ISZERO(eq(iEq)%iNorm)) THEN
          tmp  = 1._RKIND
          tmp1 = 1._RKIND
          tmp2 = 1._RKIND

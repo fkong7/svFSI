@@ -1539,9 +1539,21 @@
          lBc%bType = IBSET(lBc%bType,bType_Neu)
       CASE ("Coupled Momentum","CMM")
          lBc%bType = IBSET(lBc%bType,bType_CMM)
+      CASE ("RIS0D")
+         lBc%bType = IBSET(lBc%bType,bType_Ris0D)
+         ris0DFlag = .TRUE.
+         lBc%bType = IBSET(lBc%bType,bType_Neu)
+!        Read the resistance value here
+         lPtr => list%get(lBc%res,"Resistance")
       CASE DEFAULT
          err = TRIM(list%ping("Type",lPtr))//" Unexpected BC type"
       END SELECT
+
+!       IF(BTEST(lBc%bType,bType_Ris0D)) THEN 
+! !        Read the resistance value here
+!          lPtr => list%get(lBc%res,"Resistance")
+!       END IF
+
 
 !     Allocate traction
       ALLOCATE(lBc%h(nsd))

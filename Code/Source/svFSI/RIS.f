@@ -591,4 +591,171 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
       RETURN
       END SUBROUTINE SETBCDIR_RIS
 
-      !####################################################################
+!####################################################################
+!####################################################################
+!     Weak treatment of RIS0D boundary conditions
+      SUBROUTINE RIS0D_BC(Yg, Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) iFa, iBc, iM
+      TYPE(bcType) :: lBc
+
+      write(*,*), " inside RIS0D_BC "
+
+      DO iBc=1, eq(cEq)%nBc
+         iFa = eq(cEq)%bc(iBc)%iFa
+         iM  = eq(cEq)%bc(iBc)%iM
+
+         IF (.NOT.BTEST(eq(cEq)%bc(iBc)%bType,bType_Ris0D)) CYCLE
+         
+         IF ( eq(cEq)%bc(iBc)%clsFlgRis .EQ. 1 ) THEN
+
+!           Weak Dirichlet BC for fluid/FSI equations
+            lBc%weakDir = .TRUE.
+            lBc%tauB    = eq(cEq)%bc(iBc)%res
+            lBc%bType   = IBSET(lBc%bType,bType_Dir)
+            lBc%bType   = IBSET(lBc%bType,bType_std)
+            lBc%bType   = IBSET(lBc%bType,bType_flat)
+
+            ALLOCATE(lBc%eDrn(nsd))
+            lBc%eDrn = 0
+
+            write(*,*), " Apply bc Dir "
+            ALLOCATE(lBc%gx(msh(iM)%fa(iFa)%nNo))
+            lBc%gx = 1._RKIND
+
+            CALL SETBCDIRWL(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+
+            DEALLOCATE(lBc%gx)
+            DEALLOCATE(lBc%eDrn)
+         ELSE 
+
+            write(*,*), " Apply bc Neu "
+            ! apply new bc here! 
+            CALL SETBCNEUL(eq(cEq)%bc(iBc), msh(iM)%fa(iFa), Yg, Dg)
+
+         END IF
+      
+      END DO
+      
+      write(*,*), " outside RIS0D_BC "
+
+      RETURN
+      END SUBROUTINE RIS0D_BC
+
+!####################################################################
+!####################################################################
+!     This subroutine computes the mean pressure and flux on the 
+!     ris surface 
+      SUBROUTINE RIS0D_STATUS(Yg, Dg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+
+      INTEGER(KIND=IKIND) iFa, iBc, iM, m, s, e, nbrIter
+      TYPE(bcType) :: lBc
+      REAL(KIND=RKIND) :: meanP = 0._RKIND
+      REAL(KIND=RKIND) :: meanFl = 0._RKIND
+      REAL(KIND=RKIND) :: tmp
+      REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
+
+      write(*,*), " inside RIS0D_STATUS " 
+
+      DO iBc=1, eq(cEq)%nBc
+         iFa = eq(cEq)%bc(iBc)%iFa
+         iM  = eq(cEq)%bc(iBc)%iM
+
+         IF (.NOT.BTEST(eq(cEq)%bc(iBc)%bType,bType_Ris0D)) CYCLE
+         
+         IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+         ALLOCATE (tmpV(maxnsd,tnNo))
+
+!        Compute mean Q and pressure difference 
+         m = 1
+         s = eq(cEq)%s + nsd 
+         e = s + m - 1
+
+         tmpV(1:m,:) = Yn(s:e,:)
+
+         tmp = msh(iM)%fa(iFa)%area
+         meanP = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+
+!     For the velocity 
+         m = nsd
+         s = eq(cEq)%s
+         e = s + m - 1
+
+         IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+         ALLOCATE (tmpV(maxnsd,tnNo))
+         tmpV(1:m,:) = Yn(s:e,:)
+
+         meanFl = Integ(msh(iM)%fa(iFa),tmpV,1,m)
+
+         write(*,*)" The average pressure is: ", meanP
+         write(*,*)" The pressure from 0D is: ", eq(cEq)%bc(iBc)%g 
+         write(*,*)" The average flow is: ", meanFl
+
+         IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+
+
+         RisnbrIter = RisnbrIter + 1
+         IF( RisnbrIter .LE. 25 ) RETURN
+
+!--- 
+!--- Update RES
+!        Update the resistance - determine the configuration 
+!     The valve is closed check if it should open
+         IF (eq(cEq)%bc(iBc)%clsFlgRis .EQ. 1) THEN 
+ !       OPENING CONDITION: Check condition on the pressure difference        
+            IF( eq(cEq)%bc(iBc)%g .LT. meanP  ) THEN 
+               eq(cEq)%bc(iBc)%clsFlgRis  = 0
+               write(*,*)"!!! -- Going from close to open "
+               RisnbrIter = 0 
+
+!            CALL restore equal velocity at the interface - mean vel at the node 
+            END iF
+         ELSE 
+!     The valve is open, check if it should close. 
+!        CLOSING CONDITION: Check existence of a backflow
+            IF( meanFl .LT. 0.) THEN 
+               eq(cEq)%bc(iBc)%clsFlgRis = 1
+               write(*,*)"!!! -- Going from open to close "
+               RisnbrIter = 0 
+            END IF
+         END IF
+
+!--- 
+
+!--- Check for the status
+      ! status = .TRUE.
+!     If the valve is closed, chech the pressure difference, 
+!     if the pressure difference is negative the valve should be open
+!     -> the status is then not admissible
+         IF (eq(cEq)%bc(iBc)%clsFlgRis .EQ. 1) THEN 
+            IF( eq(cEq)%bc(iBc)%g .LT. meanP  ) THEN 
+               write(*,*)"** Not admissible, should be open **"
+               ! status = .FALSE.
+            END IF
+         ELSE 
+!     If the valve is open, chech the flow, 
+!     if the flow is negative the valve should be closed
+!     -> the status is then not admissible
+            IF( meanFl .LT. 0.) THEN 
+               write(*,*)"** Not admissible, it should be closed **"
+               ! status = .FALSE.
+            END IF
+         END IF
+!---- 
+!---- 
+
+      END DO
+
+
+      write(*,*), " outside RIS0D_STATUS "  
+
+      RETURN
+      END SUBROUTINE RIS0D_STATUS

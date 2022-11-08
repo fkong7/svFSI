@@ -240,6 +240,9 @@
       DO iBc=1, eq(cEq)%nBc
          iFa = eq(cEq)%bc(iBc)%iFa
          iM  = eq(cEq)%bc(iBc)%iM
+
+         IF (BTEST(eq(cEq)%bc(iBc)%bType,bType_Ris0D)) CYCLE
+         
          IF (BTEST(eq(cEq)%bc(iBc)%bType,bType_Neu)) THEN
             CALL SETBCNEUL(eq(cEq)%bc(iBc), msh(iM)%fa(iFa), Yg, Dg)
          ELSE IF (BTEST(eq(cEq)%bc(iBc)%bType,bType_trac)) THEN

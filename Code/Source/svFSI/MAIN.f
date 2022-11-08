@@ -153,6 +153,7 @@
 !        Apply weakly applied Dirichlet BCs
             CALL SETBCDIRW(Yg, Dg)
             IF (risFlag)  CALL RIS_RESBC(Yg, Dg)
+            IF (ris0DFlag)  CALL RIS0D_BC(Yg, Dg)
 
 !        Apply contact model and add its contribution to residue
             IF (iCntct) CALL CONTACTFORCES(Dg)
@@ -293,7 +294,16 @@
             CALL RIS_STATUS
             write(*,*)" The status is ", RIS%status
             IF( RIS%nbrIter .LE. 6) GOTO 11
-C             IF( RIS%nbrIter .EQ. 0) GOTO 11
+!             IF( RIS%nbrIter .EQ. 0) GOTO 11
+
+         END IF
+
+         IF ((cEq.EQ.1) .AND. ris0DFlag ) THEN 
+            CALL RIS0D_STATUS
+            print*, " RisnbrIter = " , RisnbrIter
+
+!          Redo the fluid iteration without updating the time 
+           IF( RisnbrIter .LE. 2) GOTO 11
 
          END IF
 

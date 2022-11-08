@@ -150,6 +150,8 @@
          LOGICAL :: flwP = .FALSE.
 !        Robin: apply only in normal direction
          LOGICAL :: rbnN = .FALSE.
+!        Strong/Weak application of Dirichlet BC
+         INTEGER(KIND=IKIND) :: clsFlgRis = 0
 !        Pre/Res/Flat/Para... boundary types
          INTEGER(KIND=IKIND) :: bType = 0
 !        Pointer to coupledBC%face
@@ -166,6 +168,8 @@
          REAL(KIND=RKIND) :: g = 0._RKIND
 !        Neu: defined resistance
          REAL(KIND=RKIND) :: r = 0._RKIND
+!        Resistance value for RIS-0D coupling 
+         REAL(KIND=RKIND) :: res = 0._RKIND
 !        Robin: stiffness
          REAL(KIND=RKIND) :: k = 0._RKIND
 !        Robin: damping
@@ -883,6 +887,8 @@
       LOGICAL bin2VTK
 !     Whether any Immersed Boundary (IB) treatment is required
       LOGICAL risFlag
+!
+      LOGICAL ris0DFlag
 
 !     INTEGER(KIND=IKIND) VARIABLES
 !     Current domain
@@ -927,6 +933,10 @@
       INTEGER(KIND=IKIND) rsTS
 !     Number of stress values to be stored
       INTEGER(KIND=IKIND) nsymd
+!     Nbr of iterations 
+      INTEGER(KIND=IKIND) :: RisnbrIter = 0
+
+
 
 !     REAL VARIABLES
 !     Time step size
