@@ -804,7 +804,7 @@
 
 !     Loop over all the elements of the face and construct residue and
 !     tangent matrices
-      DO e=1, nEl
+      DO e = 1, nEl
          Ec    = lFa%gE(e)
          cDmn  = DOMAIN(lM, cEq, Ec)
          cPhys = eq(cEq)%dmn(cDmn)%phys

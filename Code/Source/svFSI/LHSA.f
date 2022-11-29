@@ -43,7 +43,7 @@
 
       LOGICAL flag
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic
+     2   mnnzeic, iMM, iMS
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
@@ -70,6 +70,32 @@
             END DO
          END DO
       END DO
+
+
+!     Add contributions if nl contact is actiove 
+      IF(flagNLCONT) THEN 
+
+         iMS = 1
+         iMM = 2
+
+         DO e = 1, SIZE(volContElm,1)
+            
+            DO a=1, msh(iMS)%eNoN
+
+C                write(*,*)" Adding connection: ", volContElm(e,iMS), " ",
+C      2            volContElm(e,iMM) 
+             
+               rowN = msh(iMS)%IEN(a,volContElm(e,iMS))
+               DO b=1, msh(iMM)%eNoN
+                  colN = msh(iMM)%IEN(b,volContElm(e,iMM))
+                  CALL ADDCOL(rowN, colN)
+                  CALL ADDCOL(colN, rowN)
+               END DO
+            END DO
+
+         END DO
+
+      END IF
 
 !     Treat shells with triangular elements here
       DO iM=1, nMsh

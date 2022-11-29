@@ -36,12 +36,13 @@
 !
 !--------------------------------------------------------------------
 
-      SUBROUTINE REMESHRESTART(timeP)
+      SUBROUTINE REMESHRESTART(timeP,Dg)
       USE COMMOD
       USE UTILMOD
       USE ALLFUN
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: timeP(3)
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo)
 
       TYPE(mshType)  :: tMsh
 
@@ -90,6 +91,9 @@
 
       gtnNo = 0
       lDof = 3*tDof
+
+!     We do remesh only in the fluid for the moment       
+C       nMsh = 1
       DO iM=1, nMsh
          IF (rmsh%flag(iM)) THEN
             std = " "
@@ -153,7 +157,7 @@
                IF (nsd .EQ. 2) THEN
                   err = "Remesher not yet developed for 2D objects"
                ELSE
-                  CALL REMESHER_3D(iM, tMsh%fa(1), tMsh)
+                  CALL REMESHER_3D(iM, tMsh%fa(1), tMsh, Dg)
                END IF
 
                ALLOCATE(gnD(lDof,tMsh%gnNo))
@@ -463,7 +467,7 @@
 
       END SUBROUTINE INTMSHSRF
 !--------------------------------------------------------------------
-      SUBROUTINE REMESHER_3D(iM, lFa, lM)
+      SUBROUTINE REMESHER_3D(iM, lFa, lM, Dg)
       USE COMMOD
       USE UTILMOD
       USE ALLFUN
@@ -471,10 +475,40 @@
       INTEGER(KIND=IKIND), INTENT(IN) :: iM
       TYPE(faceType), INTENT(INOUT) :: lFa
       TYPE(mshType),  INTENT(INOUT) :: lM
+      REAL(KIND=RKIND), INTENT(IN) :: Dg(tDof,tnNo)
 
       INTEGER(KIND=IKIND) :: e, i, Ac, fid, iOK
       REAL(KIND=RKIND) :: rparams(3)
       TYPE(fileType) :: fTmp
+
+!     Necessary to create a mesh with a hole, inside the second mesh
+!     The first mesh is fluid, second solid 
+      INTEGER(KIND=IKIND) :: nHls, a, iFa, j, iMl, iBc, cnt
+      REAL(KIND=RKIND) :: HlsLst(3), xm, ym, zm
+
+!     Creating hole list for ball into a fluid example only
+      cnt = 0
+      nHls = 1
+      i = eq(cEq)%s
+      write(*,*)" eq(cEq)%s = ", eq(cEq)%s
+      DO e = 1, msh(2)%nEl
+         DO a=1, msh(2)%eNoN
+            Ac = msh(2)%IEN(a,e)
+            xm = xm + x(1,Ac) + Dg(i,Ac)  
+            ym = ym + x(2,Ac) + Dg(i+1,Ac)  
+            zm = zm + x(3,Ac) + Dg(i+2,Ac) 
+            cnt = cnt + 1 
+         END DO
+      END DO
+      xm = xm / cnt
+      ym = ym / cnt
+      zm = zm / cnt
+
+      print*, " y coord hole ", ym
+      HlsLst(1) = xm
+      HlsLst(2) = ym 
+      HlsLst(3) = zm
+!     End part related to holes 
 
       rparams(1) = rmsh%maxRadRatio
       rparams(2) = rmsh%minDihedAng
@@ -482,7 +516,7 @@
       iOK = 0
       IF (rmsh%method .EQ. RMSH_TETGEN) THEN
          CALL remesh3d_tetgen(lFa%nNo, lFa%nEl, lFa%x, lFa%IEN,
-     2      rparams, iOK)
+     2      rparams, iOK,  nHls, HlsLst)
          IF (iOK .LT. 0)
      2      err = "Fatal! TetGen returned with error. Check log"
       ELSE

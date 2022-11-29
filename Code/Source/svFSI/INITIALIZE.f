@@ -185,6 +185,10 @@
 !     Initialize tensor operations
       CALL TEN_INIT(nsd)
 
+!     Check nodes that will be in contcat in the future. To be removed 
+!     once we will consider a unstready pattern 
+      IF(flagNLCONT) CALL EVAL_CNT_PATTERN
+
       std = " Constructing stiffness matrix sparse structure"
       CALL LHSA(nnz)
 
@@ -644,6 +648,10 @@
       IF (ALLOCATED(idMap))    DEALLOCATE(idMap)
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
+
+      IF (ALLOCATED(faceContElm))  DEALLOCATE(faceContElm)
+      IF (ALLOCATED(volContElm))   DEALLOCATE(volContElm)
+      IF (ALLOCATED(intPointCnt))  DEALLOCATE(intPointCnt)
 
       IF (ALLOCATED(Ao))       DEALLOCATE(Ao)
       IF (ALLOCATED(An))       DEALLOCATE(An)

@@ -145,6 +145,7 @@ set(FSRCS TYPEMOD.f
          MAIN.f
          MATMODELS.f
          MESH.f
+         NLCONTACT.f
          NN.f
          NURBS.f
          OUTPUT.f

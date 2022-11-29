@@ -61,7 +61,7 @@
    extern"C"
    {
       void remesh3d_tetgen_(const int* nPoints, const int* nFacets, const double* pointList, \
-                       const int* facetList, const double* params, int* pOK)
+                       const int* facetList, const double* params, int* pOK, const int* nHoles, const double* holesList)
       {
          tetgenio in, out;
          tetgenio::facet *f;
@@ -103,6 +103,22 @@
             }
             in.facetmarkerlist[i] = 0;
          }
+
+         std::cout << " Using option <number of volume holes> " << "\n";
+         in.numberofholes = *nHoles;
+         in.holelist = new double[3*in.numberofholes];
+         for (int i=0; i < in.numberofholes; i++)
+         {
+            for (int j=0; j < 3; j++) {
+               in.holelist[3*i+j] = *holesList;
+               ++holesList;
+            }
+         }
+            
+         std::cout << " in.holelist[0] " << in.holelist[0] << std::endl; 
+         std::cout << " in.holelist[1] " << in.holelist[1] << std::endl; 
+         std::cout << " in.holelist[2] " << in.holelist[2] << std::endl; 
+
 
          options.maxRadRatio = *params;
          options.minDihedAng = *(++params);

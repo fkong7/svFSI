@@ -121,6 +121,9 @@
                CALL SETBCDIR(An, Yn, Dn)
             END IF
 
+!        Call to contact detection and pattern changes 
+!            CALL EVAL_CNT_PATTERN(Dn)
+
 !        Initiator step (quantities at n+am, n+af)
             CALL PICI(Ag, Yg, Dg)
             IF (ALLOCATED(Rd)) THEN
@@ -133,7 +136,9 @@
 
 !        Compute body forces. If phys is shells or CMM (init), apply
 !        contribution from body forces (pressure) to residue
+C             IF( cTS .LE. 4 ) THEN 
             CALL SETBF(Dg)
+C             END IF
 
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
@@ -147,6 +152,7 @@
 
 !        If linear contact, call compute linear contact force      
             IF( flagLCONT ) CALL LCONTACTFORCES(Yg,Dg)
+            IF( flagNLCONT ) CALL NL_CONTACTFORCES(Yg,Dg)
 
 !        Apply CMM BC conditions
             IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)
@@ -283,7 +289,7 @@
 !     End of outer loop
 
       IF (resetSim) THEN
-         CALL REMESHRESTART(timeP)
+         CALL REMESHRESTART(timeP,Dg)
          DEALLOCATE(Ag, Yg, Dg, incL, res)
          IF (ALLOCATED(tls)) THEN
             DEALLOCATE(tls%ltg, tls%W, tls%R)

@@ -439,6 +439,11 @@
                   END DO
                END DO
 
+               write(*,*)" quadn poitn ", g 
+
+               write(*,*)" ux = ", ux 
+               write(*,*)" nV = ", nV 
+
                p = 0._RKIND
                DO a=1, fsP%eNoN
                   p = p + fsP%N(a,g)*pl(a)
@@ -465,6 +470,9 @@
                   ndTdn = ndTdn + Tdn(i)*nV(i)
                END DO
                taue = Tdn - ndTdn*nV
+
+               
+               write(*,*)" wss at wp ", taue
 
                IF (outGrp .EQ. outGrp_WSS) THEN
                   lRes(1:nsd) = -taue
@@ -503,7 +511,193 @@
 
       RETURN
       END SUBROUTINE BPOST
-!####################################################################
+C !####################################################################
+C !--------------------------------------------------------------------
+C !     General purpose routine for post processing outputs at the
+C !     faces. Currently this calculates WSS, which is t.n - (n.t.n)n
+C !     Here t is stress tensor: t = \mu (grad(u) + grad(u)^T)
+C       SUBROUTINE BPOST(lM, res, lY, lD, outGrp)
+C       USE COMMOD
+C       USE ALLFUN
+C       IMPLICIT NONE
+C       TYPE(mshType), INTENT(INOUT) :: lM
+C       REAL(KIND=RKIND), INTENT(OUT) :: res(maxnsd,lM%nNo)
+C       REAL(KIND=RKIND), INTENT(IN) :: lY(tDof,tnNo), lD(tDof,tnNo)
+C       INTEGER(KIND=IKIND), INTENT(IN) :: outGrp
+
+C       LOGICAL FSIeq
+C       INTEGER(KIND=IKIND) a, Ac, e, Ec, i, j, iEq, iFa, eNoN, g
+C       REAL(KIND=RKIND) Tdn(nsd), ndTdn, taue(nsd), ux(nsd,nsd), mu, w,
+C      2   nV(nsd), Jac, ks(nsd,nsd), lRes(maxnsd), p, gam, mu_s
+C       TYPE(fsType) :: fsP
+
+C       REAL(KIND=RKIND), ALLOCATABLE :: sA(:), sF(:,:), gnV(:,:),
+C      2   lnV(:,:), xl(:,:), ul(:,:), pl(:), N(:), Nx(:,:)
+
+C       IF (outGrp.NE.outGrp_WSS .AND. outGrp.NE.outGrp_trac) err =
+C      2   "Invalid output group. Correction is required in BPOST"
+
+C       iEq   = 1
+C       eNoN  = lM%eNoN
+C       FSIeq = .FALSE.
+C       IF (eq(iEq)%phys .EQ. phys_FSI) FSIeq = .TRUE.
+
+C       ALLOCATE (sA(tnNo), sF(maxnsd,tnNo), xl(nsd,eNoN), ul(nsd,eNoN),
+C      2   gnV(nsd,tnNo), lnV(nsd,eNoN), N(eNoN), Nx(nsd,eNoN))
+C       sA   = 0._RKIND
+C       sF   = 0._RKIND
+C       gnV  = 0._RKIND
+C       lRes = 0._RKIND
+
+C !     First creating the norm field
+C       DO iFa=1, lM%nFa
+C          DO a=1, lM%fa(iFa)%nNo
+C             Ac        = lM%fa(iFa)%gN(a)
+C             gnV(:,Ac) = lM%fa(iFa)%nV(:,a)
+C          END DO
+C       END DO
+
+C !     Update pressure function spaces
+C       IF (lM%nFs .EQ. 1) THEN
+C          fsP%nG    = lM%fs(1)%nG
+C          fsP%eType = lM%fs(1)%eType
+C          fsP%eNoN  = lM%fs(1)%eNoN
+C          CALL ALLOCFS(fsP, nsd)
+C          fsP%w  = lM%fs(1)%w
+C          fsP%xi = lM%fs(1)%xi
+C          fsP%N  = lM%fs(1)%N
+C          fsP%Nx = lM%fs(1)%Nx
+C       ELSE
+C          fsP%nG    = lM%fs(1)%nG
+C          fsP%eType = lM%fs(2)%eType
+C          fsP%eNoN  = lM%fs(2)%eNoN
+C          CALL ALLOCFS(fsP, nsd)
+C          fsP%xi = lM%fs(1)%xi
+C          DO g=1, fsP%nG
+C             CALL GETGNN(nsd, fsP%eType, fsP%eNoN, fsP%xi(:,g),
+C      2         fsP%N(:,g), fsP%Nx(:,:,g))
+C          END DO
+C       END IF
+C       ALLOCATE(pl(fsP%eNoN))
+
+C       DO iFa=1, lM%nFa
+C          DO e=1, lM%fa(iFa)%nEl
+C             Ec = lM%fa(iFa)%gE(e)
+C             cDmn = DOMAIN(lM, iEq, Ec)
+C             IF (cDmn .EQ. 0) CYCLE
+C             IF (lM%eType .EQ. eType_NRB) CALL NRBNNX(lM, Ec)
+
+C !     Finding the norm for all the nodes of this element, including
+C !     those that don't belong to this face, which will be inerpolated
+C !     from the nodes of the face
+C             nV = 0._RKIND
+C             DO a=1, eNoN
+C                Ac       = lM%IEN(a,Ec)
+C                lnV(:,a) = gnV(:,Ac)
+C                nV       = nV + lnV(:,a)
+C                xl(:,a)  = x(:,Ac)
+C                IF (FSIeq) THEN
+C                   xl(:,a) = xl(:,a)      + lD(nsd+2:2*nsd+1,Ac)
+C                   ul(:,a) = lY(1:nsd,Ac) - lY(nsd+2:2*nsd+1,Ac)
+C                ELSE
+C                   ul(:,a) = lY(1:nsd,Ac)
+C                END IF
+C             END DO
+
+C             DO a=1, fsP%eNoN
+C                Ac    = lM%IEN(a,Ec)
+C                pl(a) = lY(nsd+1,Ac)
+C             END DO
+
+C             nV = nV/lM%fa(iFa)%eNoN
+C             DO a=1, eNoN
+C                IF (ISZERO(NORM(lnV(:,a)))) lnV(:,a) = nV
+C             END DO
+C             DO g=1, lM%nG
+C                IF (g.EQ.1 .OR. .NOT.lM%lShpF) THEN
+C                   CALL GNN(eNoN, nsd, lM%Nx(:,:,g), xl, Nx, Jac, ks)
+C                END IF
+C                w = lM%w(g)*Jac
+C                N = lM%N(:,g)
+
+C !     Calculating ux = grad(u) and nV at a Gauss point
+C                ux = 0._RKIND
+C                nV = 0._RKIND
+C                DO a=1, eNoN
+C                   nV = nV + N(a)*lnV(:,a)
+C                   DO i=1, nsd
+C                      DO j=1, nsd
+C                         ux(i,j) = ux(i,j) + Nx(i,a)*ul(j,a)
+C                      END DO
+C                   END DO
+C                END DO
+
+C                p = 0._RKIND
+C                DO a=1, fsP%eNoN
+C                   p = p + fsP%N(a,g)*pl(a)
+C                END DO
+
+C !              Shear rate, gam := (2*e_ij*e_ij)^0.5
+C                gam = 0._RKIND
+C                DO i=1, nsd
+C                   DO j=1, nsd
+C                      gam = gam + (ux(i,j)+ux(j,i))*(ux(i,j)+ux(j,i))
+C                   END DO
+C                END DO
+C                gam = SQRT(0.5_RKIND*gam)
+C !              Compute viscosity
+C                CALL GETVISCOSITY(eq(iEq)%dmn(cDmn), gam, mu, mu_s, mu_s)
+
+C !     Now finding grad(u).n and n.grad(u).n
+C                Tdn   = 0._RKIND
+C                ndTdn = 0._RKIND
+C                DO i=1,nsd
+C                   DO j=1, nsd
+C                      Tdn(i) = Tdn(i) + mu*(ux(i,j) + ux(j,i))*nV(j)
+C                   END DO
+C                   ndTdn = ndTdn + Tdn(i)*nV(i)
+C                END DO
+C                taue = Tdn - ndTdn*nV
+
+C                IF (outGrp .EQ. outGrp_WSS) THEN
+C                   lRes(1:nsd) = -taue
+C                ELSE IF (outGrp .EQ. outGrp_trac) THEN
+C                   lRes(1:nsd) = p*nV - Tdn
+C                END IF
+
+C !     Mapping Tau into the nodes by assembling it into a local vector
+C                DO a=1, eNoN
+C                   Ac       = lM%IEN(a,Ec)
+C                   sA(Ac)   = sA(Ac)   + w*N(a)
+C                   sF(:,Ac) = sF(:,Ac) + w*N(a)*lRes
+C                END DO
+C             END DO
+C          END DO
+C       END DO
+
+C       CALL COMMU(sF)
+C       CALL COMMU(sA)
+
+C       DO iFa=1, lM%nFa
+C          DO a=1, lM%fa(iFa)%nNo
+C             Ac = lM%fa(iFa)%gN(a)
+C             IF (.NOT.ISZERO(sA(Ac))) THEN
+C                sF(:,Ac) = sF(:,Ac)/sA(Ac)
+C                sA(Ac)   = 1._RKIND
+C             END IF
+C          END DO
+C       END DO
+
+C       res = 0._RKIND
+C       DO a=1, lM%nNo
+C          Ac       = lM%gN(a)
+C          res(:,a) = sF(:,Ac)
+C       END DO
+
+C       RETURN
+C       END SUBROUTINE BPOST
+C !####################################################################
+
 !     Routine for post processing stress tensor
       SUBROUTINE TPOST(lM, m, res, resE, lD, lY, iEq, outGrp)
       USE COMMOD

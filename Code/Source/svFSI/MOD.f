@@ -853,7 +853,9 @@
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
 !     Flag for linear contact with a wall 
-      LOGICAL :: flagLCONT = .FALSE. 
+      LOGICAL :: flagLCONT = .TRUE. 
+!     Flag for non linear contact with a wall 
+      LOGICAL :: flagNLCONT = .FALSE. 
 
 !     INTEGER(KIND=IKIND) VARIABLES
 !     Current domain
@@ -933,6 +935,17 @@
 
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)
       INTEGER, ALLOCATABLE :: iblank(:)
+
+!     Contact temporary data structure, id face of the opposite mesh 
+!     that they are in contact (local in face ordering)  
+      INTEGER(KIND=IKIND), ALLOCATABLE :: faceContElm(:)      
+!     Contact temporary data structure, id volumetric element, (local 
+!     in mesh ordering) - id of the element of the target mesh that they are in contact with 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: volContElm(:,:)  
+!     Contact temporary data structure, coordinates of the intersection 
+!     point in the master, with the ray lunched from the slave
+      REAL(KIND=RKIND), ALLOCATABLE :: intPointCnt(:,:)  
+
 
 !     Old time derivative of variables (acceleration)
       REAL(KIND=RKIND), ALLOCATABLE :: Ao(:,:)

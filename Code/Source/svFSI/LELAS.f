@@ -92,7 +92,7 @@
             pSl = 0._RKIND
             IF (nsd .EQ. 3) THEN
                CALL LELAS3D(eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl, lR,
-     2            lK)
+     2            lK, Jac)
 
             ELSE IF (nsd .EQ. 2) THEN
                CALL LELAS2D(eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl, lR,
@@ -127,7 +127,7 @@
       RETURN
       END SUBROUTINE CONSTRUCT_LELAS
 !####################################################################
-      PURE SUBROUTINE LELAS3D (eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl,
+      SUBROUTINE LELAS3D (eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl,
      2   lR, lK)
       USE COMMOD
       IMPLICIT NONE

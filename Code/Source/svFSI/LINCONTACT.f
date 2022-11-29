@@ -71,23 +71,19 @@
       TYPE(faceType), INTENT(IN) :: lFa
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-
-
-
-
-
       INTEGER(KIND=IKIND) a, e, g, Ac, Ec, iM, cPhys, eNoN, b
       REAL(KIND=RKIND) w, h, nV(nsd), y(tDof), Jac, hc(nsd), gap, 
-     2   gamma, yw, afu
+     2   gamma, yw, afu, ys
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
       REAL(KIND=RKIND), ALLOCATABLE :: N(:), yl(:,:), lR(:,:),
      2   lK(:,:,:), xl(:,:), dl(:,:)
 
-      gap = 0.1_RKIND
+      gap = 0.02_RKIND
       yw = 0._RKIND
+C       yw = 0._RKIND
       hc = 0._RKIND
-      gamma = 1.e6
+      gamma = 1.e5 !1.e4
 
 
       iM   = lFa%iM
@@ -100,7 +96,15 @@
 !        containing the displacement 
          afu   = eq(cEq)%af*eq(cEq)%beta*dt*dt
 
-         IF (cPhys .NE. phys_struct) RETURN
+C          IF (cPhys .NE. phys_struct) RETURN 
+         IF ((cPhys .EQ. phys_struct) .OR. 
+     2             (cPhys .EQ. phys_ustruct)) THEN 
+            CONTINUE 
+         ELSE 
+            RETURN 
+         END IF
+
+C          IF (cPhys .EQ. phys_fluid) RETURN 
 
          ALLOCATE(ptr(eNoN), N(eNoN), yl(tDof,eNoN), xl(nsd,eNoN), 
      2      lR(dof,eNoN), lK(dof*dof,eNoN,eNoN), dl(tDof,eNoN))
@@ -114,15 +118,15 @@
             dl(:,a) = Dg(:,Ac)
          END DO
 
-         IF( e .EQ. 1) THEN 
-            write(*,*)" dof = ", dof
-            write(*,*)" tDof = ", tDof
-            write(*,*)" xl = ", xl(2,1)
-            write(*,*)" dl = ", dl(2,1)
-            write(*,*)" xl current = ", xl(2,1) + dl(2,1)
-            write(*,*)" yl = ", yl(2,1)
-            write(*,*)""//""
-         END IF
+C          IF( e .EQ. 1) THEN 
+C             write(*,*)" dof = ", dof
+C             write(*,*)" tDof = ", tDof
+C             write(*,*)" xl = ", xl(2,1)
+C             write(*,*)" dl = ", dl(2,1)
+C             write(*,*)" xl current = ", xl(2,1) + dl(2,1)
+C             write(*,*)" yl = ", yl(2,1)
+C             write(*,*)""//""
+C          END IF
 
 !        Updating the shape functions, if neccessary
          IF (lFa%eType .EQ. eType_NRB) CALL NRBNNXB(msh(iM), lFa, e)
@@ -135,10 +139,11 @@
             N   = lFa%N(:,g)
 
             y = 0._RKIND
+            ys = 0._RKIND
             DO a=1, eNoN
-               y = y + N(a)*yl(:,a)
+               y  = y + N(a)*yl(:,a)
+               ys = ys + N(a)*(xl(2,a) + dl(2,a))
             END DO
-
 
             !CALL BFLUID(eNoN, w, N, y, h, nV, lR, lK)
 
@@ -181,19 +186,28 @@ C                END DO
 C             ELSE
                DO a=1, eNoN
 
-                  hc(2) = xl(2,a) + dl(2,a) - ( yw + gap) 
-                  IF( e .EQ. 1) write(*,*)" gap is ", hc(2)
+C                   hc(2) = xl(2,a) + dl(2,a) - ( yw + gap) 
+                  hc(2) = ys - ( yw + gap) 
 
-                  IF( hc(2) .LE. 0._RKIND ) THEN 
+C                   write(*,*)"xl(2,a) =  ", xl(2,a)
+C                   write(*,*)"dl(2,a) =  ", dl(2,a)
+C                   write(*,*)" ys is ", ys
+C                   write(*,*)" gap is ", hc(2)
 
-                     write(*,*)" **** CONTACT ACTIVE **** "
+                  IF( hc(2) .LT. 0._RKIND ) THEN 
+
+C                      write(*,*)" **** CONTACT ACTIVE **** "
+C                      write(*,*)"xl(2,a) =  ", xl(2,a)
+C                      write(*,*)"dl(2,a) =  ", dl(2,a)
+C                      write(*,*)" ys is ", ys
+C                      write(*,*)" gap is ", hc(2)
 
                      lR(1,a) = lR(1,a) + gamma*w*N(a)*hc(1)
                      lR(2,a) = lR(2,a) + gamma*w*N(a)*hc(2)
                      lR(3,a) = lR(3,a) + gamma*w*N(a)*hc(3)
                      DO b=1, eNoN
 C                         lK(1,a,b)  = lK(1,a,b)  - gamma*w*afu*N(a)*N(b)
-                        lK(5,a,b)  = lK(5,a,b) - gamma*w*afu*N(a)*N(b)
+                        lK(5,a,b)  = lK(5,a,b) + gamma*w*afu*N(a)*N(b)
 C                         lK(9,a,b)  = lK(9,a,b)  - gamma*w*afu*N(a)*N(b)
                      END DO
                   END IF
