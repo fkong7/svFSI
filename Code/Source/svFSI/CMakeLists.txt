@@ -158,6 +158,7 @@ set(FSRCS TYPEMOD.f
          STOKES.f
          STRUCT.f
          TXT.f
+         URIS.f
          USTRUCT.f
          VTKXML.f)
 

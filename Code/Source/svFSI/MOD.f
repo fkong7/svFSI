@@ -510,6 +510,8 @@
          LOGICAL :: lShl = .FALSE.
 !        Whether the mesh is fibers (Purkinje)
          LOGICAL :: lFib = .FALSE.
+!        Whether the mesh is shell
+C          LOGICAL :: lRis = .FALSE. ! TO REMOVE
 !        Element type
          INTEGER(KIND=IKIND) :: eType = eType_NA
 !        Number of nodes (control points) in a single element
@@ -636,6 +638,8 @@
          INTEGER(KIND=IKIND) :: nOutput = 0
 !        IB: Number of possible outputs
          INTEGER(KIND=IKIND) :: nOutIB = 0
+!        URIS: Number of possible outputs
+         INTEGER(KIND=IKIND) :: nOutURIS = 0
 !        Number of domains
          INTEGER(KIND=IKIND) :: nDmn = 0
 !        IB: Number of immersed domains
@@ -684,6 +688,8 @@
          TYPE(outputType), ALLOCATABLE :: output(:)
 !        IB: Outputs
          TYPE(outputType), ALLOCATABLE :: outIB(:)
+!        URIS: Outputs
+         TYPE(outputType), ALLOCATABLE :: outURIS(:)
 !        Body force associated with this equation
          TYPE(bfType), ALLOCATABLE :: bf(:)
       END TYPE eqType
@@ -843,6 +849,42 @@
 !        Status RIS interface 
          LOGICAL :: status = .TRUE.     
       END TYPE risFace
+
+!     Unfitted Resistive Immersed surface data type
+      TYPE urisType
+!        Whether any file being saved
+         LOGICAL :: savedOnce = .FALSE.
+C !        IB method
+C          INTEGER(KIND=IKIND) :: mthd = ibMthd_NA
+C !        IB coupling
+C          INTEGER(KIND=IKIND) :: cpld = ibCpld_NA
+C !        IB interpolation method
+C          INTEGER(KIND=IKIND) :: intrp = ibIntrp_NA
+C !        Current IB domain ID
+C          INTEGER(KIND=IKIND) :: cDmn
+C !        Current equation
+C          INTEGER(KIND=IKIND) :: cEq = 0
+!        Total number of IB nodes
+         INTEGER(KIND=IKIND) :: tnNo
+!        Number of IB meshes
+         INTEGER(KIND=IKIND) :: nMsh
+
+!        URIS Domain ID
+         INTEGER(KIND=IKIND), ALLOCATABLE :: dmnID(:)
+
+!        Position coordinates
+         REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
+!        Current position coordinates
+         REAL(KIND=RKIND), ALLOCATABLE :: xCu(:,:)
+C !        Displacement (new)
+         REAL(KIND=RKIND), ALLOCATABLE :: Yd(:,:)
+
+!        DERIVED TYPE VARIABLES
+!        IB meshes
+         TYPE(mshType), ALLOCATABLE :: msh(:)
+C !        IB communicator
+C          TYPE(ibCommType) :: cm
+      END TYPE urisType
 !--------------------------------------------------------------------
 !     All the types are defined, time to use them
 
@@ -885,10 +927,16 @@
       LOGICAL ibFlag
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
-!     Whether any Immersed Boundary (IB) treatment is required
+!     Whether any RIS surface is considered 
       LOGICAL risFlag
-!
+!     Whether any one-sided RIS surface with 0D coupling is considered 
       LOGICAL ris0DFlag
+!     Whether any URIS surface is considered
+      LOGICAL :: urisFlag = .FALSE.  
+!     Whether the URIS surface is active
+      LOGICAL :: urisActFlag = .FALSE.  
+      INTEGER(KIND=IKIND) :: cntURIS = 0
+
 
 !     INTEGER(KIND=IKIND) VARIABLES
 !     Current domain
@@ -1047,5 +1095,7 @@
       TYPE(tlsType), ALLOCATABLE :: tls
 !     risFace object
       TYPE(risFace), ALLOCATABLE :: RIS  
+!     unfitted RIS object
+      TYPE(urisType), ALLOCATABLE :: uris  
 
       END MODULE COMMOD

@@ -42,6 +42,11 @@
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo),
      2   Dg(tDof,tnNo)
 
+C       IF(lM%lRis) THEN 
+C          write(*,*)" skipping uris mesh "
+C          RETURN
+C       END IF 
+         
       SELECT CASE (eq(cEq)%phys)
       CASE (phys_fluid)
          CALL CONSTRUCT_FLUID(lM, Ag, Yg)

@@ -47,7 +47,8 @@
       CHARACTER, PARAMETER :: dSym(3) = (/"X","Y","Z"/)
 
       LOGICAL :: flag
-      INTEGER(KIND=IKIND) :: i, j, iM, iFa, a, b, Ac, e, lDof, lnNo
+      INTEGER(KIND=IKIND) :: i, j, iM, iFa, a, b, Ac, e, lDof, lnNo, 
+     2                       nMshAux
       REAL(KIND=RKIND) :: maxX(nsd), minX(nsd), fibN(nsd), rtmp
       CHARACTER(LEN=stdL) :: ctmp, fExt
       TYPE(listType), POINTER :: lPtr, lPM
@@ -173,6 +174,15 @@ c               END IF
 !     Examining the existance of a RIS surface and setting %risMap.
 !     Reseting gtnNo and recounting nodes that are not duplicated
       CALL SETRISPROJECTOR(list)
+
+
+C !     Modifying the nubr of meshes, so that the uris surfaces are not 
+C !     used to compute tot nbt unknown, etc...
+C       write(*,*)"urisFlag ", urisFlag
+C       IF(urisFlag) THEN
+C          nMsh = nMsh - nMshAux
+C          std = " Number of meshes: "//nMsh
+C       END IF 
 
 !     Examining the existance of projection faces and setting %gN.
 !     Reseting gtnNo and recounting nodes that are not duplicated

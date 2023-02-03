@@ -48,6 +48,10 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
       REAL(KIND=RKIND), ALLOCATABLE :: Ag(:,:), Yg(:,:), Dg(:,:), res(:)
 
+      REAL(KIND=RKIND) v1(3), v2(3), v3(3), v4(3), p(3), V(3,2)
+      REAL(KIND=RKIND)  v41(3), vp1(3), N(3), dotV4, dotP
+      INTEGER(KIND=IKIND) same 
+
       IF (IKIND.NE.LSIP .OR. RKIND.NE.LSRP) THEN
          STOP "Incompatible datatype precision between solver and FSILS"
       END IF
@@ -272,16 +276,6 @@
 
          IF (ibFlag) CALL IB_OUTCPUT()
 
-!     Exiting outer loop if l1
-         IF (l1) EXIT
-
-!     Solution is stored here before replacing it at next time step
-         Ao = An
-         Yo = Yn
-         IF (dFlag) Do = Dn
-         cplBC%xo = cplBC%xn
-
-
 ! ---- Here we probably have to update the ris resistance value
 ! ---- If the state has to change, we recompute this time step GOTO 1
 ! ---- Control where if the time and the new has changed! 
@@ -306,6 +300,43 @@
            IF( RisnbrIter .LE. 2) GOTO 11
 
          END IF
+
+!        Part related to unfitted RIS
+!        If the valve is active, look at the pressure difference 
+         write(*,*)" cEq = ", cEq
+         IF(urisFlag) THEN 
+
+            write(*,*)" urisActFlag = ", urisActFlag
+
+C             write(*,*)" entering mean quant "
+C             IF( urisActFlag ) THEN 
+C                cntURIS = cntURIS + 1
+C                CALL URIS_MEANP 
+C                IF( (cTS.GE.2) .AND. (cntURIS .LT. 7)) GOTO 11
+C             ELSE 
+C                cntURIS = cntURIS + 1
+C                CALL URIS_MEANV 
+C                IF( cTS.GE.2 .AND. cntURIS .LT. 7) GOTO 11
+C             END IF
+
+
+            IF (mvMsh) THEN 
+               write(*,*)" entering mvMsh"
+               CALL URIS_UpdateDisp !(Do,Dn)
+C             write(*,*)" uris%Yd(:,nd)= ", uris%Yd
+               CALL URIS_WRITEVTUS(uris%Yd)
+            END IF
+         END IF
+!---     end RIS/URIS stuff 
+
+
+!     Solution is stored here before replacing it at next time step
+         Ao = An
+         Yo = Yn
+         IF (dFlag) Do = Dn
+         cplBC%xo = cplBC%xn
+!     Exiting outer loop if l1
+         IF (l1) EXIT
 
 
       END DO

@@ -94,6 +94,8 @@
          cmmInit      = .FALSE.
          cmmVarWall   = .FALSE.
          shlEq        = .FALSE.
+         urisFlag     = .FALSE.
+         urisActFlag  = .FALSE.
          pstEq        = .FALSE.
          sstEq        = .FALSE.
          ibFlag       = .FALSE.
@@ -219,6 +221,13 @@
          ALLOCATE(ib)
          CALL IB_READMSH(list)
          CALL IB_READOPTS(list)
+      END IF
+
+      i = list%srch("Add URIS mesh")
+      IF (i .GT. 0) THEN
+         urisFlag = .TRUE.
+         ALLOCATE(uris)
+         CALL URIS_READMSH(list)
       END IF
 
 !--------------------------------------------------------------------

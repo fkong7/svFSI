@@ -168,7 +168,7 @@
       END IF
 
 !     Initialize shell eIEN data structure. Used later in LHSA.
-      IF (shlEq) THEN
+      IF (shlEq.OR.urisActFlag) THEN
          DO iM=1, nMsh
             IF (msh(iM)%lShl) THEN
                IF (msh(iM)%eType .EQ. eType_NRB) THEN
@@ -749,6 +749,18 @@
       IF (risFlag) THEN
          IF(ALLOCATED(RIS%lst))    DEALLOCATE(RIS%lst)
          DEALLOCATE(RIS)
+      END IF
+
+      IF (urisFlag) THEN
+         IF(ALLOCATED(uris%Yd))    DEALLOCATE(uris%Yd)
+         IF(ALLOCATED(uris%dmnID))    DEALLOCATE(uris%dmnID)
+         IF(ALLOCATED(uris%x))    DEALLOCATE(uris%x)
+         IF(ALLOCATED(uris%xCu))    DEALLOCATE(uris%xCu)
+         DO iM=1, uris%nMsh
+            CALL DESTROY(uris%msh(iM))
+         END DO
+         DEALLOCATE(uris%msh)
+         DEALLOCATE(uris)
       END IF
 
 !     Closing the output channels

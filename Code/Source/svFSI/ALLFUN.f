@@ -1470,6 +1470,7 @@
       IF (ALLOCATED(lEq%dmnIB))    DEALLOCATE(lEq%dmnIB)
       IF (ALLOCATED(lEq%output))   DEALLOCATE(lEq%output)
       IF (ALLOCATED(lEq%outIB))    DEALLOCATE(lEq%outIB)
+      IF (ALLOCATED(lEq%outURIS))    DEALLOCATE(lEq%outURIS)
 
       lEq%coupled = .TRUE.
       lEq%dof     = 0
@@ -1477,6 +1478,7 @@
       lEq%minItr  = 1
       lEq%nOutput = 0
       lEq%nOutIB  = 0
+      lEq%nOutURIS  = 0
       lEq%nDmn    = 0
       lEq%nDmnIB  = 0
       lEq%nBc     = 0

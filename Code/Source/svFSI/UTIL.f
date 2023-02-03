@@ -1098,5 +1098,100 @@
       RETURN
       END SUBROUTINE SWAPR
 !####################################################################
+!     This routine gives the distance between two points 
+!     IN_POLY = 1 is inside 
+      PURE FUNCTION IN_POLY(P,P1,ext)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: P(:), P1(:,:) ! P1(dimension,node)
+      LOGICAL, INTENT(IN) :: ext
+
+      REAL(KIND=RKIND), ALLOCATABLE :: N(:)
+      REAL(KIND=RKIND) dotP
+      INTEGER(KIND=IKIND) IN_POLY, s1, s2, s3, s4
+      LOGICAL :: flag
+      INTEGER(KIND=IKIND) nd, i
+
+      nd = SIZE(P1,1)
+      flag = .TRUE.
+      IN_POLY = 0
+
+      ALLOCATE(N(nd))
+      N = 0._RKIND
+
+      IF (nd .EQ. 2) THEN 
+         DO i= 1, nd+1
+   !        compute normal in 2D for P2-P1 P3-P1
+            IF (i .NE. nd+1) THEN
+               N(1) = P1(2,i) - P1(2,i+1)
+               N(2) = P1(1,i+1) - P1(1,i)
+            ELSE 
+               N(1) = P1(2,i) - P1(2,1)
+               N(2) = P1(1,1) - P1(1,i)
+            END IF
+
+   !        test dot product between P-P1 and the normals
+            dotP = N(1)*(P(1)-P1(1,i)) + N(2)*(P(2)-P1(2,i)) 
+            IF( dotP .LT. 0._RKIND ) THEN 
+               flag = .FALSE.
+C                EXIT
+            END IF
+         END DO
+         IF(flag) IN_POLY = 1
+      ELSE 
+         s1 = SAMESIDE(P1(:,1), P1(:,2), P1(:,3), P1(:,4), P, ext) 
+         s2 = SAMESIDE(P1(:,2), P1(:,3), P1(:,4), P1(:,1), P, ext) 
+         s3 = SAMESIDE(P1(:,3), P1(:,4), P1(:,1), P1(:,2), P, ext) 
+         s4 = SAMESIDE(P1(:,4), P1(:,1), P1(:,2), P1(:,3), P, ext)
+
+         IN_POLY = (s1 + s2 + s3 + s4)/4
+      END IF
+              
+      
+
+      DEALLOCATE(N)
+
+      RETURN
+      END FUNCTION IN_POLY
+!--------------------------------------------------------------------
+!     Chech if a point is on the same side of anotehr point wrt a triangle 
+!     in 3D
+      PURE FUNCTION SAMESIDE(v1, v2, v3, v4, p, ext)
+      IMPLICIT NONE
+
+      REAL(KIND=RKIND), INTENT(IN) :: v1(:), v2(:), v3(:), v4(:), p(:)
+      LOGICAL, INTENT(IN) :: ext
+
+      REAL(KIND=RKIND) :: dotP, dotV4, eps
+      INTEGER(KIND=IKIND) :: SAMESIDE, nsd
+
+      REAL(KIND=RKIND) v21(3), v31(3), v41(3), vp1(3), N(3), V(3,2)
+
+      SAMESIDE = 0
+      eps = 2.E-4
+
+      v21 = v2 - v1 
+      v31 = v3 - v1 
+      V(:,1) = v21
+      V(:,2) = v31
+      v41 = v4 - v1
+      vp1 = p - v1
+      N = CROSS(V)
+      dotV4 = NORM(N, v41)
+      dotP = NORM(N, vp1)
+!     check if P and P4 are form the same side 
+      IF(dotP .EQ. SIGN(dotP,dotV4)) SAMESIDE = 1
+
+!     If it is not, check if it is on any face, it might on the face 
+      IF( ext .AND. SAMESIDE .NE. 1) THEN 
+         IF( ABS(dotP) .LE. eps ) SAMESIDE = 1
+      END IF 
+            
+
+C       IF(dotP .LT. eps ) SAMESIDE = -1
+   
+      RETURN
+      END FUNCTION SAMESIDE
+!####################################################################
       END MODULE UTILMOD
 !####################################################################
