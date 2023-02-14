@@ -67,8 +67,8 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = 0.13_RKIND
-      Res = 1.E8_RKIND
+      Deps = 0.18_RKIND
+      Res = 1.E6_RKIND
       zSurf = 1.25_RKIND
       zSurf2 = 2.0_RKIND
       DDir = 0._RKIND

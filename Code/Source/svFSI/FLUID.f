@@ -64,8 +64,9 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = 0.13_RKIND
-      Res = 1.E8_RKIND
+      Deps = 0.15_RKIND !0.13_RKIND
+      Res = 1.E10_RKIND
+      IF(.NOT.urisFlag) Res = 0._RKIND
       zSurf = 1.25_RKIND
       zSurf2 = 2.0_RKIND
 

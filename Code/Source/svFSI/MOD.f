@@ -934,7 +934,7 @@ C          TYPE(ibCommType) :: cm
 !     Whether any URIS surface is considered
       LOGICAL :: urisFlag = .FALSE.  
 !     Whether the URIS surface is active
-      LOGICAL :: urisActFlag = .FALSE.  
+      LOGICAL :: urisActFlag = .TRUE.  
       INTEGER(KIND=IKIND) :: cntURIS = 0
 
 

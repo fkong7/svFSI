@@ -303,29 +303,43 @@
 
 !        Part related to unfitted RIS
 !        If the valve is active, look at the pressure difference 
-         write(*,*)" cEq = ", cEq
          IF(urisFlag) THEN 
 
             write(*,*)" urisActFlag = ", urisActFlag
 
-C             write(*,*)" entering mean quant "
-C             IF( urisActFlag ) THEN 
-C                cntURIS = cntURIS + 1
-C                CALL URIS_MEANP 
-C                IF( (cTS.GE.2) .AND. (cntURIS .LT. 7)) GOTO 11
-C             ELSE 
-C                cntURIS = cntURIS + 1
-C                CALL URIS_MEANV 
-C                IF( cTS.GE.2 .AND. cntURIS .LT. 7) GOTO 11
-C             END IF
+            IF( urisActFlag ) THEN 
+               cntURIS = cntURIS + 1
 
+               IF(.NOT.((cTS.GE.10).AND.(cntURIS .LT. 10))) THEN 
+                  CALL URIS_MEANP  
+               END IF
+
+               !CALL URIS_MEANV 
+               IF( cntURIS .EQ. 0) THEN 
+                  IF( cntURIS .LT. 10) GOTO 11
+               END IF
+
+            ELSE 
+               cntURIS = cntURIS + 1
+               
+               IF(.NOT.((cTS.GE.10).AND.(cntURIS .LT. 10))) THEN 
+                  CALL URIS_MEANV  
+               END IF
+
+               !CALL URIS_MEANV 
+               IF( cntURIS .EQ. 0) THEN 
+                  IF( cntURIS .LT. 10) GOTO 11
+               END IF
+
+            END IF
+
+C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
 
             IF (mvMsh) THEN 
-               write(*,*)" entering mvMsh"
                CALL URIS_UpdateDisp !(Do,Dn)
 C             write(*,*)" uris%Yd(:,nd)= ", uris%Yd
-               CALL URIS_WRITEVTUS(uris%Yd)
             END IF
+            CALL URIS_WRITEVTUS(uris%Yd)
          END IF
 !---     end RIS/URIS stuff 
 

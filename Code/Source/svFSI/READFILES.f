@@ -95,7 +95,7 @@
          cmmVarWall   = .FALSE.
          shlEq        = .FALSE.
          urisFlag     = .FALSE.
-         urisActFlag  = .FALSE.
+         urisActFlag  = .TRUE.
          pstEq        = .FALSE.
          sstEq        = .FALSE.
          ibFlag       = .FALSE.
@@ -228,6 +228,12 @@
          urisFlag = .TRUE.
          ALLOCATE(uris)
          CALL URIS_READMSH(list)
+
+         IF(.NOT.ALLOCATED(uris%Yd)) THEN 
+            ALLOCATE(uris%Yd(nsd,uris%msh(1)%nNo))
+            uris%Yd = 0._RKIND
+         END IF
+
       END IF
 
 !--------------------------------------------------------------------

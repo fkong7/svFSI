@@ -160,7 +160,7 @@ C       write(*,*)" volume inside ", volD
 
 !     If the uris was active, check the 
 
-      IF( (meanPU .GT. meanPD) .AND. (cntURIS .GT. 10 ) ) THEN 
+      IF( (meanPU .GT. meanPD) .AND. (cntURIS .GT. 15 ) ) THEN 
          urisActFlag = .FALSE.
          write(*,*)" Change urisActFlag to FALSE, deactivate URIS "
          cntURIS = 0
@@ -258,7 +258,7 @@ C       meanV = Integ(iM,tmpV,1,nsd)/volI
       write(*,*)" mean Vel ", meanV
 
 !     If the uris was active, check the 
-      IF( (meanV(3) .LT. 0._RKIND) .AND. (cntURIS .GT. 5 )) THEN 
+      IF( (meanV(3) .LT. 0._RKIND) .AND. (cntURIS .GT. 15 )) THEN 
          urisActFlag = .TRUE.
          write(*,*)" Change urisActFlag to TRUE, activate URIS "
          cntURIS = 0
@@ -723,6 +723,7 @@ C             outDof = outDof + eq(iEq)%outIB(iOut)%l
 C          END DO
 C       END DO
 
+
       ALLOCATE(outNames(nOut), outS(nOut+1))
 
 !     Prepare all solultions in to dataType d
@@ -782,6 +783,7 @@ C                CASE (outGrp_D)
             Ac = uris%msh(iM)%gN(a)
             d(iM)%x(is:ie,a) = lU(s:e,Ac)
          END DO
+
 C                CASE DEFAULT
 C                   err = "Undefined output "//
 C      2               TRIM(eq(iEq)%outIB(iOut)%name)
