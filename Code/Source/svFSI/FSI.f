@@ -68,7 +68,7 @@
       END IF
 
       Deps = 0.18_RKIND
-      Res = 1.E6_RKIND
+      Res = 1.E5_RKIND !6
       zSurf = 1.25_RKIND
       zSurf2 = 2.0_RKIND
       DDir = 0._RKIND
