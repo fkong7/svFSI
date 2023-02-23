@@ -71,6 +71,7 @@
          iM = RIS%lst(i,1,nPrj)
          iFa = RIS%lst(i,2,nPrj)
 
+!        ERROR. HERRE FOR ALE, recompure the area with the new displacement 
          tmp = msh(iM)%fa(iFa)%area
          RIS%meanP(i) = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
       END DO
