@@ -854,6 +854,7 @@
       LOGICAL bin2VTK
 !     Flag for linear contact with a wall 
       LOGICAL :: flagLCONT = .TRUE. 
+      REAL(KIND=RKIND) :: cntGap = 0.02_RKIND
 !     Flag for non linear contact with a wall 
       LOGICAL :: flagNLCONT = .FALSE. 
 

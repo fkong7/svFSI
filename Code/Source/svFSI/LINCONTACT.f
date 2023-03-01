@@ -79,9 +79,8 @@
       REAL(KIND=RKIND), ALLOCATABLE :: N(:), yl(:,:), lR(:,:),
      2   lK(:,:,:), xl(:,:), dl(:,:)
 
-      gap = 0.02_RKIND
+      gap = cntGap
       yw = 0._RKIND
-C       yw = 0._RKIND
       hc = 0._RKIND
       gamma = 1.e5 !1.e4
 
@@ -196,7 +195,7 @@ C                   write(*,*)" gap is ", hc(2)
 
                   IF( hc(2) .LT. 0._RKIND ) THEN 
 
-C                      write(*,*)" **** CONTACT ACTIVE **** "
+                     write(*,*)" **** CONTACT ACTIVE **** "
 C                      write(*,*)"xl(2,a) =  ", xl(2,a)
 C                      write(*,*)"dl(2,a) =  ", dl(2,a)
 C                      write(*,*)" ys is ", ys

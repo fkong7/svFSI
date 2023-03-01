@@ -419,7 +419,7 @@
       LOGICAL :: lIbl, lD0
       INTEGER(KIND=IKIND) :: iStat, iEq, iOut, iM, a, e, Ac, Ec, nNo,
      2   nEl, s, l, ie, is, nSh, oGrp, outDof, nOut, cOut, ne, iFn, nFn,
-     3   nOute
+     3   nOute, count, eNoN
       CHARACTER(LEN=stdL) :: fName
       TYPE(dataType) :: d(nMsh)
       TYPE(vtkXMLType) :: vtu
@@ -828,6 +828,49 @@
          CALL putVTK_elemData(vtu, outNamesE(l), tmpVe, iStat)
          IF (iStat .LT. 0) err = "VTU file write error ("//
      2      TRIM(outNamesE(l))//")"
+         DEALLOCATE(tmpVe)
+      END DO
+
+!     Write the mesh vf (fluid-porous) 
+C       ALLOCATE(tmpVe(nEl))
+C       tmpVe = 0._RKIND
+C       Ec = 0
+C       DO iM=1, nMsh
+C          DO e=1, d(iM)%nEl
+C             Ec = Ec + 1
+C             count = 0
+C             DO a=1, 4
+C                Ac = msh(iM)%IEN(a,e)
+C C                IF(x(2,Ac).LE.0.16 .AND. x(1,Ac).GE.0.1) count=count+1
+C                IF(x(2,Ac).LE.0.16) count=count+1
+C             END DO
+C             tmpVe(Ec) = 0.25_RKIND*REAL(count)
+C          END DO
+C       END DO
+C       CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
+C       IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
+C       DEALLOCATE(tmpVe)
+
+
+!     Write the mesh vf (FSI) 
+      DO l=1, nOute
+         ALLOCATE(tmpVe(nEl))
+         tmpVe = 0._RKIND
+         Ec = 0
+         DO iM=1, nMsh
+            DO e=1, d(iM)%nEl
+               Ec = Ec + 1
+       
+               count = 0
+               DO a=1, 4
+                  Ac = msh(iM)%IEN(a,e)
+                  IF( x(2,Ac)+lD(6,Ac).LE.cntGap ) count=count+1
+               END DO
+               tmpVe(Ec) = 0.25_RKIND*REAL(count)
+            END DO
+         END DO
+         CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
+         IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
          DEALLOCATE(tmpVe)
       END DO
 

@@ -45,8 +45,8 @@
      2   Dg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, count
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), vf, Kb
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -68,6 +68,7 @@
 
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
+      Kb = 0._RKIND
 
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   dl(tDof,eNoN), bfl(nsd,eNoN), fN(nsd,nFn), pS0l(nsymd,eNoN),
@@ -130,6 +131,23 @@
          Nqx      = 0._RKIND
          Nwxx     = 0._RKIND
 
+!        IF CONTACT check where the element is located
+         IF (cPhys .EQ. phys_fluid .AND. flagLCONT) THEN 
+
+!           Check if all the nodes are below the gap, if yes 
+!           the Brinkman term need to be activated             
+            count = 0
+            DO a=1, eNoN
+               IF( xl(2,a) .LE. cntGap ) count = count + 1
+            END DO
+
+            vf = 0.25_RKIND*REAL(count)
+
+            Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-6_RKIND !1.E-3_RKIND
+            
+C             Kb = vf * 1.E3_RKIND !1.E-3_RKIND
+         END IF
+
 !        Gauss integration 1
          DO g=1, fs(1)%nG
             IF (g.EQ.1 .OR. .NOT.fs(2)%lShpF) THEN
@@ -153,7 +171,7 @@
                CASE (phys_fluid)
                   CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK)
+     3               al, yl, bfl, lR, lK, Kb)
 
                CASE (phys_lElas)
                   CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -175,7 +193,7 @@
                CASE (phys_fluid)
                   CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK)
+     3               al, yl, bfl, lR, lK, Kb)
 
                CASE (phys_lElas)
                   CALL LELAS2D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,

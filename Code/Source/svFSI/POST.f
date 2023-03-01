@@ -439,11 +439,6 @@
                   END DO
                END DO
 
-               write(*,*)" quadn poitn ", g 
-
-               write(*,*)" ux = ", ux 
-               write(*,*)" nV = ", nV 
-
                p = 0._RKIND
                DO a=1, fsP%eNoN
                   p = p + fsP%N(a,g)*pl(a)
@@ -470,9 +465,6 @@
                   ndTdn = ndTdn + Tdn(i)*nV(i)
                END DO
                taue = Tdn - ndTdn*nV
-
-               
-               write(*,*)" wss at wp ", taue
 
                IF (outGrp .EQ. outGrp_WSS) THEN
                   lRes(1:nsd) = -taue
