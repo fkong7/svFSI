@@ -420,6 +420,7 @@
       INTEGER(KIND=IKIND) :: iStat, iEq, iOut, iM, a, e, Ac, Ec, nNo,
      2   nEl, s, l, ie, is, nSh, oGrp, outDof, nOut, cOut, ne, iFn, nFn,
      3   nOute, count, eNoN
+      REAL(KIND=RKIND) :: cnt(3), aux(3)
       CHARACTER(LEN=stdL) :: fName
       TYPE(dataType) :: d(nMsh)
       TYPE(vtkXMLType) :: vtu
@@ -841,8 +842,9 @@ C             Ec = Ec + 1
 C             count = 0
 C             DO a=1, 4
 C                Ac = msh(iM)%IEN(a,e)
+C                ! 3D rectangle 
 C C                IF(x(2,Ac).LE.0.16 .AND. x(1,Ac).GE.0.1) count=count+1
-C                IF(x(2,Ac).LE.0.16) count=count+1
+C C                IF(x(2,Ac).LE.0.16) count=count+1
 C             END DO
 C             tmpVe(Ec) = 0.25_RKIND*REAL(count)
 C          END DO
@@ -852,11 +854,49 @@ C       IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
 C       DEALLOCATE(tmpVe)
 
 
-!     Write the mesh vf (FSI) 
+!     Write the mesh vf (FSI) version at the boundary 
+C       DO l=1, nOute
+C          ALLOCATE(tmpVe(nEl))
+C          tmpVe = 0._RKIND
+C          Ec = 0
+C          DO iM=1, nMsh
+C             DO e=1, d(iM)%nEl
+C                Ec = Ec + 1
+       
+C                count = 0
+C                DO a=1, 4
+C                   Ac = msh(iM)%IEN(a,e)
+C                   IF( x(2,Ac)+lD(6,Ac).LE.cntGap ) count=count+1
+C                END DO
+C                tmpVe(Ec) = 0.25_RKIND*REAL(count)
+C             END DO
+C          END DO
+C          CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
+C          IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
+C          DEALLOCATE(tmpVe)
+C       END DO
+
+
+!     Write the mesh vf (FSI) version around the solid
       DO l=1, nOute
          ALLOCATE(tmpVe(nEl))
          tmpVe = 0._RKIND
          Ec = 0
+
+         count = 0
+         DO e = 1, msh(2)%nEl 
+            DO a=1, msh(2)%eNoN
+               Ac = msh(2)%IEN(a,e)
+               cnt(1) = cnt(1) + x(1,Ac) + lD(nsd+2,Ac)  
+               cnt(2) = cnt(2) + x(2,Ac) + lD(nsd+2+1,Ac)  
+               cnt(3) = cnt(3) + x(3,Ac) + lD(nsd+2+2,Ac) 
+               count = count + 1 
+            END DO
+         END DO
+         cnt(1) = cnt(1) / count
+         cnt(2) = cnt(2) / count
+         cnt(3) = cnt(3) / count
+
          DO iM=1, nMsh
             DO e=1, d(iM)%nEl
                Ec = Ec + 1
@@ -864,7 +904,12 @@ C       DEALLOCATE(tmpVe)
                count = 0
                DO a=1, 4
                   Ac = msh(iM)%IEN(a,e)
-                  IF( x(2,Ac)+lD(6,Ac).LE.cntGap ) count=count+1
+                  aux = cnt - (x(1:3,Ac)+lD(nsd+2:nsd+4,Ac))
+!                 Just lower half                   
+                  IF( SQRT(NORM(aux)) .LE. 0.05+cntGap .AND. 
+     2                x(2,Ac)+lD(6,Ac) .LT. cnt(2) ) count=count+1
+!                 Around
+C                   IF( SQRT(NORM(aux)).LE.0.05+1.5*cntGap) count=count+1
                END DO
                tmpVe(Ec) = 0.25_RKIND*REAL(count)
             END DO
@@ -873,6 +918,7 @@ C       DEALLOCATE(tmpVe)
          IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
          DEALLOCATE(tmpVe)
       END DO
+
 
 !     Write element ghost cells if necessary
       IF (lIbl) THEN

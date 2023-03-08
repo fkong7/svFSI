@@ -71,10 +71,12 @@
 
 !     Doing the partitioning and distributing the data to the all
 !     Processors
+      write(*,*)" going to DISTRIBUTE "
       CALL DISTRIBUTE
 
 !     Initializing the solution vectors and constructing LHS matrix
 !     format
+      write(*,*)" going to INITIALIZE "
       CALL INITIALIZE(timeP)
       stopTS = nTS
 
@@ -99,6 +101,10 @@
          cEq    = 1
          eq%itr = 0
          eq%ok  = .FALSE.
+
+!        Just to add the porous layer if we are near the contact 
+         flagLCONT = .FALSE.
+         IF (cTS .GE. 20) flagLCONT = .TRUE.
 
 !     Compute mesh properties to check if remeshing is required
          IF (mvMsh .AND. rmsh%isReqd) THEN

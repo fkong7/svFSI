@@ -45,8 +45,9 @@
      2   Dg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, count
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), vf, Kb
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, count, 
+     2                    ee
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), vf, Kb, cnt(nsd), aux(nsd)
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -69,6 +70,7 @@
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
       Kb = 0._RKIND
+      cnt = 0._RKIND
 
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   dl(tDof,eNoN), bfl(nsd,eNoN), fN(nsd,nFn), pS0l(nsymd,eNoN),
@@ -117,6 +119,7 @@
          lR  = 0._RKIND
          lK  = 0._RKIND
          lKd = 0._RKIND
+         cnt = 0._RKIND
 
 !        Set function spaces for velocity and pressure.
          CALL GETTHOODFS(fs, lM, vmsStab, 1)
@@ -131,21 +134,57 @@
          Nqx      = 0._RKIND
          Nwxx     = 0._RKIND
 
-!        IF CONTACT check where the element is located
+!        IF CONTACT, check where the element is located
+!        vf version boundary 
+C          IF (cPhys .EQ. phys_fluid .AND. flagLCONT) THEN 
+
+C !           Check if all the nodes are below the gap, if yes 
+C !           the Brinkman term need to be activated             
+C             count = 0
+C             DO a=1, eNoN
+C                IF( xl(2,a) .LE. cntGap ) count = count + 1
+C             END DO
+
+C             vf = 0.25_RKIND*REAL(count)
+
+C             Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
+            
+C          END IF
+
+!        vf version attached to solid, ball around the solid
          IF (cPhys .EQ. phys_fluid .AND. flagLCONT) THEN 
+
+!           Creating hole list for ball into a fluid example only
+            count = 0
+            DO ee = 1, msh(2)%nEl
+               DO a=1, msh(2)%eNoN
+                  Ac = msh(2)%IEN(a,ee)
+                  cnt(1) = cnt(1) + x(1,Ac) + Dg(nsd+2,Ac)  
+                  cnt(2) = cnt(2) + x(2,Ac) + Dg(nsd+2+1,Ac)  
+                  cnt(3) = cnt(3) + x(3,Ac) + Dg(nsd+2+2,Ac) 
+                  count = count + 1 
+               END DO
+            END DO
+            cnt(1) = cnt(1) / count
+            cnt(2) = cnt(2) / count
+            cnt(3) = cnt(3) / count
 
 !           Check if all the nodes are below the gap, if yes 
 !           the Brinkman term need to be activated             
             count = 0
             DO a=1, eNoN
-               IF( xl(2,a) .LE. cntGap ) count = count + 1
+               aux = cnt - xl(:,a)
+!              Around lower half
+               IF( SQRT(NORM(aux)) .LE. 0.05+cntGap .AND. 
+     2                xl(2,a).LT. cnt(2)) count = count + 1
+!              Around
+C                IF( SQRT(NORM(aux)) .LE. 0.05+1.5*cntGap) count=count+1
             END DO
 
             vf = 0.25_RKIND*REAL(count)
 
-            Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-6_RKIND !1.E-3_RKIND
+            Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
             
-C             Kb = vf * 1.E3_RKIND !1.E-3_RKIND
          END IF
 
 !        Gauss integration 1

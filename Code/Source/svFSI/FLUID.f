@@ -78,19 +78,24 @@
          IF (cPhys .NE. phys_fluid) CYCLE
 
 
-
+!--      Definition for Kb = f(vf,K)
 !        Check if all the nodes are below the gap, if yes 
 !        the Brinkman term need to be activated             
-         count = 0
-         DO a=1, eNoN
-C             IF(xl(2,a).LE.0.16 .AND. xl(1,a).GE.0.1) count = count + 1
-            IF(xl(2,a).LE.0.16) count = count + 1
-         END DO
+C          count = 0
+C          DO a=1, eNoN
+C C             IF(xl(2,a).LE.0.16 .AND. xl(1,a).GE.0.1) count = count + 1
+C             IF(xl(2,a).LE.0.16) count = count + 1
+C          END DO
 
-         vf = 0.25_RKIND*REAL(count)
+C          vf = 0.25_RKIND*REAL(count)
 
-         Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
-            
+C          Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
+!--      End defintion 
+
+!--      Constant kb = mu/sigma (mu/vf)
+         Kb = 1._RKIND
+!--      End constant Kb
+
 !        Update shape functions for NURBS
          IF (lM%eType .EQ. eType_NRB) CALL NRBNNX(lM, e)
 
@@ -142,12 +147,12 @@ C             IF(xl(2,a).LE.0.16 .AND. xl(1,a).GE.0.1) count = count + 1
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, kb)
+     3            bfl, lR, lK, Kb)
 
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+     3            bfl, lR, lK, Kb)
             END IF
          END DO ! g: loop
 
@@ -172,12 +177,12 @@ C             IF(xl(2,a).LE.0.16 .AND. xl(1,a).GE.0.1) count = count + 1
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, kb)
+     3            bfl, lR, lK, Kb)
 
             ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK)
+     3            bfl, lR, lK, Kb)
             END IF
          END DO ! g: loop
 
@@ -391,7 +396,7 @@ C             IF(xl(2,a).LE.0.16 .AND. xl(1,a).GE.0.1) count = count + 1
 
 !     If we consider the NSB model, we need to add an extra term inside the 
 !     computation for the stab parameter 
-      kT = kT + kb**2._RKIND    
+      kT = kT + (kb/rho)**2._RKIND    
 
       kU = u(1)*u(1)*Kxi(1,1) + u(2)*u(1)*Kxi(2,1) + u(3)*u(1)*Kxi(3,1)
      2   + u(1)*u(2)*Kxi(1,2) + u(2)*u(2)*Kxi(2,2) + u(3)*u(2)*Kxi(3,2)
@@ -591,7 +596,7 @@ C      2                      - kb*Nw(a)
       END SUBROUTINE FLUID3D_M
 !--------------------------------------------------------------------
       SUBROUTINE FLUID2D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, kb)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -599,7 +604,7 @@ C      2                      - kb*Nw(a)
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(2,eNoNw)
+     3   yl(tDof,eNoNw), bfl(2,eNoNw), kb
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
@@ -719,6 +724,10 @@ C      2                      - kb*Nw(a)
 !     Stabilization parameters
       kT = 4._RKIND*(ctM/dt)**2._RKIND
 
+!     If we consider the NSB model, we need to add an extra term inside the 
+!     computation for the stab parameter 
+      kT = kT + (kb/rho)**2._RKIND 
+
       kU = u(1)*u(1)*Kxi(1,1) + u(2)*u(1)*Kxi(2,1)
      2   + u(1)*u(2)*Kxi(1,2) + u(2)*u(2)*Kxi(2,2)
 
@@ -734,8 +743,8 @@ C      2                      - kb*Nw(a)
       rS(1) = mu_x(1)*es(1,1) + mu_x(2)*es(2,1) + mu*d2u2(1)
       rS(2) = mu_x(1)*es(1,2) + mu_x(2)*es(2,2) + mu*d2u2(2)
 
-      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1))
-      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2))
+      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + kb*u(1))
+      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + kb*u(2))
 
       IF (vmsFlag) THEN
          tauC = 1._RKIND / (tauM * (Kxi(1,1) + Kxi(2,2)))
@@ -784,7 +793,7 @@ C      2                      - kb*Nw(a)
          END IF
 
          T1 = -rho*uNx(a) + mu*(Nwxx(1,a) + Nwxx(2,a))
-     2      + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a)
+     2      + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a) - kb*Nw(a)
 
          updu(1,1,a) = mu_x(1)*Nwx(1,a) + d2u2(1)*mu_g*esNx(1,a) + T1
          updu(2,1,a) = mu_x(2)*Nwx(1,a) + d2u2(1)*mu_g*esNx(2,a)
@@ -810,6 +819,7 @@ C      2                      - kb*Nw(a)
             T2 = (mu + tauC)*rM(1,1) + esNx(1,a)*mu_g*esNx(1,b)
      2         - rho*tauM*uaNx(a)*updu(1,1,b)
             lK(1,a,b)  = lK(1,a,b)  + wl*(T2 + T1)
+            lK(1,a,b)  = lK(1,a,b)  + kb*wl*Nw(b)*Nw(a)
 
 !           dRm_a1/du_b2
             T2 = mu*rM(2,1) + tauC*rM(1,2) + esNx(1,a)*mu_g*esNx(2,b)
@@ -825,6 +835,7 @@ C      2                      - kb*Nw(a)
             T2 = (mu + tauC)*rM(2,2) + esNx(2,a)*mu_g*esNx(2,b)
      2         - rho*tauM*uaNx(a)*updu(2,2,b)
             lK(5,a,b)  = lK(5,a,b)  + wl*(T2 + T1)
+            lK(5,a,b)  = lK(5,a,b)  + kb*wl*Nw(b)*Nw(a)
          END DO
       END DO
 
@@ -837,6 +848,13 @@ C      2                      - kb*Nw(a)
             lK(6,a,b)  = lK(6,a,b)  - wl*(Nwx(2,a)*Nq(b) - Nqx(2,b)*T1)
          END DO
       END DO
+
+!     Residual contribution Birkman term 
+!     Local residue
+      DO a=1, eNoNw
+         lR(1,a) = lR(1,a) + kb*w*Nw(a)*(u(1)+up(1))
+         lR(2,a) = lR(2,a) + kb*w*Nw(a)*(u(2)+up(2))
+      END DO 
 
       RETURN
       END SUBROUTINE FLUID2D_M
@@ -1025,7 +1043,7 @@ C      2                      - kb*Nw(a)
 
 !        If we consider the NSB model, we need to add an extra term inside the 
 !        computation for the stab parameter 
-         kT = kT + kb**2._RKIND    
+         kT = kT + (kb/rho)**2._RKIND  
 
          kU = u(1)*u(1)*Kxi(1,1) +u(2)*u(1)*Kxi(2,1) +u(3)*u(1)*Kxi(3,1)
      2      + u(1)*u(2)*Kxi(1,2) +u(2)*u(2)*Kxi(2,2) +u(3)*u(2)*Kxi(3,2)
@@ -1121,7 +1139,7 @@ C      2                   - kb*Nw(a)
       END SUBROUTINE FLUID3D_C
 !--------------------------------------------------------------------
       SUBROUTINE FLUID2D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, kb)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -1129,7 +1147,7 @@ C      2                   - kb*Nw(a)
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(2,2), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(2,eNoNw), Nqx(2,eNoNq), Nwxx(3,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(2,eNoNw)
+     3   yl(tDof,eNoNw), bfl(2,eNoNw), kb
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
@@ -1245,6 +1263,10 @@ C      2                   - kb*Nw(a)
 !        Stabilization parameters
          kT = 4._RKIND*(ctM/dt)**2_RKIND
 
+!        If we consider the NSB model, we need to add an extra term inside the 
+!        computation for the stab parameter 
+         kT = kT + (kb/rho)**2._RKIND           
+
          kU = u(1)*u(1)*Kxi(1,1) + u(2)*u(1)*Kxi(2,1)
      2      + u(1)*u(2)*Kxi(1,2) + u(2)*u(2)*Kxi(2,2)
 
@@ -1260,14 +1282,14 @@ C      2                   - kb*Nw(a)
          rS(1) = mu_x(1)*es(1,1) + mu_x(2)*es(2,1) + mu*d2u2(1)
          rS(2) = mu_x(1)*es(1,2) + mu_x(2)*es(2,2) + mu*d2u2(2)
 
-         up(1) = -tauM*(rho*rV(1) + px(1) - rS(1))
-         up(2) = -tauM*(rho*rV(2) + px(2) - rS(2))
+         up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + kb*u(1))
+         up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + kb*u(2))
 
          DO a=1, eNoNw
             uNx = u(1)*Nwx(1,a) + u(2)*Nwx(2,a)
 
             T1  = -rho*uNx + mu*(Nwxx(1,a) + Nwxx(2,a))
-     2          + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a)
+     2          + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a) - kb*Nw(a)
 
             updu(1,1,a) = mu_x(1)*Nwx(1,a) + d2u2(1)*mu_g*esNx(1,a) + T1
             updu(2,1,a) = mu_x(2)*Nwx(1,a) + d2u2(1)*mu_g*esNx(2,a)
