@@ -56,6 +56,7 @@
 
       DO iM=1, nMsh
          DO iFa=1, msh(iM)%nFa
+C             write(*,*)" id proc ", cm%id()," iM,iFa ", iM,iFa
             CALL BASSEMLCONT(msh(iM)%fa(iFa), Yg, Dg)             
          END DO
       END DO
@@ -84,6 +85,7 @@
       hc = 0._RKIND
       gamma = 1.e5 !1.e4
 
+C       write(*,*)" proc: ",cm%id(),", lFa%nEl", lFa%nEl
 
       iM   = lFa%iM
       eNoN = lFa%eNoN

@@ -71,12 +71,10 @@
 
 !     Doing the partitioning and distributing the data to the all
 !     Processors
-      write(*,*)" going to DISTRIBUTE "
       CALL DISTRIBUTE
 
 !     Initializing the solution vectors and constructing LHS matrix
 !     format
-      write(*,*)" going to INITIALIZE "
       CALL INITIALIZE(timeP)
       stopTS = nTS
 
@@ -291,6 +289,32 @@ C             END IF
          Yo = Yn
          IF (dFlag) Do = Dn
          cplBC%xo = cplBC%xn
+
+C          write(*,*)" cm%np() = ", cm%np() 
+C          write(*,*)" cm%mas() = ", cm%mas() 
+C          write(*,*)" cm%slv() = ", cm%slv() 
+
+C          write(*,*)" cm%id(): gtnNo = ",cm%id(),": ",gtnNo
+C          write(*,*)" dof = ",cm%id(),": ", dof
+C          write(*,*)" tnNo = ",cm%id(),": ", tnNo
+C          write(*,*)" nMesh = ",cm%id(),": ", nMsh
+C          write(*,*)" tDof = ",cm%id(),": ", tDof
+C          write(*,*)" SIZE(R) = ",cm%id(),": ", SIZE(R)
+C          write(*,*)" SIZE(Val) = ",cm%id(),": ", SIZE(Val)
+C          write(*,*)" SIZE(Yn) = ",cm%id(),": ", SIZE(Yn)
+
+C          write(*,*)" msh(1)%gnEl = ",cm%id(),": ",msh(1)%gnEl
+C          write(*,*)" msh(1)%nEl = ",cm%id(),": ",msh(1)%nEl
+C          write(*,*)" msh(1)%gnNo = ",cm%id(),": ",msh(1)%gnNo
+C          write(*,*)" msh(1)%nNo = ",cm%id(),": ",msh(1)%nNo
+C          write(*,*)" msh(1)%nFa = ",cm%id(),": ",msh(1)%nFa
+
+C          write(*,*)" msh(2)%gnEl = ",cm%id(),": ",msh(2)%gnEl
+C          write(*,*)" msh(2)%nEl = ",cm%id(),": ",msh(2)%nEl
+C          write(*,*)" msh(2)%gnNo = ",cm%id(),": ",msh(2)%gnNo
+C          write(*,*)" msh(2)%nNo = ",cm%id(),": ",msh(2)%nNo
+C          write(*,*)" msh(2)%nFa = ",cm%id(),": ",msh(2)%nFa
+
       END DO
 !     End of outer loop
 
