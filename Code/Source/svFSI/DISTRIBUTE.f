@@ -65,6 +65,7 @@
          CALL cm%bcast(nsd)
          CALL cm%bcast(rmsh%isReqd)
       END IF
+      write(*,*)" gtnNo = ", gtnNo
       CALL cm%bcast(gtnNo)
 
       IF (cm%slv()) ALLOCATE(msh(nMsh))
@@ -79,31 +80,30 @@
 !     between processors
       wrk = REAL(msh%gnNo, KIND=RKIND)/REAL(gtnNo, KIND=RKIND)
       CALL cm%bcast(wrk)
+!     m,n,A,b: Spliting "m" jobs between "n" workers. "b" contains amount of jobs
+!     and "A" will store the distribution of jobs 
       CALL SPLITJOBS(nMsh, cm%np(), wgt, wrk)
 
-      write(*,*)" Before mesh partitioning"
+      write(*,*)" nMsh ", nMsh
+      write(*,*)" wgt ", wgt
+      write(*,*)" wrk ", wrk
+
 !     First partitioning the meshes
 !     gmtl:  gtnNo --> tnNo
       tnNo = 0
       gmtl = 0
       IF (cm%seq()) THEN
-         write(*,*)" inside sequential partitioning"
          tnNo = gtnNo
          ALLOCATE(ltg(tnNo))
          DO a=1, tnNo
             ltg(a) = a
          END DO
       END IF
-      write(*,*)" inside parallel partitiong, nMsh = ", nMsh
       DO iM=1, nMsh
          dbg = "Partitioning mesh "//iM
          iWgt = REAL(wgt(iM,:)/SUM(wgt(iM,:)), KIND=RKIND4)
-         write(*,*)" call to PARTMSH, cm%np() =  ", cm%np()
-         write(*,*)" iWgt =  ", iWgt
          CALL PARTMSH(msh(iM), gmtl, cm%np(), iWgt)
       END DO
-
-      write(*,*)" Do 1 "
 
 !     Setting gtl pointer in case that it is needed and mapping IEN
       DO iM=1, nMsh
@@ -121,7 +121,6 @@
             END DO
          END DO
       END DO
-      write(*,*)" Do 2 "
 
       IF (cm%seq()) THEN
 !        Rearrange body force structure, if necessary
@@ -161,7 +160,6 @@
          RETURN
       END IF
 
-      write(*,*)" Face partitioning "
 !     Partitioning the faces
       DO iM=1, nMsh
          ALLOCATE(tMs(iM)%fa(msh(iM)%nFa))
@@ -374,8 +372,6 @@
       END DO
       DEALLOCATE(tMs)
  
-      write(*,*)" end DISTRIBUTE"
-
       RETURN
       END SUBROUTINE DISTRIBUTE
 !####################################################################
@@ -1234,7 +1230,6 @@
          CALL MPI_SCATTERV(lM%gIEN, sCount, disp, mpint, lM%IEN,
      2      nEl*eNoN, mpint, master, cm%com(), ierr)
 
-         write(*,*)" partition until here: 1" 
 !     This is to get eNoNb
          SELECT CASE (lM%eType)
          CASE(eType_TET4)
@@ -1269,26 +1264,16 @@
 !     The output of this process is "part" array which part(i) says
 !     which processor element "i" belongs to
 !     Doing partitioning, using ParMetis
-         write(*,*)" partition until here: 2" 
-         write(*,*)" nEl, eNoN, eNoNb",nEl," ",eNoN," ", eNoNb
-         write(*,*)" lM%IEN ",lM%IEN
-         write(*,*)" cm%np(), lM%eDist", cm%np()," ", lM%eDist
-         write(*,*)" write  wgt, part ",  wgt," ",part
-
          edgecut = SPLIT(nEl, eNoN, eNoNb, lM%IEN, cm%np(), lM%eDist,
      2      wgt, part)
-         write(*,*)" SPLIT done "
          IF (edgecut .EQ. 0) THEN
             wrn = " ParMETIS failed to partition the mesh"
-            write(*,*)" partition until here: 2b "
             part = cm%id()
          ELSE IF (edgecut .GT. 0) THEN
             std = " ParMETIS partitioned the mesh by cutting "//
      2         STR(edgecut)//" elements"
-            write(*,*)" partition until here: 2c "
 !     LT 0 is for the case that all elements reside in one processor
          END IF
-         write(*,*)" partition until here: 3" 
          DEALLOCATE(lM%IEN)
          IF (rmsh%isReqd) THEN
             std = " Writing partition data to file"
@@ -1301,14 +1286,12 @@
             CALL MPI_FILE_CLOSE(fid, ierr)
          END IF
       END IF
-      write(*,*)" partition until here: 4" 
 
       DO i=1, cm%np()
          disp(i)   = lM%eDist(i-1)
          sCount(i) = lM%eDist(i) - disp(i)
       END DO
 
-      write(*,*)" partition until here: passato"
 !     Gathering the parts inside master, part(e) is equal to the
 !     cm%id() that the element e belong to
       IF (cm%mas()) THEN
