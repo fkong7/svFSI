@@ -510,8 +510,6 @@
          LOGICAL :: lShl = .FALSE.
 !        Whether the mesh is fibers (Purkinje)
          LOGICAL :: lFib = .FALSE.
-!        Whether the mesh is shell
-C          LOGICAL :: lRis = .FALSE. ! TO REMOVE
 !        Element type
          INTEGER(KIND=IKIND) :: eType = eType_NA
 !        Number of nodes (control points) in a single element
@@ -930,11 +928,11 @@ C          TYPE(ibCommType) :: cm
 !     Whether any RIS surface is considered 
       LOGICAL risFlag
 !     Whether any one-sided RIS surface with 0D coupling is considered 
-      LOGICAL ris0DFlag
+      LOGICAL :: ris0DFlag = .FALSE.
 !     Whether any URIS surface is considered
       LOGICAL :: urisFlag = .FALSE.  
 !     Whether the URIS surface is active
-      LOGICAL :: urisActFlag = .TRUE.  
+      LOGICAL :: urisActFlag = .FALSE.  
       INTEGER(KIND=IKIND) :: cntURIS = 0
 
 

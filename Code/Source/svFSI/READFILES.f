@@ -95,7 +95,7 @@
          cmmVarWall   = .FALSE.
          shlEq        = .FALSE.
          urisFlag     = .FALSE.
-         urisActFlag  = .TRUE.
+         urisActFlag  = .FALSE.
          pstEq        = .FALSE.
          sstEq        = .FALSE.
          ibFlag       = .FALSE.

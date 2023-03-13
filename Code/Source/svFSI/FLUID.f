@@ -66,14 +66,13 @@
 
       Deps = 0.15_RKIND !0.13_RKIND
       Res = 1.E10_RKIND
+
       IF(.NOT.urisFlag) Res = 0._RKIND
       zSurf = 1.25_RKIND
       zSurf2 = 2.0_RKIND
 
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
-
-      write(*,*)" inside construct fluid "
 
 !     FLUID: dof = nsd+1
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),

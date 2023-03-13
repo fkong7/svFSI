@@ -729,12 +729,11 @@
             DO i = 1, 2 
                M = RIS%lst(i,1,1)
                IF( M .EQ. iM ) THEN 
-C                   write(*,*)" looking mesh iM "
+
                   Fa = RIS%lst(i,2,1)
                   IF( (Fa .EQ. iFa ) ) 
      2                       THEN 
                      found = 1 
-C                      write(*,*)" We have find the face " 
                   END IF
                END IF
             END DO
@@ -956,10 +955,12 @@ C                      write(*,*)" We have find the face "
          CALL CALCDERCPLBC
       ELSE
          RCRflag = .FALSE.
+
          DO iBc=1, eq(iEq)%nBc
             iFa = eq(iEq)%bc(iBc)%iFa
             iM  = eq(iEq)%bc(iBc)%iM
             ptr = eq(iEq)%bc(iBc)%cplBCptr
+
             IF (BTEST(eq(iEq)%bc(iBc)%bType,bType_RCR)) THEN
                IF (.NOT.RCRflag) RCRflag = .TRUE.
             END IF

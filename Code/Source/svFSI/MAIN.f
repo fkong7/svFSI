@@ -212,6 +212,7 @@
 !        Writing out the time passed, residual, and etc.
             IF (ALL(eq%ok)) EXIT
             CALL OUTRESULT(timeP, 2, iEqOld)
+
          END DO
 !     End of inner loop
 
@@ -294,7 +295,6 @@
 
          IF ((cEq.EQ.1) .AND. ris0DFlag ) THEN 
             CALL RIS0D_STATUS
-            print*, " RisnbrIter = " , RisnbrIter
 
 !          Redo the fluid iteration without updating the time 
            IF( RisnbrIter .LE. 2) GOTO 11
@@ -304,8 +304,6 @@
 !        Part related to unfitted RIS
 !        If the valve is active, look at the pressure difference 
          IF(urisFlag) THEN 
-
-            write(*,*)" urisActFlag = ", urisActFlag
 
             IF( urisActFlag ) THEN 
                cntURIS = cntURIS + 1
@@ -337,7 +335,6 @@ C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
 
             IF (mvMsh) THEN 
                CALL URIS_UpdateDisp !(Do,Dn)
-C             write(*,*)" uris%Yd(:,nd)= ", uris%Yd
             END IF
             CALL URIS_WRITEVTUS(uris%Yd)
          END IF

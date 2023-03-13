@@ -185,13 +185,13 @@
          CALL cm%bcast(cmmInit)
          CALL cm%bcast(cmmVarWall)
          CALL cm%bcast(shlEq)
-         CALL cm%bcast(urisFlag)
-         CALL cm%bcast(urisActFlag)
-         CALL cm%bcast(ris0DFlag)
-         CALL cm%bcast(risFlag)
          CALL cm%bcast(pstEq)
          CALL cm%bcast(sstEq)
          CALL cm%bcast(cepEq)
+         CALL cm%bcast(risFlag)
+         CALL cm%bcast(ris0DFlag)
+         CALL cm%bcast(urisFlag)
+         CALL cm%bcast(urisActFlag)
          IF (rmsh%isReqd) THEN
             CALL cm%bcast(rmsh%method)
             CALL cm%bcast(rmsh%freq)
@@ -659,6 +659,7 @@
 
       CALL cm%bcast(lBc%cplBCptr)
       CALL cm%bcast(lBc%bType)
+      CALL cm%bcast(lBc%clsFlgRis)
       IF (cm%slv()) ALLOCATE(lBc%eDrn(nsd), lBc%h(nsd))
       CALL cm%bcast(lBc%eDrn)
       CALL cm%bcast(lBc%iFa)
@@ -838,6 +839,7 @@
       REAL(KIND=RKIND), ALLOCATABLE :: tmp(:)
 
       CALL cm%bcast(lBc%bType)
+      CALL cm%bcast(lBc%clsFlgRis)
       IF (cm%slv()) ALLOCATE(lBc%eDrn(nsd))
       CALL cm%bcast(lBc%eDrn)
       CALL cm%bcast(lBc%iFa)

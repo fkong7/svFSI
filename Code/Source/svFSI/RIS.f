@@ -171,7 +171,6 @@
       eNoNb = lFa%eNoN
       eNoN  = lM%eNoN
       tauB  = lBc%tauB
-      write(*,*)" lBc%tauB ", lBc%tauB
 
       IF (lM%nFs .EQ. 1) THEN
          flag = .TRUE.
@@ -583,7 +582,6 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
          DO j=1, nStk
             Ac = grisMap(iM,j)
             IF(Ac .EQ. 0) CYCLE
-            write(*,*)" put to 0 the velocity "
             lA(1:nsd,Ac) = 0._RKIND
             lY(1:nsd,Ac) = 0._RKIND
          END DO
@@ -604,8 +602,6 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
       INTEGER(KIND=IKIND) iFa, iBc, iM
       TYPE(bcType) :: lBc
 
-      write(*,*), " inside RIS0D_BC "
-
       DO iBc=1, eq(cEq)%nBc
          iFa = eq(cEq)%bc(iBc)%iFa
          iM  = eq(cEq)%bc(iBc)%iM
@@ -624,7 +620,7 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
             ALLOCATE(lBc%eDrn(nsd))
             lBc%eDrn = 0
 
-            write(*,*), " Apply bc Dir "
+!           Apply bc Dir 
             ALLOCATE(lBc%gx(msh(iM)%fa(iFa)%nNo))
             lBc%gx = 1._RKIND
 
@@ -634,16 +630,13 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
             DEALLOCATE(lBc%eDrn)
          ELSE 
 
-            write(*,*), " Apply bc Neu "
-            ! apply new bc here! 
+!           Apply Neu bc 
             CALL SETBCNEUL(eq(cEq)%bc(iBc), msh(iM)%fa(iFa), Yg, Dg)
 
          END IF
       
       END DO
       
-      write(*,*), " outside RIS0D_BC "
-
       RETURN
       END SUBROUTINE RIS0D_BC
 
@@ -659,12 +652,11 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
 
       INTEGER(KIND=IKIND) iFa, iBc, iM, m, s, e, nbrIter
       TYPE(bcType) :: lBc
+      TYPE(faceType):: lFa
       REAL(KIND=RKIND) :: meanP = 0._RKIND
       REAL(KIND=RKIND) :: meanFl = 0._RKIND
-      REAL(KIND=RKIND) :: tmp
-      REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
-
-      write(*,*), " inside RIS0D_STATUS " 
+      REAL(KIND=RKIND) :: tmp, tmp_new
+      REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:), sA(:)
 
       DO iBc=1, eq(cEq)%nBc
          iFa = eq(cEq)%bc(iBc)%iFa
@@ -682,10 +674,23 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
 
          tmpV(1:m,:) = Yn(s:e,:)
 
-         tmp = msh(iM)%fa(iFa)%area
-         meanP = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+C          IF( msh(iM)%fa(iFa)%nEl .EQ. 0) THEN 
+C             write(*,*), " outside RIS0D_STATUS proc ", cm%id() 
+C             RETURN
+C          END IF
 
-!     For the velocity 
+         tmp = msh(iM)%fa(iFa)%area
+         !meanP = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+         ALLOCATE(sA(tnNo))
+         sA   = 1._RKIND
+         lFa = msh(iM)%fa(iFa)
+!        such update may be not correct
+         tmp_new = Integ(lFa, sA)
+         print*, "area og is ", tmp
+         print*, "area up is ", tmp_new
+         meanP = Integ(msh(iM)%fa(iFa),tmpV,1,m)/tmp_new
+
+!        For the velocity 
          m = nsd
          s = eq(cEq)%s
          e = s + m - 1
@@ -702,9 +707,11 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
 
          IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
-
          RisnbrIter = RisnbrIter + 1
-         IF( RisnbrIter .LE. 25 ) RETURN
+         IF( RisnbrIter .LE. 25 .AND. cTS .GT. 1) THEN 
+            IF (.NOT.cm%seq()) CALL cm%bcast(RisnbrIter)  
+            RETURN
+         END IF
 
 !--- 
 !--- Update RES
@@ -714,6 +721,9 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
  !       OPENING CONDITION: Check condition on the pressure difference        
             IF( eq(cEq)%bc(iBc)%g .LT. meanP  ) THEN 
                eq(cEq)%bc(iBc)%clsFlgRis  = 0
+               IF (.NOT.cm%seq()) THEN 
+                  CALL cm%bcast(eq(cEq)%bc(iBc)%clsFlgRis) 
+               END IF
                write(*,*)"!!! -- Going from close to open "
                RisnbrIter = 0 
 
@@ -724,6 +734,9 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
 !        CLOSING CONDITION: Check existence of a backflow
             IF( meanFl .LT. 0.) THEN 
                eq(cEq)%bc(iBc)%clsFlgRis = 1
+               IF (.NOT.cm%seq()) THEN 
+                  CALL cm%bcast(eq(cEq)%bc(iBc)%clsFlgRis) 
+               END IF
                write(*,*)"!!! -- Going from open to close "
                RisnbrIter = 0 
             END IF
@@ -752,11 +765,9 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
          END IF
 !---- 
 !---- 
-
       END DO
 
-
-      write(*,*), " outside RIS0D_STATUS "  
+      IF (.NOT.cm%seq()) CALL cm%bcast(RisnbrIter)  
 
       RETURN
       END SUBROUTINE RIS0D_STATUS
