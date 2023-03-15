@@ -353,6 +353,7 @@ C       nMsh = 1
             IF (ALLOCATED(msh(iM)%fN))     DEALLOCATE(msh(iM)%fN)
             IF (ALLOCATED(msh(iM)%Nx))     DEALLOCATE(msh(iM)%Nx)
             IF (ALLOCATED(msh(iM)%Nxx))    DEALLOCATE(msh(iM)%Nxx)
+            IF (ALLOCATED(msh(iM)%vf))     DEALLOCATE(msh(iM)%vf)
             CALL DESTROY(msh(iM)%nAdj)
             CALL DESTROY(msh(iM)%eAdj)
             DO i=1, msh(iM)%nFs

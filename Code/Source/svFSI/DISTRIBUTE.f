@@ -48,7 +48,7 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), gmtl(:)
       REAL(KIND=RKIND4), ALLOCATABLE :: iWgt(:)
       REAL(KIND=RKIND), ALLOCATABLE :: wgt(:,:), wrk(:), tmpX(:,:),
-     2   tmpD(:,:,:)
+     2   tmpD(:,:,:), tmpVf(:)
       TYPE(mshType), ALLOCATABLE :: tMs(:)
 
 !     Preparing IO incase of error or warning. I'm keeping dbg channel
@@ -65,7 +65,6 @@
          CALL cm%bcast(nsd)
          CALL cm%bcast(rmsh%isReqd)
       END IF
-      write(*,*)" gtnNo = ", gtnNo
       CALL cm%bcast(gtnNo)
 
       IF (cm%slv()) ALLOCATE(msh(nMsh))
@@ -84,10 +83,6 @@
 !     and "A" will store the distribution of jobs 
       CALL SPLITJOBS(nMsh, cm%np(), wgt, wrk)
 
-      write(*,*)" nMsh ", nMsh
-      write(*,*)" wgt ", wgt
-      write(*,*)" wrk ", wrk
-
 !     First partitioning the meshes
 !     gmtl:  gtnNo --> tnNo
       tnNo = 0
@@ -99,6 +94,7 @@
             ltg(a) = a
          END DO
       END IF
+
       DO iM=1, nMsh
          dbg = "Partitioning mesh "//iM
          iWgt = REAL(wgt(iM,:)/SUM(wgt(iM,:)), KIND=RKIND4)
@@ -196,6 +192,10 @@
          CALL cm%bcast(pstEq)
          CALL cm%bcast(sstEq)
          CALL cm%bcast(cepEq)
+         CALL cm%bcast(flagLCONT)
+         CALL cm%bcast(flagNLCONT)
+         CALL cm%bcast(cntGap)
+
          IF (rmsh%isReqd) THEN
             CALL cm%bcast(rmsh%method)
             CALL cm%bcast(rmsh%freq)
@@ -366,6 +366,12 @@
          IF (cplBC%nX .NE. 0) CALL cm%bcast(cplBC%xo)
       END IF
       CALL cm%bcast(cplBC%initRCR)
+         
+!     Distribute list of FSI inteface ids (global on all meshes, all proc)
+      CALL cm%bcast(nbrPrj)
+      IF(cm%slv().AND..NOT.ALLOCATED(listPrjID)) 
+     2                          ALLOCATE(listPrjID(nbrPrj))
+      CALL cm%bcast(listPrjID)
 
       DO iM=1, nMsh
          CALL DESTROY(tMs(iM))

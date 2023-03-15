@@ -48,6 +48,7 @@
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn, count, 
      2                    ee
       REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), vf, Kb, cnt(nsd), aux(nsd)
+      REAL(KIND=RKIND) mu
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -152,40 +153,21 @@ C             Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
 C          END IF
 
 !        vf version attached to solid, ball around the solid
-         IF (cPhys .EQ. phys_fluid .AND. flagLCONT) THEN 
+         IF (cPhys .EQ. phys_fluid .AND. contAct) THEN 
 
-!           Creating hole list for ball into a fluid example only
-            count = 0
-            DO ee = 1, msh(2)%nEl
-               DO a=1, msh(2)%eNoN
-                  Ac = msh(2)%IEN(a,ee)
-                  cnt(1) = cnt(1) + x(1,Ac) + Dg(nsd+2,Ac)  
-                  cnt(2) = cnt(2) + x(2,Ac) + Dg(nsd+2+1,Ac)  
-                  cnt(3) = cnt(3) + x(3,Ac) + Dg(nsd+2+2,Ac) 
-                  count = count + 1 
-               END DO
-            END DO
-            cnt(1) = cnt(1) / count
-            cnt(2) = cnt(2) / count
-            cnt(3) = cnt(3) / count
+            mu = eq(cEq)%dmn(cDmn)%visc%mu_i
 
 !           Check if all the nodes are below the gap, if yes 
 !           the Brinkman term need to be activated             
-            count = 0
             DO a=1, eNoN
-               aux = cnt - xl(:,a)
 !              Around lower half
-               IF( SQRT(NORM(aux)) .LE. 0.05+cntGap .AND. 
-     2                xl(2,a).LT. cnt(2)) count = count + 1
-!              Around
-C                IF( SQRT(NORM(aux)) .LE. 0.05+1.5*cntGap) count=count+1
-            END DO
-
-            vf = 0.25_RKIND*REAL(count)
-
-            Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
-            
+               IF(xl(2,a).LT.cntGap) THEN 
+                  Kb = mu*lM%vf(e)/1.E-5_RKIND !1.E-3_RKIND
+               END IF
+            END DO   
          END IF
+
+C          IF(Kb.NE.0._RKIND) write(*,*)"****** Using Darcy ****** "
 
 !        Gauss integration 1
          DO g=1, fs(1)%nG

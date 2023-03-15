@@ -385,6 +385,10 @@
          END DO
       END DO
 
+!     If flagLCONTACT, compute vf on the local mesh 
+      CALL CMPVfCONTACT()
+
+
 !     Preparing faces and BCs
       CALL BAFINI()
 
@@ -669,6 +673,7 @@
       IF (ALLOCATED(idMap))    DEALLOCATE(idMap)
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
+      IF (ALLOCATED(listPrjID))DEALLOCATE(listPrjID)
 
       IF (ALLOCATED(faceContElm))  DEALLOCATE(faceContElm)
       IF (ALLOCATED(volContElm))   DEALLOCATE(volContElm)

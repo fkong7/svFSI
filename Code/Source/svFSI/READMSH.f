@@ -472,7 +472,7 @@ c               END IF
       TYPE(stackType), INTENT(OUT) :: avNds
 
       INTEGER(KIND=IKIND) i, j, k, iM, jM, kM, iFa, jFa, ia, ja, nPrj,
-     2   iPrj, nStk
+     2   iPrj, nStk, cntlstID
       REAL(KIND=RKIND) tol
       CHARACTER(LEN=stdL) ctmpi, ctmpj
       TYPE(stackType) lPrj
@@ -495,6 +495,11 @@ c               END IF
          nStk = nStk + msh(iM)%fa(iFa)%nNo
       END DO
       ALLOCATE(stk(nStk))
+
+      nbrPrj = nStk
+      IF(.NOT.ALLOCATED(listPrjID)) ALLOCATE(listPrjID(nStk))
+      listPrjID = 0
+      cntlstID = 0
 
       DO iPrj=1, nPrj
          lPP => list%get(ctmpi,"Add projection",iPrj)
@@ -520,16 +525,26 @@ c               END IF
                   END IF
                   msh(iM)%gN(ia) = k
                   msh(jM)%gN(ja) = k
+
+                  cntlstID = cntlstID + 1
+                  listPrjID(cntlstID) = k
+
                   CALL PUSHSTACK(stk(k), (/iM,ia,jM,ja/))
                ELSE
 !     This is the case one of them has already been assigned. So just
 !     using that value for the other one
                   msh(iM)%gN(ia) = j
+
+                  cntlstID = cntlstID + 1
+                  listPrjID(cntlstID) = j
                   CALL PUSHSTACK(stk(j), (/iM,ia/))
                END IF
             ELSE
                IF (j .EQ. 0) THEN
                   msh(jM)%gN(ja) = i
+
+                  cntlstID = cntlstID + 1
+                  listPrjID(cntlstID) = i
                   CALL PUSHSTACK(stk(i), (/jM,ja/))
                ELSE
 !     Since they are both already have assigned values, I will move the

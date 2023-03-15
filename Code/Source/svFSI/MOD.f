@@ -584,6 +584,8 @@
          REAL(KIND=RKIND), ALLOCATABLE :: Nx(:,:,:)
 !        Second derivatives of shape functions - used for shells & IGA
          REAL(KIND=RKIND), ALLOCATABLE :: Nxx(:,:,:)
+!        Vf for Navier-Stokes-Brinkman equations
+         REAL(KIND=RKIND), ALLOCATABLE :: vf(:)
 !        Mesh Name
          CHARACTER(LEN=stdL) :: name
 !        Mesh nodal adjacency
@@ -853,8 +855,9 @@
 !     Postprocess step - convert bin to vtk
       LOGICAL bin2VTK
 !     Flag for linear contact with a wall 
-      LOGICAL :: flagLCONT = .TRUE. 
-      REAL(KIND=RKIND) :: cntGap = 0.02_RKIND
+      LOGICAL :: flagLCONT = .FALSE. 
+      LOGICAL :: contAct = .FALSE. 
+      REAL(KIND=RKIND) :: cntGap = 0._RKIND
 !     Flag for non linear contact with a wall 
       LOGICAL :: flagNLCONT = .FALSE. 
 
@@ -869,7 +872,7 @@
       INTEGER(KIND=IKIND) startTS
 !     Current equation degrees of freedom
       INTEGER(KIND=IKIND) dof
-!     Global total number of nodes
+!     Global total number of nodes (on all proc, on all meshes)
       INTEGER(KIND=IKIND) gtnNo
 !     Number of equations
       INTEGER(KIND=IKIND) nEq
@@ -895,7 +898,7 @@
       INTEGER(KIND=IKIND) stFileIncr
 !     Total number of degrees of freedom per node
       INTEGER(KIND=IKIND) tDof
-!     Total number of nodes
+!     Total number of nodes (for each proc, on all meshes)
       INTEGER(KIND=IKIND) tnNo
 !     Restart Time Step
       INTEGER(KIND=IKIND) rsTS
@@ -935,7 +938,10 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: cmmBdry(:)
 
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)
-      INTEGER, ALLOCATABLE :: iblank(:)
+      INTEGER(KIND=IKIND), ALLOCATABLE :: iblank(:)
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: listPrjID(:)
+      INTEGER(KIND=IKIND) :: nbrPrj
 
 !     Contact temporary data structure, id face of the opposite mesh 
 !     that they are in contact (local in face ordering)  

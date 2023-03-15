@@ -305,6 +305,11 @@
          END IF
       END IF
 
+!--------------------------------------------------------------------
+!     Building vf for NSB for contact 
+!      CALL CMPVfCONTACT()
+!--------------------------------------------------------------------
+
       IF (.NOT.ALLOCATED(cplBC%xo)) THEN
          cplBC%nX = 0
          ALLOCATE(cplBC%xo(cplBC%nX))
@@ -528,7 +533,7 @@
             outPuts(3)  = out_cauchy
             outPuts(4)  = out_strain
          ELSE
-            nDOP = (/12,2,0,0/)
+            nDOP = (/13,2,0,0/)
             outPuts(1)  = out_displacement
             outPuts(2)  = out_mises
             outPuts(3)  = out_stress
@@ -541,6 +546,7 @@
             outPuts(10) = out_fibAlign
             outPuts(11) = out_velocity
             outPuts(12) = out_acceleration
+            outPuts(13) = out_vf
          END IF
 
          CALL READLS(lSolver_CG, lEq, list)
@@ -565,7 +571,7 @@
          lPtr => list%get(pstEq, "Prestress")
          IF (pstEq) err = "Prestress for USTRUCT is not implemented yet"
 
-         nDOP = (/14,2,0,0/)
+         nDOP = (/15,2,0,0/)
          outPuts(1)  = out_displacement
          outPuts(2)  = out_mises
          outPuts(3)  = out_stress
@@ -580,6 +586,7 @@
          outPuts(12) = out_pressure
          outPuts(13) = out_acceleration
          outPuts(14) = out_divergence
+         outPuts(15) = out_vf
 
          CALL READLS(lSolver_GMRES, lEq, list)
 
@@ -755,7 +762,7 @@
 
          CALL READDOMAIN(lEq, propL, list, phys)
 
-         nDOP = (/22,4,2,0/)
+         nDOP = (/23,4,2,0/)
          outPuts(1)  = out_velocity
          outPuts(2)  = out_pressure
          outPuts(3)  = out_displacement
@@ -781,6 +788,7 @@
 
          outPuts(21) = out_divergence
          outPuts(22) = out_acceleration
+         outPuts(23) = out_vf
 
          CALL READLS(lSolver_GMRES, lEq, list)
 
@@ -1090,6 +1098,11 @@
      2       (lEq%dmn(iDmn)%phys .EQ. phys_stokes) .OR.
      3       (lEq%dmn(iDmn)%phys.EQ.phys_CMM .AND. .NOT.cmmInit)) THEN
             CALL READVISCMODEL(lEq%dmn(iDmn), lPD)
+         END IF
+
+         IF ((lEq%dmn(iDmn)%phys .EQ. phys_struct)  .OR.
+     2       (lEq%dmn(iDmn)%phys .EQ. phys_ustruct)) THEN
+            CALL READCONTACTMODEL(lEq%dmn(iDmn), lPD)
          END IF
       END DO
 
@@ -1402,6 +1415,11 @@
             lEq%output(iOut)%o    = 0
             lEq%output(iOut)%l    = 1
             lEq%output(iOut)%name = "Jacobian"
+         CASE (out_vf)
+            lEq%output(iOut)%grp  = outGrp_Vf
+            lEq%output(iOut)%o    = 0
+            lEq%output(iOut)%l    = 1
+            lEq%output(iOut)%name = "SpDst_conudct"
          CASE (out_defGrad)
             lEq%output(iOut)%grp  = outGrp_F
             lEq%output(iOut)%o    = 0
@@ -2634,6 +2652,63 @@ c     2         "can be applied for Neumann boundaries only"
 
       RETURN
       END SUBROUTINE READVISCMODEL
+!####################################################################
+!     This subroutine reads parameters of non-Newtonian viscosity model
+      SUBROUTINE READCONTACTMODEL(lDmn, lPD)
+      USE COMMOD
+      USE LISTMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(dmnType), INTENT(INOUT) :: lDmn
+      TYPE(listType), INTENT(INOUT) :: lPD
+
+      TYPE(listType), POINTER :: lPtr, lCnt
+      INTEGER(KIND=IKIND) :: nbrCnt
+      REAL(KIND=RKIND) :: rtmp
+      CHARACTER(LEN=stdL) ctmp
+
+C       write(*,*)" just before "
+C       lCnt => lPD%get(ctmp,"Contact type",1)
+C       write(*,*)" not going after "
+C       IF (ASSOCIATED(lCnt)) THEN 
+C          CALL TO_LOWER(ctmp)
+C          SELECT CASE (TRIM(ctmp))
+C          CASE ("linear")
+C             flagLCONT = .TRUE.
+C             lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
+
+C          CASE ("nonlinear")
+C             flagNLCONT = .TRUE.
+C             lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
+
+C          CASE DEFAULT
+C             err = "Undefined model for contact"
+C          END SELECT
+C       END IF
+
+      write(*,*)" just before "
+      nbrCnt = lPD%srch("Contact type")
+      write(*,*)" going after "
+      IF (nbrCnt .GE. 1) THEN 
+         lCnt => lPD%get(ctmp,"Contact type",1)
+
+         CALL TO_LOWER(ctmp)
+         SELECT CASE (TRIM(ctmp))
+         CASE ("linear")
+            flagLCONT = .TRUE.
+            lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
+
+         CASE ("nonlinear")
+            flagNLCONT = .TRUE.
+            lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
+
+         CASE DEFAULT
+            err = "Undefined model for contact"
+         END SELECT
+      END IF
+
+      RETURN
+      END SUBROUTINE READCONTACTMODEL
 !####################################################################
 !     This subroutine reads general velocity data from bct.vtp
       SUBROUTINE READBCT(lMB, lFa, fName)

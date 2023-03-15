@@ -42,7 +42,9 @@
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER(KIND=IKIND) iM, iFa
+      INTEGER(KIND=IKIND) iM, iFa, cntAct
+
+      cntAct = 0
 
 !     Formulation for linear contact of a thick structure and a fixed 
 !     wall, yL = defined form file, for the moment we consider 0 
@@ -57,20 +59,29 @@
       DO iM=1, nMsh
          DO iFa=1, msh(iM)%nFa
 C             write(*,*)" id proc ", cm%id()," iM,iFa ", iM,iFa
-            CALL BASSEMLCONT(msh(iM)%fa(iFa), Yg, Dg)             
+            CALL BASSEMLCONT(msh(iM)%fa(iFa), Yg, Dg, cntAct)             
          END DO
       END DO
+
+      cntAct = cm%reduce(cntAct)
+
+      IF(cntAct.GT.0) contAct = .TRUE.
+
+
+
+      write(*,*)"proc",cm%id(),"contAct",contAct
 
       RETURN
       END SUBROUTINE LCONTACTFORCES
 !#######################################################################
 !     Construct Neumann BCs
-      SUBROUTINE BASSEMLCONT(lFa, Yg, Dg)
+      SUBROUTINE BASSEMLCONT(lFa, Yg, Dg, cntAct)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
       TYPE(faceType), INTENT(IN) :: lFa
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
+      INTEGER(KIND=IKIND), INTENT(OUT) :: cntAct
 
       INTEGER(KIND=IKIND) a, e, g, Ac, Ec, iM, cPhys, eNoN, b
       REAL(KIND=RKIND) w, h, nV(nsd), y(tDof), Jac, hc(nsd), gap, 
@@ -197,11 +208,12 @@ C                   write(*,*)" gap is ", hc(2)
 
                   IF( hc(2) .LT. 0._RKIND ) THEN 
 
-                     write(*,*)" **** CONTACT ACTIVE **** "
+C                      write(*,*)" **** CONTACT ACTIVE **** "
 C                      write(*,*)"xl(2,a) =  ", xl(2,a)
 C                      write(*,*)"dl(2,a) =  ", dl(2,a)
 C                      write(*,*)" ys is ", ys
 C                      write(*,*)" gap is ", hc(2)
+                     cntAct = 1
 
                      lR(1,a) = lR(1,a) + gamma*w*N(a)*hc(1)
                      lR(2,a) = lR(2,a) + gamma*w*N(a)*hc(2)
@@ -235,180 +247,129 @@ C             END IF
       RETURN
       END SUBROUTINE BASSEMLCONT
 !#######################################################################
+!     Routine to compute vf, scalar value for each local mesh, defining the 
+!     spatial distribution of K for contact in the context of NSB eqs
+      SUBROUTINE CMPVfCONTACT()
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
 
+      INTEGER(KIND=IKIND) iM, cPhys, nEl, e, a, cnt, Ac, find, Acl, eNgb
+      INTEGER(KIND=IKIND), ALLOCATABLE :: idTet(:)
+      REAL(KIND=RKIND) sEp
 
+      sEp=1.E-6_RKIND
 
+      IF(.NOT.(flagLCONT.OR.flagNLCONT)) RETURN
 
-C       LOGICAL :: flag
-C       INTEGER(KIND=IKIND) :: i, j, k, l, m, iM, jM, e, a, Ac, b, Bc, g,
-C      2   eNoN, insd, nnb, maxNnb
-C       REAL(KIND=RKIND) :: kl, hl, w, Jac, al, c, d, pk, nV1(nsd),
-C      2   nV2(nsd), x1(nsd), x2(nsd), x12(nsd), xmin(nsd), xmax(nsd)
+      DO iM=1, nMsh
+!        Assumption that the physics is constant for all the elements of the mesh 
+!        Look at element 1 for eq 1 (it should be FSI/fluid/struct )
+         cDmn  = DOMAIN(msh(iM), 1, 1)
+         cPhys = eq(1)%dmn(cDmn)%phys
+         nEl = msh(iM)%nEl
 
-C       INTEGER(KIND=IKIND), ALLOCATABLE :: incNd(:), bBox(:,:)
-C       REAL(KIND=RKIND), ALLOCATABLE :: sA(:), sF(:,:), N(:), Nx(:,:),
-C      2   gCov(:,:), gCnv(:,:), xl(:,:), lR(:,:)
+         IF(nEl.EQ.0) CYCLE
+                
+         IF(.NOT.ALLOCATED(msh(iM)%vf)) ALLOCATE(msh(iM)%vf(nEl))    
 
-C       IF (eq(cEq)%phys .NE. phys_shell) RETURN
+         msh(iM)%vf = 0._RKIND
 
-C       i  = eq(cEq)%s
-C       j  = i + 1
-C       k  = j + 1
-C       kl = cntctM%k
-C       hl = cntctM%h
+         IF (cPhys.EQ.phys_struct .OR. 
+     2           cPhys.EQ.phys_ustruct) msh(iM)%vf = 2._RKIND
+        
+         IF (cPhys.NE.phys_fluid) CYCLE 
 
-C !     Compute normal vectors at each node in the current configuration
-C       ALLOCATE(sF(nsd,tnNo), sA(tnNo))
-C       sF = 0._RKIND
-C       sA = 0._RKIND
-C       DO iM=1, nMsh
-C          IF (.NOT.msh(iM)%lShl) CYCLE
-C          eNoN = msh(iM)%eNoN
-C          insd = nsd - 1
-C          ALLOCATE(Nx(insd,eNoN), N(eNoN), xl(nsd,eNoN), gCov(nsd,insd),
-C      2      gCnv(nsd,insd))
-C          Nx = msh(iM)%Nx(:,:,1)
-C          DO e=1, msh(iM)%nEl
-C             DO a=1, eNoN
-C                Ac = msh(iM)%IEN(a,e)
-C                xl(1,a) = x(1,Ac) + Dg(i,Ac)
-C                xl(2,a) = x(2,Ac) + Dg(j,Ac)
-C                xl(3,a) = x(3,Ac) + Dg(k,Ac)
-C             END DO
-C             CALL GNNS(eNoN, Nx, xl, nV1, gCov, gCnv)
-C             Jac = SQRT(NORM(nV1(:)))
-C             nV1(:) = nV1(:)/Jac
+         ALLOCATE(idTet(msh(iM)%eNoN))
 
-C             DO g=1, msh(iM)%nG
-C                w = msh(iM)%w(g) * Jac
-C                N(:) = msh(iM)%N(:,g)
-C                DO a=1, eNoN
-C                   Ac = msh(iM)%IEN(a,e)
-C                   sA(Ac) = sA(Ac) + w*N(a)
-C                   sF(:,Ac) = sF(:,Ac) + w*N(a)*nV1(:)
-C                END DO
-C             END DO
-C          END DO
-C          DEALLOCATE(N, Nx, xl, gCov, gCnv)
-C       END DO
+!--      Layer 1 - vf = 1.
+         DO e=1, msh(iM)%nEl 
 
-C       CALL COMMU(sF)
-C       CALL COMMU(sA)
+            cnt = 0
 
-C       DO Ac=1, tnNo
-C          IF (.NOT.ISZERO(sA(Ac))) sF(:,Ac) = sF(:,Ac)/sA(Ac)
-C          Jac = SQRT(SUM(sF(:,Ac)**2))
-C          IF (.NOT.ISZERO(Jac)) sF(:,Ac) = sF(:,Ac) / Jac
-C       END DO
+            DO a=1, msh(iM)%eNoN
+               Acl = msh(iM)%IEN(a,e)
+               Ac = ltg(Acl)
 
-C !     Create a bounding box around possible region of contact and bin
-C !     the box with neighboring nodes
-C       maxNnb = 15
-C  101  maxNnb = maxNnb + 5
-C       IF (ALLOCATED(bBox)) DEALLOCATE(bBox)
-C       ALLOCATE(bBox(maxNnb,tnNo))
-C       bBox = 0
-C       DO iM=1, nMsh
-C          IF (.NOT.msh(iM)%lShl) CYCLE
-C          DO a=1, msh(iM)%nNo
-C             Ac = msh(iM)%gN(a)
-C             x1(1) = x(1,Ac) + Dg(i,Ac)
-C             x1(2) = x(2,Ac) + Dg(j,Ac)
-C             x1(3) = x(3,Ac) + Dg(k,Ac)
+               find = FINDLOC(listPrjID, Ac,dim=1)
+               IF(find.GT.0) THEN 
+                  cnt = cnt + 1
+               END IF
 
-C !           Box limits for each node
-C             xmin(:) = x1(:) - cntctM%c
-C             xmax(:) = x1(:) + cntctM%c
+            END DO
 
-C !           Load the box with neighboring nodes lying within it
-C             DO jM=1, nMsh
-C                IF (iM.EQ.jM .OR. .NOT.msh(jM)%lShl) CYCLE
-C                DO b=1, msh(jM)%nNo
-C                   Bc = msh(jM)%gN(b)
-C                   x2(1) = x(1,Bc) + Dg(i,Bc)
-C                   x2(2) = x(2,Bc) + Dg(j,Bc)
-C                   x2(3) = x(3,Bc) + Dg(k,Bc)
-C                   IF (x2(1).GE.xmin(1) .AND. x2(1).LE.xmax(1) .AND.
-C      2                x2(2).GE.xmin(2) .AND. x2(2).LE.xmax(2) .AND.
-C      3                x2(3).GE.xmin(3) .AND. x2(3).LE.xmax(3)) THEN
-C                      DO l=1, maxNnb
-C                         IF (bBox(l,Ac) .EQ. 0) THEN
-C                            bBox(l,Ac) = Bc
-C                            EXIT
-C                         END IF
-C                         IF (Bc .GT. bBox(l,Ac)) CYCLE
-C                         IF (Bc .EQ. bBox(l,Ac)) EXIT
-C                         IF (bBox(maxNnb,Ac) .NE. 0) GOTO 101
-C                         DO m=maxNnb, l+1, -1
-C                            bBox(m,Ac) = bBox(m-1,Ac)
-C                         END DO
-C                         bBox(l,Ac) = Bc
-C                         EXIT
-C                      END DO
-C                      IF (l .GT. maxNnb) GOTO 101
-C                   END IF
-C                END DO ! b
-C             END DO ! jM
-C          END DO ! a
-C       END DO ! iM
+            IF(cnt.GE.1) msh(iM)%vf(e) = 1._RKIND
 
-C !     Check if any node is strictly involved in contact and compute
-C !     corresponding penalty forces assembled to the residue
-C       ALLOCATE(lR(dof,tnNo), incNd(tnNo))
-C       lR    = 0._RKIND
-C       incNd = 0
-C       DO Ac=1, tnNo
-C          IF (bBox(1,Ac) .EQ. 0) CYCLE
-C          x1(1)  = x(1,Ac) + Dg(i,Ac)
-C          x1(2)  = x(2,Ac) + Dg(j,Ac)
-C          x1(3)  = x(3,Ac) + Dg(k,Ac)
-C          nV1(:) = sF(:,Ac)
-C          nNb    = 0
-C          DO a=1, maxNnb
-C             Bc = bBox(a,Ac)
-C             IF (Bc .EQ. 0) CYCLE
-C             x2(1)  = x(1,Bc) + Dg(i,Bc)
-C             x2(2)  = x(2,Bc) + Dg(j,Bc)
-C             x2(3)  = x(3,Bc) + Dg(k,Bc)
-C             nV2(:) = sF(:,Bc)
+         END DO
 
-C             x12 = x1(:) - x2(:)
-C             c   = SQRT(NORM(x12))
-C             al  = SQRT(ABS(NORM(nV1, nV2)))
+!--      Layer 2 - vf = 0.5
+         DO e=1, msh(iM)%nEl 
 
-C             IF (c.LE.cntctM%c .AND. al.GE.cntctM%al) THEN
-C                d = NORM(x12, nV2)
-C                flag = .FALSE.
-C                IF (d.GE.-cntctM%h .AND. d.LT.0._RKIND) THEN
-C                   pk = 0.5_RKIND*kl/hl * (d + hl)**2._RKIND
-C                   flag = .TRUE.
-C                ELSE IF (d .GE. 0._RKIND) THEN
-C                   pk = 0.5_RKIND*kl * (hl + d)
-C                   flag = .TRUE.
-C                ELSE
-C                   pk = 0._RKIND
-C                END IF
-C                IF (flag) THEN
-C                   incNd(Ac) = 1
-C                   nNb = nNb + 1
-C                   lR(1:nsd,Ac) = lR(1:nsd,Ac) - pk*nV1(:)
-C                END IF
-C             END IF
-C          END DO
-C          IF (nNb .NE. 0) lR(:,Ac) = lR(:,Ac) / REAL(nNb, KIND=RKIND)
-C       END DO
-C       DEALLOCATE(sA, sF, bBox)
+            IF( msh(iM)%vf(e).LT.1._RKIND-sEp) CYCLE 
 
-C !     Return if no penalty forces are to be added
-C       IF (SUM(incNd) .EQ. 0) RETURN
+            DO a=1, msh(iM)%eNoN
+               Ac = msh(iM)%IEN(a,e)
+               idTet(a) = Ac
+            END DO
 
-C !     Global assembly
-C       DO Ac=1, tnNo
-C          IF (incNd(Ac) .EQ. 0) CYCLE
-C          R(:,Ac) = R(:,Ac) + lR(:,Ac)
-C       END DO
-C       DEALLOCATE(lR, incNd)
+            DO eNgb =1, msh(iM)%nEl 
 
-C       RETURN
-C       END SUBROUTINE CONTACTFORCES
-C !####################################################################
+               IF(msh(iM)%vf(eNgb).GE.1._RKIND-sEp) CYCLE
+
+               cnt = 0
+               DO a=1, msh(iM)%eNoN
+                  Ac = msh(iM)%IEN(a,eNgb)
+
+                  find = FINDLOC(idTet, Ac,dim=1)
+                  IF(find.GT.0) THEN 
+                     cnt = cnt + 1
+                  END IF
+               END DO
+
+               IF(cnt.GT.0) msh(iM)%vf(eNgb)=0.5_RKIND 
+
+            END DO
+
+         END DO
+
+!--      Layer 3 - vf = 0.25, looking from neig vf=0, with neigh vf=0.5
+         DO e=1, msh(iM)%nEl 
+
+!           Select only elem with vf=0.
+            IF( msh(iM)%vf(e).GT.0.5_RKIND-sEp ) CYCLE 
+
+            DO a=1, msh(iM)%eNoN
+               Ac = msh(iM)%IEN(a,e)
+               idTet(a) = Ac
+            END DO
+
+            DO eNgb =1, msh(iM)%nEl 
+
+!              Search neigh with vf=0.5
+               IF(msh(iM)%vf(eNgb).GT.0.5_RKIND+sEp) CYCLE
+               IF(msh(iM)%vf(eNgb).LT.0.5_RKIND-sEp) CYCLE
+
+               cnt = 0
+               DO a=1, msh(iM)%eNoN
+                  Ac = msh(iM)%IEN(a,eNgb)
+
+                  find = FINDLOC(idTet, Ac,dim=1)
+                  IF(find.GT.0) THEN 
+                     cnt = cnt + 1
+                  END IF
+               END DO
+
+               IF(cnt.GT.0) msh(iM)%vf(e)=0.25_RKIND 
+
+            END DO
+
+         END DO
+
+         DEALLOCATE(idTet)
+
+      END DO
+
+      RETURN
+      END SUBROUTINE CMPVfCONTACT
+
+!####################################################################

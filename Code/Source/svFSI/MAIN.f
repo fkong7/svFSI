@@ -100,10 +100,6 @@
          eq%itr = 0
          eq%ok  = .FALSE.
 
-!        Just to add the porous layer if we are near the contact 
-         flagLCONT = .FALSE.
-         IF (cTS .GE. 20) flagLCONT = .TRUE.
-
 !     Compute mesh properties to check if remeshing is required
          IF (mvMsh .AND. rmsh%isReqd) THEN
             CALL CALCMESHPROPS(nMsh, msh)
@@ -114,7 +110,7 @@
          CALL PICP
 
 !     Apply Dirichlet BCs strongly
-         CALL SETBCDIR(An, Yn, Dn)
+         CALL SETBCDIR(An, Yn, Dn)    
 
 !     Inner loop for iteration
          DO
@@ -144,6 +140,10 @@ C             IF( cTS .LE. 4 ) THEN
             CALL SETBF(Dg)
 C             END IF
 
+!        If linear contact, call compute linear contact force      
+            IF( flagLCONT ) CALL LCONTACTFORCES(Yg,Dg)
+            IF( flagNLCONT ) CALL NL_CONTACTFORCES(Yg,Dg)
+
             dbg = "Assembling equation <"//eq(cEq)%sym//">"
             DO iM=1, nMsh
                CALL GLOBALEQASSEM(msh(iM), Ag, Yg, Dg)
@@ -153,10 +153,6 @@ C             END IF
 !        Treatment of boundary conditions on faces
 !        Apply Neumman or Traction boundary conditions
             CALL SETBCNEU(Yg, Dg)
-
-!        If linear contact, call compute linear contact force      
-            IF( flagLCONT ) CALL LCONTACTFORCES(Yg,Dg)
-            IF( flagNLCONT ) CALL NL_CONTACTFORCES(Yg,Dg)
 
 !        Apply CMM BC conditions
             IF (.NOT.cmmInit) CALL SETBCCMM(Ag, Dg)

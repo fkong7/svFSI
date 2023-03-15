@@ -158,9 +158,9 @@
      5   outGrp_absV = 512, outGrp_fN = 513, outGrp_fA = 514,
      6   outGrp_stress = 515, outGrp_cauchy = 516, outGrp_mises = 517,
      7   outGrp_J = 518, outGrp_F = 519, outGrp_strain = 520,
-     8   outGrp_divV = 521, outGrp_Visc = 522
+     8   outGrp_divV = 521, outGrp_Visc = 522, outGrp_Vf = 523
 !--------------------------------------------------------------------
-      INTEGER(KIND=IKIND), PARAMETER :: out_velocity = 599,
+      INTEGER(KIND=IKIND), PARAMETER :: out_vf = 574,out_velocity = 599, 
      2   out_pressure = 598, out_temperature = 597, out_voltage = 596,
      3   out_acceleration = 595, out_displacement = 594, out_integ =593,
      4   out_WSS = 592, out_traction = 591, out_vorticity = 590,

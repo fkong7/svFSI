@@ -464,6 +464,8 @@
 
             IF (oGrp.EQ.outGrp_J .OR. oGrp.EQ.outGrp_Mises)
      2         nOute = nOute + 1
+
+            IF (oGrp.EQ.outGrp_Vf) nOute = nOute + 1
          END DO
       END DO
 
@@ -653,6 +655,13 @@
                   DEALLOCATE(tmpV, tmpVe)
                   ALLOCATE(tmpV(maxnsd,msh(iM)%nNo))
 
+               CASE (outGrp_Vf)
+                  nOute = nOute + 1
+                  outNamesE(nOute) = "E_Vf"
+                  DO a=1, msh(iM)%nEl
+                     d(iM)%xe(nOute,a) = msh(iM)%vf(a)
+                  END DO
+
                CASE (outGrp_divV)
                   IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
                   ALLOCATE(tmpV(1,msh(iM)%nNo))
@@ -812,7 +821,7 @@
          DEALLOCATE(tmpI)
       END IF
 
-!     Write element Jacobian and von Mises stress if necessary
+!     Write element Jacobian and von Mises stress if necessary, vf
       DO l=1, nOute
          ne = ne + 1
          ALLOCATE(tmpVe(nEl))
@@ -878,46 +887,47 @@ C       END DO
 
 
 !     Write the mesh vf (FSI) version around the solid
-      DO l=1, nOute
-         ALLOCATE(tmpVe(nEl))
-         tmpVe = 0._RKIND
-         Ec = 0
+C       write(*,*)" before vf for "
+C       DO l=1, nOute
+C          ALLOCATE(tmpVe(nEl))
+C          tmpVe = 0._RKIND
+C          Ec = 0
 
-         count = 0
-         DO e = 1, msh(2)%nEl 
-            DO a=1, msh(2)%eNoN
-               Ac = msh(2)%IEN(a,e)
-               cnt(1) = cnt(1) + x(1,Ac) + lD(nsd+2,Ac)  
-               cnt(2) = cnt(2) + x(2,Ac) + lD(nsd+2+1,Ac)  
-               cnt(3) = cnt(3) + x(3,Ac) + lD(nsd+2+2,Ac) 
-               count = count + 1 
-            END DO
-         END DO
-         cnt(1) = cnt(1) / count
-         cnt(2) = cnt(2) / count
-         cnt(3) = cnt(3) / count
+C          count = 0
+C          DO e = 1, msh(2)%nEl 
+C             DO a=1, msh(2)%eNoN
+C                Ac = msh(2)%IEN(a,e)
+C                cnt(1) = cnt(1) + x(1,Ac) + lD(nsd+2,Ac)  
+C                cnt(2) = cnt(2) + x(2,Ac) + lD(nsd+2+1,Ac)  
+C                cnt(3) = cnt(3) + x(3,Ac) + lD(nsd+2+2,Ac) 
+C                count = count + 1 
+C             END DO
+C          END DO
+C          cnt(1) = cnt(1) / count
+C          cnt(2) = cnt(2) / count
+C          cnt(3) = cnt(3) / count
 
-         DO iM=1, nMsh
-            DO e=1, d(iM)%nEl
-               Ec = Ec + 1
+C          DO iM=1, nMsh
+C             DO e=1, d(iM)%nEl
+C                Ec = Ec + 1
        
-               count = 0
-               DO a=1, 4
-                  Ac = msh(iM)%IEN(a,e)
-                  aux = cnt - (x(1:3,Ac)+lD(nsd+2:nsd+4,Ac))
-!                 Just lower half                   
-                  IF( SQRT(NORM(aux)) .LE. 0.05+cntGap .AND. 
-     2                x(2,Ac)+lD(6,Ac) .LT. cnt(2) ) count=count+1
-!                 Around
-C                   IF( SQRT(NORM(aux)).LE.0.05+1.5*cntGap) count=count+1
-               END DO
-               tmpVe(Ec) = 0.25_RKIND*REAL(count)
-            END DO
-         END DO
-         CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
-         IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
-         DEALLOCATE(tmpVe)
-      END DO
+C                count = 0
+C                DO a=1, 4
+C                   Ac = msh(iM)%IEN(a,e)
+C                   aux = cnt - (x(1:3,Ac)+lD(nsd+2:nsd+4,Ac))
+C !                 Just lower half                   
+C                   IF( SQRT(NORM(aux)) .LE. 0.05+cntGap .AND. 
+C      2                x(2,Ac)+lD(6,Ac) .LT. cnt(2) ) count=count+1
+C !                 Around
+C C                   IF( SQRT(NORM(aux)).LE.0.05+1.5*cntGap) count=count+1
+C                END DO
+C                tmpVe(Ec) = 0.25_RKIND*REAL(count)
+C             END DO
+C          END DO
+C          CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
+C          IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
+C          DEALLOCATE(tmpVe)
+C       END DO
 
 
 !     Write element ghost cells if necessary
