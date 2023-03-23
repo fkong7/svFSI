@@ -788,23 +788,22 @@
             IF (iStat .LT. 0) err = "VTU file write error (dom id)"
          END IF
 
-         IF (.NOT.savedOnce) THEN
-            savedOnce = .TRUE.
-            ne = ne + 1
-
+C          IF (.NOT.savedOnce) THEN
+C             savedOnce = .TRUE.
 !        Write partition data
-            IF (.NOT.cm%seq()) THEN
-               Ec = 0
-               DO iM=1, nMsh
-                  DO e=1, d(iM)%nEl
-                     Ec = Ec + 1
-                     tmpI(1,Ec) = INT(d(iM)%xe(e,ne), KIND=IKIND)
-                  END DO
+         IF (.NOT.cm%seq()) THEN
+            ne = ne + 1
+            Ec = 0
+            DO iM=1, nMsh
+               DO e=1, d(iM)%nEl
+                  Ec = Ec + 1
+                  tmpI(1,Ec) = INT(d(iM)%xe(e,ne), KIND=IKIND)
                END DO
-               CALL putVTK_elemData(vtu, 'Proc_ID', tmpI, iStat)
-               IF (iStat .LT. 0) err = "VTU file write error (proc id)"
-            END IF
+            END DO
+            CALL putVTK_elemData(vtu, 'Proc_ID', tmpI, iStat)
+            IF (iStat .LT. 0) err = "VTU file write error (proc id)"
          END IF
+C          END IF
 
 !     Write the mesh ID
          IF (nMsh .GT. 1) THEN

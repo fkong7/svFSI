@@ -67,10 +67,6 @@ C             write(*,*)" id proc ", cm%id()," iM,iFa ", iM,iFa
 
       IF(cntAct.GT.0) contAct = .TRUE.
 
-
-
-      write(*,*)"proc",cm%id(),"contAct",contAct
-
       RETURN
       END SUBROUTINE LCONTACTFORCES
 !#######################################################################
@@ -302,7 +298,7 @@ C             END IF
 
          END DO
 
-!--      Layer 2 - vf = 0.5
+!--      Layer 2 - vf = 0.75
          DO e=1, msh(iM)%nEl 
 
             IF( msh(iM)%vf(e).LT.1._RKIND-sEp) CYCLE 
@@ -326,13 +322,46 @@ C             END IF
                   END IF
                END DO
 
-               IF(cnt.GT.0) msh(iM)%vf(eNgb)=0.5_RKIND 
+               IF(cnt.GT.0) msh(iM)%vf(eNgb)=0.75_RKIND 
 
             END DO
 
          END DO
 
-!--      Layer 3 - vf = 0.25, looking from neig vf=0, with neigh vf=0.5
+!--      Layer 3 - vf = 0.5, looking from neig vf=0, with neigh vf=0.75
+         DO e=1, msh(iM)%nEl 
+
+!           Select only elem with vf=0.
+            IF( msh(iM)%vf(e).GT.0.75_RKIND-sEp ) CYCLE 
+
+            DO a=1, msh(iM)%eNoN
+               Ac = msh(iM)%IEN(a,e)
+               idTet(a) = Ac
+            END DO
+
+            DO eNgb =1, msh(iM)%nEl 
+
+!              Search neigh with vf=0.5
+               IF(msh(iM)%vf(eNgb).GT.0.75_RKIND+sEp) CYCLE
+               IF(msh(iM)%vf(eNgb).LT.0.75_RKIND-sEp) CYCLE
+
+               cnt = 0
+               DO a=1, msh(iM)%eNoN
+                  Ac = msh(iM)%IEN(a,eNgb)
+
+                  find = FINDLOC(idTet, Ac,dim=1)
+                  IF(find.GT.0) THEN 
+                     cnt = cnt + 1
+                  END IF
+               END DO
+
+               IF(cnt.GT.0) msh(iM)%vf(e)=0.5_RKIND 
+
+            END DO
+
+         END DO
+
+!--      Layer 4 - vf = 0.25, looking from neig vf=0, with neigh vf=0.5
          DO e=1, msh(iM)%nEl 
 
 !           Select only elem with vf=0.
