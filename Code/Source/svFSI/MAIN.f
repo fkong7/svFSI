@@ -77,7 +77,7 @@
 !     format
       CALL INITIALIZE(timeP)
       stopTS = nTS
-
+      
       dbg = 'Allocating intermediate variables'
       ALLOCATE(Ag(tDof,tnNo), Yg(tDof,tnNo), Dg(tDof,tnNo),
      2   res(nFacesLS), incL(nFacesLS))

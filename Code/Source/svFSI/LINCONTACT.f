@@ -66,6 +66,7 @@ C             write(*,*)" id proc ", cm%id()," iM,iFa ", iM,iFa
       cntAct = cm%reduce(cntAct)
 
       IF(cntAct.GT.0) contAct = .TRUE.
+      IF(contAct.AND.cm%mas()) write(*,*)"*** Contact activated ***" 
 
       RETURN
       END SUBROUTINE LCONTACTFORCES

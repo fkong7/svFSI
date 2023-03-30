@@ -385,9 +385,8 @@
          END DO
       END DO
 
-!     If flagLCONTACT, compute vf on the local mesh 
+!     If flagLCONTACT, building vf for NSB for contact 
       CALL CMPVfCONTACT()
-
 
 !     Preparing faces and BCs
       CALL BAFINI()

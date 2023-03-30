@@ -152,7 +152,7 @@ C             Kb = eq(cEq)%dmn(cDmn)%visc%mu_i * vf / 1.E-5_RKIND !1.E-3_RKIND
             
 C          END IF
 
-!        vf version attached to solid, ball around the solid
+!        vf version attached to solid
          IF (cPhys .EQ. phys_fluid .AND. contAct) THEN 
 
             mu = eq(cEq)%dmn(cDmn)%visc%mu_i
@@ -166,8 +166,6 @@ C          END IF
                END IF
             END DO   
          END IF
-
-C          IF(Kb.NE.0._RKIND) write(*,*)"****** Using Darcy ****** "
 
 !        Gauss integration 1
          DO g=1, fs(1)%nG

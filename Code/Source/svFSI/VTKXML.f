@@ -788,22 +788,22 @@
             IF (iStat .LT. 0) err = "VTU file write error (dom id)"
          END IF
 
-C          IF (.NOT.savedOnce) THEN
-C             savedOnce = .TRUE.
-!        Write partition data
-         IF (.NOT.cm%seq()) THEN
-            ne = ne + 1
-            Ec = 0
-            DO iM=1, nMsh
-               DO e=1, d(iM)%nEl
-                  Ec = Ec + 1
-                  tmpI(1,Ec) = INT(d(iM)%xe(e,ne), KIND=IKIND)
+         IF (.NOT.savedOnce) THEN
+            savedOnce = .TRUE.
+!     Write partition data
+            IF (.NOT.cm%seq()) THEN
+               ne = ne + 1
+               Ec = 0
+               DO iM=1, nMsh
+                  DO e=1, d(iM)%nEl
+                     Ec = Ec + 1
+                     tmpI(1,Ec) = INT(d(iM)%xe(e,ne), KIND=IKIND)
+                  END DO
                END DO
-            END DO
-            CALL putVTK_elemData(vtu, 'Proc_ID', tmpI, iStat)
-            IF (iStat .LT. 0) err = "VTU file write error (proc id)"
+               CALL putVTK_elemData(vtu, 'Proc_ID', tmpI, iStat)
+               IF (iStat .LT. 0) err = "VTU file write error (proc id)"
+            END IF
          END IF
-C          END IF
 
 !     Write the mesh ID
          IF (nMsh .GT. 1) THEN
@@ -863,26 +863,24 @@ C       DEALLOCATE(tmpVe)
 
 
 !     Write the mesh vf (FSI) version at the boundary 
-C       DO l=1, nOute
-C          ALLOCATE(tmpVe(nEl))
-C          tmpVe = 0._RKIND
-C          Ec = 0
-C          DO iM=1, nMsh
-C             DO e=1, d(iM)%nEl
-C                Ec = Ec + 1
-       
-C                count = 0
-C                DO a=1, 4
-C                   Ac = msh(iM)%IEN(a,e)
-C                   IF( x(2,Ac)+lD(6,Ac).LE.cntGap ) count=count+1
-C                END DO
-C                tmpVe(Ec) = 0.25_RKIND*REAL(count)
+C       ALLOCATE(tmpVe(nEl))
+C       tmpVe = 0._RKIND
+C       Ec = 0
+C       DO iM=1, nMsh
+C          DO e=1, d(iM)%nEl
+C             Ec = Ec + 1
+    
+C             count = 0
+C             DO a=1, 4
+C                Ac = msh(iM)%IEN(a,e)
+C                IF( x(2,Ac)+lD(6,Ac).LE.cntGap ) count=count+1
 C             END DO
+C             tmpVe(Ec) = 0.25_RKIND*REAL(count)
 C          END DO
-C          CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
-C          IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
-C          DEALLOCATE(tmpVe)
 C       END DO
+C       CALL putVTK_elemData(vtu, 'Mesh_vf', tmpVe, iStat)
+C       IF (iStat .LT. 0) err = "VTU file write error (mesh vf)"
+C       DEALLOCATE(tmpVe)
 
 
 !     Write the mesh vf (FSI) version around the solid
@@ -1005,6 +1003,9 @@ C       END DO
             m = m + 2
          END IF
       END IF
+!     Add also the plot of procID for all time step       
+      IF (.NOT.cm%seq()) m = m + 1
+
       IF (ALLOCATED(d%xe)) THEN
          ALLOCATE(lDe(nOute, lM%nEl))
          DO e=1, lM%nEl

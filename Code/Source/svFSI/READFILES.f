@@ -305,11 +305,6 @@
          END IF
       END IF
 
-!--------------------------------------------------------------------
-!     Building vf for NSB for contact 
-!      CALL CMPVfCONTACT()
-!--------------------------------------------------------------------
-
       IF (.NOT.ALLOCATED(cplBC%xo)) THEN
          cplBC%nX = 0
          ALLOCATE(cplBC%xo(cplBC%nX))
@@ -2667,28 +2662,7 @@ c     2         "can be applied for Neumann boundaries only"
       REAL(KIND=RKIND) :: rtmp
       CHARACTER(LEN=stdL) ctmp
 
-C       write(*,*)" just before "
-C       lCnt => lPD%get(ctmp,"Contact type",1)
-C       write(*,*)" not going after "
-C       IF (ASSOCIATED(lCnt)) THEN 
-C          CALL TO_LOWER(ctmp)
-C          SELECT CASE (TRIM(ctmp))
-C          CASE ("linear")
-C             flagLCONT = .TRUE.
-C             lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
-
-C          CASE ("nonlinear")
-C             flagNLCONT = .TRUE.
-C             lPtr => lCnt%get(cntGap,"Gap",1,lb=0._RKIND)
-
-C          CASE DEFAULT
-C             err = "Undefined model for contact"
-C          END SELECT
-C       END IF
-
-      write(*,*)" just before "
       nbrCnt = lPD%srch("Contact type")
-      write(*,*)" going after "
       IF (nbrCnt .GE. 1) THEN 
          lCnt => lPD%get(ctmp,"Contact type",1)
 
