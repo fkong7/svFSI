@@ -65,7 +65,6 @@
       nNo    = lhs%nNo
       nnz    = lhs%nnz
       nFaces = lhs%nFaces
-
       IF (lhs%nFaces .NE. 0) THEN
          lhs%face%incFlag = .TRUE.
          IF (PRESENT(incL)) THEN
@@ -105,6 +104,11 @@
          PRINT *, "This linear solver and preconditioner combination"//
      &      "is not supported."
       END IF
+
+      !write(*,*) "FSILS_SOLVE in SVFSILS-2 S", SHAPE(Val)
+      !write(*,*) "FSILS_SOLVE in SVFSILS-2 R, lhs, ls%RI dof Val", 
+      !2 ls%RI
+      !write(*,*) "FSILS_SOLVE in SVFSILS-2"
 
       SELECT CASE (ls%LS_type)
          CASE (LS_TYPE_NS)

@@ -81,6 +81,7 @@
 !     format
       CALL INITIALIZE(timeP)
       stopTS = nTS
+      !write(*,*) "Yn DEBUG RIS-3", Yn(:, 1:5)
 
       dbg = 'Allocating intermediate variables'
       ALLOCATE(Ag(tDof,tnNo), Yg(tDof,tnNo), Dg(tDof,tnNo),
@@ -100,6 +101,7 @@
 !     variables, i.e. An, Yn, and Dn
          cTS    = cTS + 1
          time   = time + dt
+         !write(*,*) "Yn DEBUG RIS-2", Yn(:, 1:5)
 
 ! --- RIS GOTO 1 should be here, we do not update the time but we redo all the rest          
 11       cEq    = 1
@@ -117,7 +119,7 @@
 
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
-
+         !write(*,*) "Yn DEBUG RIS-2.1", Yn(:, 1:5)
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -201,10 +203,13 @@
             END DO
 
             dbg = "Solving equation <"//eq(cEq)%sym//">"
+            !write(*,*) "Yn DEBUG MAIN-2, Residuals", R(:, 1:5), cEq
+            !2, incL, res
             CALL LSSOLVE(eq(cEq), incL, res)
-
+            !write(*,*) "Yn DEBUG MAIN-3, Residuals", R(:, 1:5)
 !        Solution is obtained, now updating (Corrector)
             CALL PICC
+            !write(*,*) "Yn DEBUG RIS-2.1-8", Yn(:, 1:5)
 
 !        Checking for exceptions
             CALL EXCEPTIONS
@@ -215,6 +220,7 @@
 
          END DO
 !     End of inner loop
+         !write(*,*) "Yn DEBUG RIS-1", Yn(:, 1:5)
 
 !     IB treatment: interpolate flow data on IB mesh from background
 !     fluid mesh for explicit coupling, update old solution for implicit
@@ -280,7 +286,11 @@
 ! ---- Here we probably have to update the ris resistance value
 ! ---- If the state has to change, we recompute this time step GOTO 1
 ! ---- Control where if the time and the new has changed! 
-         IF ((cEq.EQ.1) .AND. risFlag ) THEN 
+         !write(*,*) "Yn DEBUG RIS-0", Yn(:, 1:5)
+         write(*,*) "CHECK RIS: ", cEq, risFlag
+         !IF ((cEq.EQ.1) .AND. risFlag ) THEN 
+         IF ((cEq.GE.1) .AND. risFlag ) THEN 
+            !write(*,*) "FIRST CALL"
             CALL RIS_MEANQ
             CALL RIS_UPDATER
 
@@ -339,7 +349,6 @@ C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
             CALL URIS_WRITEVTUS(uris%Yd)
          END IF
 !---     end RIS/URIS stuff 
-
 
 !     Solution is stored here before replacing it at next time step
          Ao = An
