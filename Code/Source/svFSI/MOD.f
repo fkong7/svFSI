@@ -832,7 +832,7 @@
 !        Number of RIS surface 
          INTEGER(KIND=IKIND) :: nbrRIS = 0
 !        Count time steps where no check is needed         
-         INTEGER(KIND=IKIND) :: nbrIter = 100
+         INTEGER(KIND=IKIND) :: nbrIter = 0
 !        List of meshes, and faces connected. The first face is the 
 !        proximal pressure's face, while the second is the distal one
          INTEGER(KIND=IKIND), ALLOCATABLE :: lst(:,:,:)

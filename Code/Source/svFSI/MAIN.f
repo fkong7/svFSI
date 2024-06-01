@@ -72,7 +72,6 @@
 
 !     Reading the user-defined parameters from foo.inp
  101  CALL READFILES
-
 !     Doing the partitioning and distributing the data to the all
 !     Processors
       CALL DISTRIBUTE
@@ -288,13 +287,12 @@
 ! ---- Control where if the time and the new has changed! 
          !write(*,*) "Yn DEBUG RIS-0", Yn(:, 1:5)
          write(*,*) "CHECK RIS: ", cEq, risFlag
-         !IF ((cEq.EQ.1) .AND. risFlag ) THEN 
-         IF ((cEq.GE.1) .AND. risFlag ) THEN 
-            !write(*,*) "FIRST CALL"
+         IF ( risFlag ) THEN 
             CALL RIS_MEANQ
             CALL RIS_UPDATER
 
             write(*,*)" Iteration : " , cTS
+            write(*,*)" RIS iteration: ", RIS%nbrIter
             write(*,*)" Is the valve close? ", RIS%clsFlg
             CALL RIS_STATUS
             write(*,*)" The status is ", RIS%status

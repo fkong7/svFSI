@@ -74,8 +74,6 @@
 !        ERROR. HERRE FOR ALE, recompure the area with the new displacement 
          tmp = msh(iM)%fa(iFa)%area
          RIS%meanP(i) = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
-         write(*,*) "loop, tmp, iM", tmp, iM, iFa, SHAPE(tmpV),
-     2 tmpV(:,1:10)
       END DO
 
 !     For the velocity 
@@ -108,7 +106,7 @@
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER(KIND=IKIND) :: iFa, iM, nPrj, i
+      INTEGER(KIND=IKIND) :: iFa, iM, nPrj, i, cPhys
       TYPE(bcType) :: lBc
 
 
@@ -133,9 +131,12 @@
          ALLOCATE(lBc%gx(msh(iM)%fa(iFa)%nNo))
          lBc%gx = 1._RKIND
 
-!        TO build the correct bc 
-!         CALL SETBCRIS(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
-         CALL SETBCDIRWL(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+         cPhys = eq(cEq)%dmn(cDmn)%phys
+         IF (cPhys .EQ. phys_fluid) THEN
+!            TO build the correct bc 
+!            CALL SETBCRIS(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+            CALL SETBCDIRWL(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+         END IF
 
          DEALLOCATE(lBc%gx)
 
@@ -232,14 +233,8 @@
          Ec    = lFa%gE(e)
          cDmn  = DOMAIN(lM, cEq, Ec)
          cPhys = eq(cEq)%dmn(cDmn)%phys
-         IF (cPhys .NE. phys_fluid) THEN
-            IF (.NOT. risFlag) THEN
-                err = "Weakly applied Dirichlet BC is allowed for " //
-     2          "fluid phys only, skipping"
-            ELSE
-                CYCLE
-            END IF
-         END IF
+         IF (cPhys .NE. phys_fluid) err = "Weakly applied Dirichlet "//
+     2      "BC is allowed for fluid phys only"
 
 !        Initialize local residue and stiffness
          lR = 0._RKIND
@@ -348,7 +343,7 @@
       IMPLICIT NONE
 
       RIS%nbrIter = RIS%nbrIter + 1
-      IF( RIS%nbrIter .LE. 130 ) RETURN
+      IF( RIS%nbrIter .LE. 4 ) RETURN
 
 !     The valve is closed check if it should open
       IF (RIS%clsFlg .EQ. 1) THEN 
@@ -411,13 +406,15 @@
 !     global stiffness matrix (Val sparse matrix formatted as a vector)
       SUBROUTINE DOASSEM_RIS (d, eqN, lK, lR)
       USE TYPEMOD
-      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nMsh, nsd, grisMap
+      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nMsh, nsd,
+     2  grisMap,cm
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(IN) :: d, eqN(d)
       REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
 
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
-     2                    jM, rowNadj, mapIdxC(2)
+     2                    jM, mapIdxC(2)
+      INTEGER(KIND=IKIND) :: rowNadj=0
 
       DO a=1, d
 
@@ -428,14 +425,14 @@
          IF(mapIdx(1).EQ.0) CYCLE 
 
          DO jM=1, nMsh  
-            
             IF(jM .EQ. mapIdx(1)) CYCLE
             IF(grisMap(jM, mapIdx(2)) .EQ. 0) CYCLE
             
             rowNadj = grisMap(jM, mapIdx(2))
-         END DO
 
+         END DO
 C          R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
+         IF (rowNadj .EQ. 0) CYCLE
          R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
 
          DO b=1, d

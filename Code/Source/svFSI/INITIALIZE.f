@@ -183,20 +183,9 @@
       END IF
 
       IF(risFlag) THEN 
-!        Building the global risMap with total nodes enumeration
-         DO i = 1, nMsh
-            print*, " mesh ", i
-            DO j = 1, SIZE(risMap,2)
-               IF( risMap(i,j) .NE. 0) THEN 
-                  grisMap(i,j) = msh(i)%gN(risMap(i,j))
-               END IF
-            END DO
-         END DO  
-
          print*, " Finally the gmap is: "
-         print*, grisMap(1,:) 
-         print*, grisMap(2,:) 
-
+         print*, "first mesh: ", grisMap(1,:) 
+         print*, "second mesh: ", grisMap(2,:) 
       END IF  
 
 

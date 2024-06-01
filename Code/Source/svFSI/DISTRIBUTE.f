@@ -363,6 +363,9 @@
       END IF
       CALL cm%bcast(cplBC%initRCR)
 
+!     Communicating RIS node maps
+      IF (risFlag) CALL DISTRIS(gmtl)
+
       DO iM=1, nMsh
          CALL DESTROY(tMs(iM))
       END DO
@@ -401,6 +404,71 @@
 
       RETURN
       END SUBROUTINE DISTIB
+!--------------------------------------------------------------------
+!     This routine distributes data structures for RIS
+      SUBROUTINE DISTRIS(gmtl)
+      USE COMMOD
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: gmtl(gtnNo)
+      INTEGER(KIND=IKIND) nStk, tmp, i, j 
+      INTEGER(KIND=IKIND), ALLOCATABLE :: dims(:)
+      INTEGER(KIND=IKIND), ALLOCATABLE :: flat_lst(:)
+      INTEGER(KIND=IKIND) lst_size
+
+      ! First find the RIS nodes between mesh pairs on the current processor
+      ALLOCATE(dims(3))
+      IF (cm%mas()) THEN 
+          nStk = SIZE(risMap, 2)
+          dims = SHAPE(RIS%lst)
+          lst_size = SIZE(RIS%lst)
+      END IF
+      CALL cm%bcast(nStk)
+      CALL cm%bcast(dims)
+      CALL cm%bcast(lst_size)
+
+      IF (cm%slv()) THEN 
+          ALLOCATE(risMap(nMsh, nStk))
+          ALLOCATE(grisMap(nMsh, nStk))
+          ALLOCATE(RIS)
+          IF (ALLOCATED(RIS%lst)) DEALLOCATE(RIS%lst)
+          ALLOCATE(RIS%lst(dims(1), dims(2), dims(3)))
+      END IF
+
+      DEALLOCATE(dims)
+
+      ! Flatten the 3D array to 1D for broadcasting
+      IF (cm%mas()) THEN
+          flat_lst = RESHAPE(RIS%lst, [lst_size])
+      ELSE
+          ALLOCATE(flat_lst(lst_size))
+      END IF
+      CALL cm%bcast(flat_lst)
+
+      ! Reshape the 1D array back to 3D after broadcasting
+      IF (cm%slv()) THEN
+          RIS%lst = RESHAPE(flat_lst, SHAPE(RIS%lst))
+      END IF
+      DEALLOCATE(flat_lst)
+
+      CALL cm%bcast(risMap)
+      CALL cm%bcast(grisMap)
+      CALL cm%bcast(RIS%clsFlg)
+      CALL cm%bcast(RIS%Res)
+      CALL cm%bcast(RIS%nbrRIS)
+
+      DO i=1, nMsh
+          DO j=1, nStk
+              tmp = gmtl(grisMap(i,j))
+              IF (.NOT. tmp .EQ. 0) THEN
+                  risMap(i,j) = msh(i)%lN(tmp)
+              ELSE
+                  risMap(i,j) = 0
+              END IF
+              grisMap(i,j) = tmp
+          END DO
+      END DO
+      RETURN
+      END SUBROUTINE DISTRIS
 !--------------------------------------------------------------------
       SUBROUTINE DISTIBMSH(lM)
       USE COMMOD

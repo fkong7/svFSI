@@ -170,10 +170,6 @@ c               END IF
          END DO
       END IF ! resetSim
 
-!     Examining the existance of a RIS surface and setting %risMap.
-!     Reseting gtnNo and recounting nodes that are not duplicated
-      CALL SETRISPROJECTOR(list)
-
 !     Examining the existance of projection faces and setting %gN.
 !     Reseting gtnNo and recounting nodes that are not duplicated
       gtnNo = 0
@@ -196,6 +192,12 @@ c               END IF
       ALLOCATE(x(nsd,gtnNo))
       IF (avNds%n .NE. 0) err = "There are still nodes in the stack"
       CALL DESTROYSTACK(avNds)
+
+!     Examining the existance of a RIS surface and setting %risMap.
+!     Reseting gtnNo and recounting nodes that are not duplicated
+      CALL SETRISPROJECTOR(list)
+
+
 
 !     Temporarily allocate msh%lN array. This is necessary for BCs and
 !     will later be deallocated in DISTRIBUTE
@@ -549,12 +551,12 @@ C       TYPE(stackType) lPrj
             END IF
          END DO
       END DO
-
       RETURN
       END SUBROUTINE SETRISPROJECTOR
 !--------------------------------------------------------------------
 !     This is match isoparameteric faces to each other. Project nodes
 !     from two adjacent meshes to each other based on a L2 norm.
+!     WARNING: SO FAR THIS FUNCTION ASSUMES TWO MESHES, nMsh=2
       SUBROUTINE MATCHNODES(lFa, pFa, ptol, nNds, map)
       USE COMMOD
       USE ALLFUN

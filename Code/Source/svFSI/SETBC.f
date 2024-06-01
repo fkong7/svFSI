@@ -838,14 +838,8 @@
          Ec    = lFa%gE(e)
          cDmn  = DOMAIN(lM, cEq, Ec)
          cPhys = eq(cEq)%dmn(cDmn)%phys
-         IF (cPhys .NE. phys_fluid) THEN
-            IF (.NOT. risFlag) THEN
-                err = "Weakly applied Dirichlet BC is allowed for " //
-     2          "fluid phys only, skipping"
-            ELSE
-                CYCLE
-            END IF
-         END IF
+         IF (cPhys .NE. phys_fluid) err = "Weakly applied Dirichlet "//
+     2      "BC is allowed for fluid phys only"
 
 !        Initialize local residue and stiffness
          lR = 0._RKIND

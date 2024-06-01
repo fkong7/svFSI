@@ -293,7 +293,6 @@ C                     write(*,*)" DDir = ", DDir
          END IF
 #endif
       END DO ! e: loop
-
       DEALLOCATE(ptr, xl, al, yl, dl, bfl, fN, pS0l, pSl, ya_l, lR, lK,
      2   lKd)
 
