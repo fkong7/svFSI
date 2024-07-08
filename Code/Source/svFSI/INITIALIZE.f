@@ -184,7 +184,7 @@
       END IF
 
       IF(risFlag) THEN 
-         !print*, " Finally the gmap is: "
+         print*, " Finally the gmap is: "
          DO iProj=1, RIS%nbrRIS
             print*,"-p ", cm%id(), "-pj", iProj, "RIS node: ",
      2          grisMapList(iProj)%map(1,:)
@@ -200,7 +200,6 @@
 
       std = " Constructing stiffness matrix sparse structure"
       CALL LHSA(nnz)
-      write(*,*) "DEBUG AFTER LHSA"
 
       gnnz = nnz
       CALL MPI_ALLREDUCE(nnz, gnnz, 1, mpint, MPI_SUM, cm%com(), ierr)

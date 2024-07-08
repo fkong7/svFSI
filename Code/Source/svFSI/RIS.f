@@ -413,8 +413,9 @@
       REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
 
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
-     2                    jM, mapIdxC(2), iProj
+     2                    jM, mapIdxC(2), iProj, counter
       INTEGER(KIND=IKIND) :: rowNadj=0
+      counter = 0
       DO iProj=1, RIS%nbrRIS
          DO a=1, d
 
@@ -437,7 +438,6 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
 
             DO b=1, d
                colN = eqN(b)
-               write(*,*) "Found?? BEFORE", colN
 
 !              If colN is also a ris node, we have to connect the cooresponding 
 !              rowN node with the corresponding colN node. 
@@ -451,7 +451,6 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
                      END IF
                      
                      colN = grisMapList(iProj)%map(jM, mapIdxC(2))
-                     write(*,*) "Found??", colN
                   END DO
 !               ELSE
 !                   CYCLE
@@ -462,10 +461,7 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
                right = rowPtr(rowNadj+1)
                ptr   = (right + left)/2
 
-               write(*,*) "Found?? AFTER", colN, colPtr(ptr)
-               write(*,*) "Found?? LR", colPtr(left), colPtr(right)
-               write(*,*) "Found?? LR ptr", left, ptr, right
-
+               
                DO WHILE (colN.NE.colPtr(ptr))
                   IF (colN .GT. colPtr(ptr)) THEN
                      left  = ptr
@@ -473,9 +469,9 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
                      right = ptr
                   END IF
                   ptr = (right + left)/2
-                  write(*,*) "L",colPtr(left),colPtr(ptr), colPtr(right)
-                  write(*,*) "ptr", left, ptr, right
                   IF ((colN.NE.colPtr(ptr)).AND.(right-left.LE.1)) THEN
+
+                      counter = counter + 1
                       EXIT
                   END IF 
                END DO

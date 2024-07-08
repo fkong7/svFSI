@@ -499,32 +499,21 @@ C       TYPE(stackType) lPrj
 
       IF(.NOT.risFlag) RETURN
       
-      write(*,*) "OK0"
       ALLOCATE(risMapList(nPrj))
       ALLOCATE(grisMapList(nPrj))
-      write(*,*) "OK1"
 
       DO iProj=1, nPrj
-         write(*,*) "OK2!!!", iProj
 !        iM will be the face id in which we want to project from id face jM        
          lPP => list%get(ctmpi,"Add RIS projection",iProj)
-         write(*,*) "OK2????", iProj
          CALL FINDFACE(ctmpi, iM, iFa)
-         write(*,*) "OK2.1", iProj, iM, iFa
          nStk = msh(iM)%fa(iFa)%nNo
-         write(*,*) "OK2.1", iProj, nStk
          ALLOCATE(risMapList(iProj)%map(2, nStk))
-         write(*,*) "OK2.1", iProj, nStk
          ALLOCATE(grisMapList(iProj)%map(2, nStk))
-         write(*,*) "OK2.1.1", iProj, nStk
          risMapList(iProj)%map = 0
-         write(*,*) "OK2.1.3", iProj
          grisMapList(iProj)%map = 0
-         write(*,*) "OK2.1.3", iProj
 
          lPtr => lPP%get(ctmpj,"Project from face",1)
          CALL FINDFACE(ctmpj, jM, jFa)
-         write(*,*) "OK2.2", iProj
 
          msh(jM)%tol = 0._RKIND
          lPtr => lPP%get(msh(jM)%tol,"Projection tolerance")
@@ -534,13 +523,12 @@ C       TYPE(stackType) lPrj
          RIS%Res = msh(jM)%res
          CALL MATCHNODES(msh(iM)%fa(iFa), msh(jM)%fa(jFa), msh(jM)%tol, 
      2       nStk, risMapList(iProj)%map)
-         write(*,*) "OK2.3", iProj
 
 
-         RIS%lst(1,1,nPrj) = iM 
-         RIS%lst(2,1,nPrj) = jM 
-         RIS%lst(1,2,nPrj) = iFa
-         RIS%lst(2,2,nPrj) = jFa  
+         RIS%lst(1,1,iProj) = iM 
+         RIS%lst(2,1,iProj) = jM 
+         RIS%lst(1,2,iProj) = iFa
+         RIS%lst(2,2,iProj) = jFa  
 
          print*, " ** Need to match face ", jFa, " of "//
      2           " mesh ", jM, " into face ", iFa, " msh ", iM 
@@ -548,12 +536,11 @@ C       TYPE(stackType) lPrj
          print*, " ** The res is ", msh(jM)%res 
 !        Building the ris map between corresponding node with total enumeration
          DO i = 1, 2
-            write(*,*) "DEBUG LOCAL", risMapList(iProj)%map(i,:)
             print*, "proj ", iProj, " mesh ", i
             DO j = 1, nStk
                IF(risMapList(iProj)%map(i,j) .NE. 0) THEN 
                   grisMapList(iProj)%map(i,j) = 
-     2            msh(RIS%lst(i,1,nPrj))%gN(risMapList(iProj)%map(i,j))
+     2            msh(RIS%lst(i,1,iProj))%gN(risMapList(iProj)%map(i,j))
                   print*,"local node ", risMapList(iProj)%map(i,j),
      2                  " global ", grisMapList(iProj)%map(i,j)
                END IF
@@ -562,7 +549,6 @@ C       TYPE(stackType) lPrj
       END DO
 
       RETURN
-
       END SUBROUTINE SETRISPROJECTOR
 !--------------------------------------------------------------------
 !     This is match isoparameteric faces to each other. Project nodes
