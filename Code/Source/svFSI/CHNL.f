@@ -220,7 +220,7 @@
       CHARACTER(LEN=*), INTENT(IN) :: isTmp
 
       LOGICAL flag
-      CHARACTER(LEN=LEN(isTmp)) sTmp, fName
+      CHARACTER(LEN=LEN(isTmp)*5) sTmp, fName
 
       IF (.NOT.chnl%oTS .AND. .NOT.chnl%oTF) RETURN
 
