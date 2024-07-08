@@ -43,7 +43,7 @@
 
       LOGICAL flag
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic, mapIdx(2), jM
+     2   mnnzeic, mapIdx(2), jM, iProj
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
@@ -71,22 +71,28 @@
 !              Add extra connections for cooresponding nodes in case of RIS
                IF( risFlag ) THEN 
 !                 If rowN is in the list of ris nodes   
-                  mapIdx = FINDLOC(grisMap, rowN)
-                  IF(mapIdx(1).NE.0) THEN 
-C                      print*,rowN, "RIS found ", rowN
-                     DO jM=1, nMsh  
-                        IF(jM .EQ. iM) CYCLE
-                        rowN = grisMap(jM, mapIdx(2))
-
+                  ! loop through all projection and find the one that
+                  ! is associated with the current mesh
+                  DO iProj=1, RIS%nbrRIS
+                     IF (RIS%lst(1,1,iProj).EQ.iM) THEN
+                        jM = 2
+                     ELSE IF (RIS%lst(2,1,iProj).EQ.iM) THEN
+                        jM = 1
+                     ELSE
+                        CYCLE
+                     END IF
+                     mapIdx = FINDLOC(grisMapList(iProj)%map, rowN)
+                     IF(mapIdx(1).NE.0) THEN 
+                        !print*,rowN, "RIS found ", rowN
+                        rowN = grisMapList(iProj)%map(jM, mapIdx(2))
+                        if (rowN .EQ. 0) CYCLE
                         DO b=1, msh(iM)%eNoN
                            colN = msh(iM)%IEN(b,e)
-C                            write(*,*)" adding node ", colN
                            CALL ADDCOL(rowN, colN)
                         END DO
-                     END DO
-                  END IF
+                     END IF
+                  END DO
                END IF
-
             END DO
          END DO
       END DO
@@ -270,8 +276,10 @@ C                            write(*,*)" adding node ", colN
          ALLOCATE(tmp(n,tnNo))
          tmp(:,:) = uInd(:,:)
          DEALLOCATE(uInd)
+         ! After resizing it's still not big enough??
          mnnzeic = n + MAX(5,n/5)
-         ALLOCATE(uInd(mnnzeic,tnNo))
+         ! Need to +1 ?? Otherwise it will go out of bound in ADDCOL?
+         ALLOCATE(uInd(mnnzeic+1,tnNo))
          uInd(:,:)   = 0
          uInd(1:n,:) = tmp(:,:)
          DEALLOCATE(tmp)

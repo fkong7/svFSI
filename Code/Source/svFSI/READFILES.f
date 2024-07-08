@@ -223,6 +223,7 @@
          CALL IB_READOPTS(list)
       END IF
 
+!     TO-DO: FIX HARDED CODED # of RISs
       i = list%srch("Add URIS mesh")
       IF (i .GT. 0) THEN
          urisFlag = .TRUE.

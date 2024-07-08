@@ -407,73 +407,91 @@
       SUBROUTINE DOASSEM_RIS (d, eqN, lK, lR)
       USE TYPEMOD
       USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nMsh, nsd,
-     2  grisMap,cm
+     2  grisMapList, cm, RIS
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(IN) :: d, eqN(d)
       REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
 
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
-     2                    jM, mapIdxC(2)
+     2                    jM, mapIdxC(2), iProj
       INTEGER(KIND=IKIND) :: rowNadj=0
+      DO iProj=1, RIS%nbrRIS
+         DO a=1, d
 
-      DO a=1, d
-
-         rowN = eqN(a)
-         IF (rowN .EQ. 0) CYCLE
-         mapIdx = FINDLOC(grisMap, rowN)
-         
-         IF(mapIdx(1).EQ.0) CYCLE 
-
-         DO jM=1, nMsh  
-            IF(jM .EQ. mapIdx(1)) CYCLE
-            IF(grisMap(jM, mapIdx(2)) .EQ. 0) CYCLE
+            rowN = eqN(a)
+            IF (rowN .EQ. 0) CYCLE
+            mapIdx = FINDLOC(grisMapList(iProj)%map, rowN)
             
-            rowNadj = grisMap(jM, mapIdx(2))
+            IF(mapIdx(1).EQ.0) CYCLE 
 
-         END DO
-C          R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
-         IF (rowNadj .EQ. 0) CYCLE
-         R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
+            DO jM=1, 2
+               IF(jM .EQ. mapIdx(1)) CYCLE
+               IF(grisMapList(iProj)%map(jM, mapIdx(2)) .EQ. 0) CYCLE
+               
+               rowNadj = grisMapList(iProj)%map(jM, mapIdx(2))
 
-         DO b=1, d
-            colN = eqN(b)
-
-!           If colN is also a ris node, we have to connect the cooresponding 
-!           rowN node woth the corresponding colN node
-            mapIdxC = FINDLOC(grisMap, colN)
-
-            IF(mapIdxC(1).NE.0) THEN 
-               DO jM=1, nMsh  
-                  IF(jM .EQ. mapIdxC(1)) CYCLE
-                  IF(grisMap(jM, mapIdxC(2)) .EQ. 0) CYCLE
-                  
-                  colN = grisMap(jM, mapIdxC(2))
-               END DO
-            END IF
-
-            IF (colN .EQ. 0) CYCLE
-            left  = rowPtr(rowNadj)
-            right = rowPtr(rowNadj+1)
-            ptr   = (right + left)/2
-            DO WHILE (colN .NE. colPtr(ptr))
-               IF (colN .GT. colPtr(ptr)) THEN
-                  left  = ptr
-               ELSE
-                  right = ptr
-               END IF
-               ptr = (right + left)/2
             END DO
-            
-            Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
+C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
+            IF (rowNadj .EQ. 0) CYCLE
+            R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
 
-C             Val(1:nsd*2+2,ptr) = Val(1:nsd*2+2,ptr) + lK(1:nsd*2+2,a,b)
+            DO b=1, d
+               colN = eqN(b)
+               write(*,*) "Found?? BEFORE", colN
 
-C             Val(1:nsd,ptr) = Val(1:nsd,ptr) + lK(1:nsd,a,b)
-C             Val(nsd+2:2*nsd+2,ptr) = Val(nsd+2:2*nsd+2,ptr) +
-C      2                                         lK(nsd+2:2*nsd+2,a,b)
+!              If colN is also a ris node, we have to connect the cooresponding 
+!              rowN node with the corresponding colN node. 
+               mapIdxC = FINDLOC(grisMapList(iProj)%map, colN)
+
+               IF(mapIdxC(1).NE.0) THEN 
+                  DO jM=1, 2
+                     IF(jM .EQ. mapIdxC(1)) CYCLE
+                     IF(grisMapList(iProj)%map(jM,mapIdxC(2)).EQ.0) THEN
+                        CYCLE
+                     END IF
+                     
+                     colN = grisMapList(iProj)%map(jM, mapIdxC(2))
+                     write(*,*) "Found??", colN
+                  END DO
+!               ELSE
+!                   CYCLE
+               END IF
+
+               IF (colN .EQ. 0) CYCLE
+               left  = rowPtr(rowNadj)
+               right = rowPtr(rowNadj+1)
+               ptr   = (right + left)/2
+
+               write(*,*) "Found?? AFTER", colN, colPtr(ptr)
+               write(*,*) "Found?? LR", colPtr(left), colPtr(right)
+               write(*,*) "Found?? LR ptr", left, ptr, right
+
+               DO WHILE (colN.NE.colPtr(ptr))
+                  IF (colN .GT. colPtr(ptr)) THEN
+                     left  = ptr
+                  ELSE
+                     right = ptr
+                  END IF
+                  ptr = (right + left)/2
+                  write(*,*) "L",colPtr(left),colPtr(ptr), colPtr(right)
+                  write(*,*) "ptr", left, ptr, right
+                  IF ((colN.NE.colPtr(ptr)).AND.(right-left.LE.1)) THEN
+                      EXIT
+                  END IF 
+               END DO
+             
+               IF (colN.EQ.colPtr(ptr)) THEN
+                  Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
+               END IF
+
+C                Val(1:nsd*2+2,ptr) = Val(1:nsd*2+2,ptr) + lK(1:nsd*2+2,a,b)
+
+C                Val(1:nsd,ptr) = Val(1:nsd,ptr) + lK(1:nsd,a,b)
+C                Val(nsd+2:2*nsd+2,ptr) = Val(nsd+2:2*nsd+2,ptr) +
+C      2                                            lK(nsd+2:2*nsd+2,a,b)
+            END DO
          END DO
       END DO
-
       RETURN
       END SUBROUTINE DOASSEM_RIS
 !####################################################################
@@ -481,72 +499,76 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
 !     global stiffness matrix (Val sparse matrix formatted as a vector)
       SUBROUTINE DOASSEM_VELRIS (d, eqN, lK, lR)
       USE TYPEMOD
-      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nMsh, nsd, grisMap
+      USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val, nMsh, nsd,
+     2      grisMapList, RIS
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(IN) :: d, eqN(d)
       REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
 
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
-     2                    jM, rowNadj, mapIdxC(2)
+     2                    jM, rowNadj, mapIdxC(2), iProj
+      DO iProj=1, RIS%nbrRIS
+         DO a=1, d
 
-      DO a=1, d
-
-         rowN = eqN(a)
-         IF (rowN .EQ. 0) CYCLE
-         mapIdx = FINDLOC(grisMap, rowN)
-         
-         IF(mapIdx(1).EQ.0) CYCLE 
-
-         DO jM=1, nMsh  
+            rowN = eqN(a)
+            IF (rowN .EQ. 0) CYCLE
+            mapIdx = FINDLOC(grisMapList(iProj)%map, rowN)
             
-            IF(jM .EQ. mapIdx(1)) CYCLE
-            IF(grisMap(jM, mapIdx(2)) .EQ. 0) CYCLE
-            
-            rowNadj = grisMap(jM, mapIdx(2))
-         END DO
+            IF(mapIdx(1).EQ.0) CYCLE 
 
-         R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
-C          R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
-
-         DO b=1, d
-            colN = eqN(b)
-
-!           If colN is also a ris node, we have to connect the cooresponding 
-!           rowN node woth the corresponding colN node
-            mapIdxC = FINDLOC(grisMap, colN)
-
-            IF(mapIdxC(1).NE.0) THEN 
-               DO jM=1, nMsh  
-                  IF(jM .EQ. mapIdxC(1)) CYCLE
-                  IF(grisMap(jM, mapIdxC(2)) .EQ. 0) CYCLE
-                  
-                  colN = grisMap(jM, mapIdxC(2))
-               END DO
-            END IF
-
-            IF (colN .EQ. 0) CYCLE
-            left  = rowPtr(rowNadj)
-            right = rowPtr(rowNadj+1)
-            ptr   = (right + left)/2
-            DO WHILE (colN .NE. colPtr(ptr))
-               IF (colN .GT. colPtr(ptr)) THEN
-                  left  = ptr
-               ELSE
-                  right = ptr
-               END IF
-               ptr = (right + left)/2
+            DO jM=1, nMsh  
+               
+               IF(jM .EQ. mapIdx(1)) CYCLE
+               IF(grisMapList(iProj)%map(jM, mapIdx(2)) .EQ. 0) CYCLE
+               
+               rowNadj = grisMapList(iProj)%map(jM, mapIdx(2))
             END DO
-            
-C             Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
 
-            Val(1:nsd*2+2,ptr) = Val(1:nsd*2+2,ptr) + lK(1:nsd*2+2,a,b)
+            R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
+C             R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
 
-C             Val(1:nsd,ptr) = Val(1:nsd,ptr) + lK(1:nsd,a,b)
-C             Val(nsd+2:2*nsd+2,ptr) = Val(nsd+2:2*nsd+2,ptr) +
-C      2                                         lK(nsd+2:2*nsd+2,a,b)
+            DO b=1, d
+               colN = eqN(b)
+
+!              If colN is also a ris node, we have to connect the cooresponding 
+!              rowN node woth the corresponding colN node
+               mapIdxC = FINDLOC(grisMapList(iProj)%map, colN)
+
+               IF(mapIdxC(1).NE.0) THEN 
+                  DO jM=1, nMsh  
+                     IF(jM .EQ. mapIdxC(1)) CYCLE
+                     IF(grisMapList(iProj)%map(jM,mapIdxC(2)).EQ.0) THEN
+                        CYCLE
+                     END IF
+                     
+                     colN = grisMapList(iProj)%map(jM, mapIdxC(2))
+                  END DO
+               END IF
+
+               IF (colN .EQ. 0) CYCLE
+               left  = rowPtr(rowNadj)
+               right = rowPtr(rowNadj+1)
+               ptr   = (right + left)/2
+               DO WHILE (colN .NE. colPtr(ptr))
+                  IF (colN .GT. colPtr(ptr)) THEN
+                     left  = ptr
+                  ELSE
+                     right = ptr
+                  END IF
+                  ptr = (right + left)/2
+               END DO
+               
+C                Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
+
+               Val(1:nsd*2+2,ptr) = Val(1:nsd*2+2,ptr) + 
+     2              lK(1:nsd*2+2,a,b)
+
+C                Val(1:nsd,ptr) = Val(1:nsd,ptr) + lK(1:nsd,a,b)
+C                Val(nsd+2:2*nsd+2,ptr) = Val(nsd+2:2*nsd+2,ptr) +
+C         2                                         lK(nsd+2:2*nsd+2,a,b)
+            END DO
          END DO
       END DO
-
       RETURN
       END SUBROUTINE DOASSEM_VELRIS
 !####################################################################
@@ -557,15 +579,17 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
       USE COMMOD
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) iM, j, Ac, nStk 
+      INTEGER(KIND=IKIND) iM, j, Ac, nStk, iProj
 
-      nStk = SIZE(grisMap,2)
+      DO iProj=1, RIS%nbrRIS
+         nStk = SIZE(grisMapList(iProj)%map,2)
 
-      DO iM=1, nMsh  
-         DO j=1, nStk
-            Ac = grisMap(iM,j)
-            IF(Ac .EQ. 0) CYCLE
-            R(1:nsd,Ac) = 0._RKIND
+         DO iM=1, nMsh  
+            DO j=1, nStk
+               Ac = grisMapList(iProj)%map(iM,j)
+               IF(Ac .EQ. 0) CYCLE
+               R(1:nsd,Ac) = 0._RKIND
+            END DO
          END DO
       END DO
 
@@ -579,16 +603,18 @@ C      2                                         lK(nsd+2:2*nsd+2,a,b)
       REAL(KIND=RKIND), INTENT(INOUT) :: lA(tDof, tnNo), lY(tDof, tnNo),
      2   lD(tDof, tnNo)
 
-      INTEGER(KIND=IKIND) iM, j, Ac, nStk 
+      INTEGER(KIND=IKIND) iM, j, Ac, nStk, iProj
 
-      nStk = SIZE(grisMap,2)
+      DO iProj=1, RIS%nbrRIS
+         nStk = SIZE(grisMapList(iProj)%map,2)
 
-      DO iM=1, nMsh  
-         DO j=1, nStk
-            Ac = grisMap(iM,j)
-            IF(Ac .EQ. 0) CYCLE
-            lA(1:nsd,Ac) = 0._RKIND
-            lY(1:nsd,Ac) = 0._RKIND
+         DO iM=1, nMsh  
+            DO j=1, nStk
+               Ac = grisMapList(iProj)%map(iM,j)
+               IF(Ac .EQ. 0) CYCLE
+               lA(1:nsd,Ac) = 0._RKIND
+               lY(1:nsd,Ac) = 0._RKIND
+            END DO
          END DO
       END DO
 

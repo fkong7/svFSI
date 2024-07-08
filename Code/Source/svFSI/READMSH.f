@@ -476,13 +476,12 @@ c               END IF
       IMPLICIT NONE
       TYPE(listType), INTENT(INOUT) :: list
 
-      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, iPrj, nStk, i, j
+      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, nStk, i, j,iProj
       REAL(KIND=RKIND) tol
       CHARACTER(LEN=stdL) ctmpi, ctmpj
 C       TYPE(stackType) lPrj
       TYPE(listType), POINTER :: lPtr, lPP
 
-      nStk = 0
       nPrj = list%srch("Add RIS projection")
 
 !     This is something still to define, ideally we need a connection from  
@@ -491,35 +490,41 @@ C       TYPE(stackType) lPrj
 
       IF (nPrj .GT. 0) THEN
          risFlag = .TRUE.
-
          ALLOCATE(RIS)
          RIS%nbrRIS = nPrj
          ALLOCATE( RIS%lst(2,2,nPrj) )
          RIS%lst(2,2,nPrj) = 0
          write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
-
       END IF
 
       IF(.NOT.risFlag) RETURN
+      
+      write(*,*) "OK0"
+      ALLOCATE(risMapList(nPrj))
+      ALLOCATE(grisMapList(nPrj))
+      write(*,*) "OK1"
 
-!     Create nStk = total number of nodes to match at the RIS interface 
-      DO iPrj=1, nPrj
-         lPP => list%get(ctmpi,"Add RIS projection",iPrj)
-         CALL FINDFACE(ctmpi, iM, iFa)
-         nStk = nStk + msh(iM)%fa(iFa)%nNo
-      END DO
-     
-      ALLOCATE(risMap(nMsh,nStk), grisMap(nMsh,nStk))
-      risMap = 0
-      grisMap = 0
-
-      DO iPrj=1, nPrj
+      DO iProj=1, nPrj
+         write(*,*) "OK2!!!", iProj
 !        iM will be the face id in which we want to project from id face jM        
-         lPP => list%get(ctmpi,"Add RIS projection",iPrj)
+         lPP => list%get(ctmpi,"Add RIS projection",iProj)
+         write(*,*) "OK2????", iProj
          CALL FINDFACE(ctmpi, iM, iFa)
+         write(*,*) "OK2.1", iProj, iM, iFa
+         nStk = msh(iM)%fa(iFa)%nNo
+         write(*,*) "OK2.1", iProj, nStk
+         ALLOCATE(risMapList(iProj)%map(2, nStk))
+         write(*,*) "OK2.1", iProj, nStk
+         ALLOCATE(grisMapList(iProj)%map(2, nStk))
+         write(*,*) "OK2.1.1", iProj, nStk
+         risMapList(iProj)%map = 0
+         write(*,*) "OK2.1.3", iProj
+         grisMapList(iProj)%map = 0
+         write(*,*) "OK2.1.3", iProj
 
          lPtr => lPP%get(ctmpj,"Project from face",1)
          CALL FINDFACE(ctmpj, jM, jFa)
+         write(*,*) "OK2.2", iProj
 
          msh(jM)%tol = 0._RKIND
          lPtr => lPP%get(msh(jM)%tol,"Projection tolerance")
@@ -528,7 +533,9 @@ C       TYPE(stackType) lPrj
          lPtr => lPP%get(msh(jM)%res,"Resistance")
          RIS%Res = msh(jM)%res
          CALL MATCHNODES(msh(iM)%fa(iFa), msh(jM)%fa(jFa), msh(jM)%tol, 
-     2       nStk, risMap)
+     2       nStk, risMapList(iProj)%map)
+         write(*,*) "OK2.3", iProj
+
 
          RIS%lst(1,1,nPrj) = iM 
          RIS%lst(2,1,nPrj) = jM 
@@ -537,21 +544,25 @@ C       TYPE(stackType) lPrj
 
          print*, " ** Need to match face ", jFa, " of "//
      2           " mesh ", jM, " into face ", iFa, " msh ", iM 
-         print*, " ** The nbr of nodes to proj is ", nStk 
+         print*, " ** The nbr of nodes to proj is ", nStk
          print*, " ** The res is ", msh(jM)%res 
-      END DO
-
-!     Building the ris map between corresponding node with total enumeration
-      DO i = 1, nMsh
-         print*, " mesh ", i
-         DO j = 1, nStk
-            IF( risMap(i,j) .NE. 0) THEN 
-               grisMap(i,j) = msh(i)%gN(risMap(i,j))
-               print*,"local node ", risMap(i,j)," global ",grisMap(i,j)
-            END IF
+!        Building the ris map between corresponding node with total enumeration
+         DO i = 1, 2
+            write(*,*) "DEBUG LOCAL", risMapList(iProj)%map(i,:)
+            print*, "proj ", iProj, " mesh ", i
+            DO j = 1, nStk
+               IF(risMapList(iProj)%map(i,j) .NE. 0) THEN 
+                  grisMapList(iProj)%map(i,j) = 
+     2            msh(RIS%lst(i,1,nPrj))%gN(risMapList(iProj)%map(i,j))
+                  print*,"local node ", risMapList(iProj)%map(i,j),
+     2                  " global ", grisMapList(iProj)%map(i,j)
+               END IF
+            END DO
          END DO
       END DO
+
       RETURN
+
       END SUBROUTINE SETRISPROJECTOR
 !--------------------------------------------------------------------
 !     This is match isoparameteric faces to each other. Project nodes
@@ -563,7 +574,7 @@ C       TYPE(stackType) lPrj
       IMPLICIT NONE
       TYPE(faceType), INTENT(INOUT) :: lFa, pFa
       INTEGER(KIND=IKIND), INTENT(IN) :: nNds
-      INTEGER(KIND=IKIND), INTENT(OUT) :: map(nMsh,nNds)
+      INTEGER(KIND=IKIND), INTENT(OUT) :: map(2, nNds)
       REAL(KIND=RKIND), INTENT(IN) :: ptol
 
       TYPE blkType
@@ -675,13 +686,13 @@ C       TYPE(stackType) lPrj
          IF (tol < 0._RKIND) THEN
             print*, " adding connection (/Ac,Bc/)) = (",Ac,",",Bc,")"
             cnt = cnt + 1
-            map(iM,cnt) = Ac
-            map(jM,cnt) = Bc
+            map(1,cnt) = Ac
+            map(2,cnt) = Bc
          ELSE IF (minS .LT. tol) THEN
             print*, " adding connection (/Ac,Bc/)) = (",Ac,",",Bc,")"
             cnt = cnt + 1
-            map(iM,cnt) = Ac
-            map(jM,cnt) = Bc
+            map(1,cnt) = Ac
+            map(2,cnt) = Bc
          END IF
       END DO
 
@@ -754,7 +765,6 @@ C       TYPE(stackType) lPrj
          nStk = nStk + msh(iM)%fa(iFa)%nNo
       END DO
       ALLOCATE(stk(nStk))
-
       DO iPrj=1, nPrj
          lPP => list%get(ctmpi,"Add projection",iPrj)
          CALL FINDFACE(ctmpi, iM, iFa)

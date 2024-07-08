@@ -42,7 +42,8 @@
       REAL(KIND=RKIND), INTENT(OUT) :: timeP(3)
 
       LOGICAL :: flag
-      INTEGER(KIND=IKIND) :: i,j, a, iEq, iDmn, iM, iFa, ierr, nnz, gnnz
+      INTEGER(KIND=IKIND) :: i,j, a, iEq, iDmn, iM, iFa, ierr, nnz,
+     2          gnnz, iProj
       CHARACTER(LEN=stdL) :: fTmp, sTmp
       REAL(KIND=RKIND) :: am
       TYPE(FSILS_commuType) :: communicator
@@ -183,9 +184,13 @@
       END IF
 
       IF(risFlag) THEN 
-         print*, " Finally the gmap is: "
-         print*, "first mesh: ", grisMap(1,:) 
-         print*, "second mesh: ", grisMap(2,:) 
+         !print*, " Finally the gmap is: "
+         DO iProj=1, RIS%nbrRIS
+            print*,"-p ", cm%id(), "-pj", iProj, "RIS node: ",
+     2          grisMapList(iProj)%map(1,:)
+            print*,"-p ", cm%id(), "-pj", iProj, "RIS node: ",
+     2          grisMapList(iProj)%map(2,:)
+         END DO
       END IF  
 
 
@@ -195,6 +200,7 @@
 
       std = " Constructing stiffness matrix sparse structure"
       CALL LHSA(nnz)
+      write(*,*) "DEBUG AFTER LHSA"
 
       gnnz = nnz
       CALL MPI_ALLREDUCE(nnz, gnnz, 1, mpint, MPI_SUM, cm%com(), ierr)
@@ -623,7 +629,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) iM, iEq
+      INTEGER(KIND=IKIND) iM, iEq, iProj
 
 !     Deallocating meshes
       IF (ALLOCATED(msh)) THEN
@@ -664,8 +670,6 @@
       IF (ALLOCATED(cmmBdry))  DEALLOCATE(cmmBdry)
       IF (ALLOCATED(iblank))   DEALLOCATE(iblank)
 
-      IF (ALLOCATED(risMap))   DEALLOCATE(risMap)
-      IF (ALLOCATED(grisMap))  DEALLOCATE(grisMap)
 
       IF (ALLOCATED(Ao))       DEALLOCATE(Ao)
       IF (ALLOCATED(An))       DEALLOCATE(An)
@@ -736,6 +740,16 @@
 
 !     RIS model 
       IF (risFlag) THEN
+         DO iProj=1, RIS%nbrRIS
+            IF(ALLOCATED(risMapList(iProj)%map)) THEN
+               DEALLOCATE(risMapList(iProj)%map)
+            END IF
+            IF(ALLOCATED(grisMapList(iProj)%map)) THEN
+               DEALLOCATE(grisMapList(iProj)%map)
+            END IF
+         END DO
+         IF(ALLOCATED(risMapList)) DEALLOCATE(risMapList)
+         IF(ALLOCATED(grisMapList)) DEALLOCATE(grisMapList)
          IF(ALLOCATED(RIS%lst))    DEALLOCATE(RIS%lst)
          DEALLOCATE(RIS)
       END IF

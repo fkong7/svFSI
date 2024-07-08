@@ -441,7 +441,6 @@
 !        Tolerance
          REAL(KIND=RKIND) :: tol = 1.E-6_RKIND
       END TYPE cntctModelType
-
 !--------------------------------------------------------------------
 !     All the subTypes are defined, now defining the major types that
 !     will be directly allocated
@@ -1019,10 +1018,14 @@ C          TYPE(ibCommType) :: cm
 !     IB: iblank used for immersed boundaries (1 => solid, 0 => fluid)
       INTEGER, ALLOCATABLE :: iblank(:)
 
+!     TO-DO: for now, better to organize these within a class      
+      TYPE :: Array2D
+        INTEGER, ALLOCATABLE :: map(:,:)
+      END TYPE Array2D
 !     RIS mapping array, with local (mesh) enumeration
-      INTEGER, ALLOCATABLE :: risMap(:,:)
+      TYPE(Array2D), ALLOCATABLE :: risMapList(:)
 !     RIS mapping array, with global (total) enumeration
-      INTEGER, ALLOCATABLE :: grisMap(:,:)
+      TYPE(Array2D), ALLOCATABLE :: grisMapList(:)
     
 
 !     Old time derivative of variables (acceleration)
