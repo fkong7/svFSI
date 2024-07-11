@@ -44,7 +44,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) :: iEq, nPrj, m, s, e, i, iM, iFa
+      INTEGER(KIND=IKIND) :: iEq, nPrj, m, s, e, i, iM, iFa, iProj
       REAL(KIND=RKIND) :: tmp
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
 
@@ -55,25 +55,29 @@
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
       ALLOCATE (tmpV(maxnsd,tnNo))
 
-      nPrj = 1
+      nPrj = RIS%nbrRIS
   
       m = 1
       s = eq(iEq)%s + nsd 
       e = s + m - 1
 
       tmpV(1:m,:) = Yn(s:e,:)
-
-      RIS%meanP = 0._RKIND
-      RIS%meanFl = 0._RKIND
       
 !     Future loop on all the nbgProj nPrj
-      DO i = 1, 2 ! We always have two meshes 
-         iM = RIS%lst(i,1,nPrj)
-         iFa = RIS%lst(i,2,nPrj)
+      DO iProj = 1, nPrj
+        RIS%meanP(iProj, :) = 0._RKIND
+        RIS%meanFl(iProj) = 0._RKIND
+        DO i = 1, 2 ! We always have two meshes 
+           iM = RIS%lst(i,1,iProj)
+           iFa = RIS%lst(i,2,iProj)
 
-!        ERROR. HERRE FOR ALE, recompure the area with the new displacement 
-         tmp = msh(iM)%fa(iFa)%area
-         RIS%meanP(i) = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+!          ERROR. HERRE FOR ALE, recompure the area with the new displacement 
+!          ^FK: But that shouldn't be a problem for pressure difference
+!          check since the area (change) above and below a RIS is the
+!          same?           
+           tmp = msh(iM)%fa(iFa)%area
+           RIS%meanP(iProj, i) = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+        END DO
       END DO
 
 !     For the velocity 
@@ -81,17 +85,19 @@
       s = eq(iEq)%s
       e = s + m - 1
 
-      IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
-      ALLOCATE (tmpV(maxnsd,tnNo))
-      tmpV(1:m,:) = Yn(s:e,:)
+      DO iProj = 1, nPrj
+        IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+        ALLOCATE (tmpV(maxnsd,tnNo))
+        tmpV(1:m,:) = Yn(s:e,:)
+        iM = RIS%lst(1,1,iProj)
+        iFa = RIS%lst(1,2,iProj)
 
-      iM = RIS%lst(1,1,nPrj)
-      iFa = RIS%lst(1,2,nPrj)
+        RIS%meanFl(iProj) = Integ(msh(iM)%fa(iFa),tmpV,1,m)
+        write(*,*)" For RIS projection #", iProj
+        write(*,*)" The average pressure is: ", RIS%meanP(iProj, :)
+        write(*,*)" The average flow is: ", RIS%meanFl(iProj)
+      END DO
 
-      RIS%meanFl = Integ(msh(iM)%fa(iFa),tmpV,1,m)
-
-      write(*,*)" The average pressure is: ", RIS%meanP
-      write(*,*)" The average flow is: ", RIS%meanFl
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
@@ -106,43 +112,43 @@
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER(KIND=IKIND) :: iFa, iM, nPrj, i, cPhys
+      INTEGER(KIND=IKIND) :: iFa, iM, nPrj, i, cPhys, iProj
       TYPE(bcType) :: lBc
 
 
-      IF(RIS%clsFlg.EQ.0) RETURN  
+      nPrj = RIS%nbrRIS ! for the moment 
 
-      nPrj = 1 ! for the moment 
 
-!     Weak Dirichlet BC for fluid/FSI equations
-      lBc%weakDir = .TRUE.
-      lBc%tauB = RIS%Res
-      lBc%bType = IBSET(lBc%bType,bType_Dir)
-      lBc%bType = IBSET(lBc%bType,bType_std)
-      lBc%bType = IBSET(lBc%bType,bType_flat)
+      DO iProj = 1, nPrj
+         IF(.NOT.RIS%clsFlg(iProj)) CYCLE
+!        Weak Dirichlet BC for fluid/FSI equations
+         lBc%weakDir = .TRUE.
+         lBc%tauB = RIS%Res(iProj)
+         lBc%bType = IBSET(lBc%bType,bType_Dir)
+         lBc%bType = IBSET(lBc%bType,bType_std)
+         lBc%bType = IBSET(lBc%bType,bType_flat)
+         ALLOCATE(lBc%eDrn(nsd))
+         lBc%eDrn = 0
+         DO i = 1, 2 ! We always have two meshes 
+            iM = RIS%lst(i,1,iProj)
+            iFa = RIS%lst(i,2,iProj)
 
-      ALLOCATE(lBc%eDrn(nsd))
-      lBc%eDrn = 0
+            ALLOCATE(lBc%gx(msh(iM)%fa(iFa)%nNo))
+            lBc%gx = 1._RKIND
 
-      DO i = 1, 2 ! We always have two meshes 
-         iM = RIS%lst(i,1,nPrj)
-         iFa = RIS%lst(i,2,nPrj)
+            cPhys = eq(cEq)%dmn(cDmn)%phys
+            IF (cPhys .EQ. phys_fluid) THEN
+!               TO build the correct bc 
+!               CALL SETBCRIS(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+               CALL SETBCDIRWL(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
+            END IF
 
-         ALLOCATE(lBc%gx(msh(iM)%fa(iFa)%nNo))
-         lBc%gx = 1._RKIND
+            DEALLOCATE(lBc%gx)
 
-         cPhys = eq(cEq)%dmn(cDmn)%phys
-         IF (cPhys .EQ. phys_fluid) THEN
-!            TO build the correct bc 
-!            CALL SETBCRIS(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
-            CALL SETBCDIRWL(lBc, msh(iM), msh(iM)%fa(iFa), Yg, Dg)
-         END IF
-
-         DEALLOCATE(lBc%gx)
-
+         END DO
+         DEALLOCATE(lBc%eDrn)
       END DO
-
-      DEALLOCATE(lBc%eDrn)
+      
 
       RETURN
       END SUBROUTINE RIS_RESBC
@@ -341,29 +347,32 @@
       USE TYPEMOD
       USE COMMOD
       IMPLICIT NONE
+      INTEGER(KIND=IKIND) :: iProj
 
-      RIS%nbrIter = RIS%nbrIter + 1
-      IF( RIS%nbrIter .LE. 4 ) RETURN
+      DO iProj = 1, RIS%nbrRIS
+         RIS%nbrIter(iProj) = RIS%nbrIter(iProj) + 1
+         IF( RIS%nbrIter(iProj) .LE. 10 ) CYCLE
 
-!     The valve is closed check if it should open
-      IF (RIS%clsFlg .EQ. 1) THEN 
- !       OPENING CONDITION: Check condition on the pressure difference        
-         IF( RIS%meanP(1) .GT. RIS%meanP(2)  ) THEN 
-            RIS%clsFlg = 0
-            write(*,*)" Going from close to open "
-            RIS%nbrIter = 0 
+!        The valve is closed check if it should open
+         IF (RIS%clsFlg(iProj)) THEN 
+!          OPENING CONDITION: Check condition on the pressure difference        
+            IF( RIS%meanP(iProj, 1) .GT. RIS%meanP(iProj, 2)  ) THEN 
+               RIS%clsFlg(iProj) = .FALSE.
+               write(*,*) "RIS Proj=",iProj," Going from close to open."
+               RIS%nbrIter(iProj) = 0 
 
-!            CALL restore equal velocity at the interface - mean vel at the node 
-         END iF
-      ELSE 
-!     The valve is open, check if it should close. 
-!        CLOSING CONDITION: Check existence of a backflow
-         IF( RIS%meanFl .LT. 0.) THEN 
-            RIS%clsFlg = 1
-            write(*,*)" Going from open to close "
-            RIS%nbrIter = 0 
+!               CALL restore equal velocity at the interface - mean vel at the node 
+            END iF
+         ELSE 
+!        The valve is open, check if it should close. 
+!           CLOSING CONDITION: Check existence of a backflow
+            IF( RIS%meanFl(iProj) .LT. 0.) THEN 
+               RIS%clsFlg(iProj) = .TRUE.
+               write(*,*) "RIS Proj=",iProj," Going from open to close "
+               RIS%nbrIter(iProj) = 0 
+            END IF
          END IF
-      END IF
+      END DO
 
       RETURN
       END SUBROUTINE RIS_UPDATER
@@ -375,26 +384,31 @@
       USE TYPEMOD
       USE COMMOD
       IMPLICIT NONE
+      INTEGER(KIND=IKIND) :: iProj
 
-      RIS%status = .TRUE.
-!     If the valve is closed, chech the pressure difference, 
-!     if the pressure difference is negative the valve should be open
-!     -> the status is then not admissible
-      IF (RIS%clsFlg .EQ. 1) THEN 
-         IF( RIS%meanP(1) .GT. RIS%meanP(2)  ) THEN 
-            write(*,*)" **** Not admissible, it should be open **** "
-            RIS%status = .FALSE.
-         END iF
-      ELSE 
+      DO iProj = 1, RIS%nbrRIS
+         RIS%status(iProj) = .TRUE.
+!        If the valve is closed, chech the pressure difference, 
+!        if the pressure difference is negative the valve should be open
+!        -> the status is then not admissible
+         IF (RIS%clsFlg(iProj)) THEN 
+            IF( RIS%meanP(iProj,1) .GT. RIS%meanP(iProj,2)  ) THEN 
+               write(*,*) "RIS Proj=",iProj," **** Not admissible, 
+     2              it should be open **** "
+               RIS%status(iProj) = .FALSE.
+            END iF
+         ELSE 
 
-!     If the valve is open, chech the flow, 
-!     if the flow is negative the valve should be closed
-!     -> the status is then not admissible
-         IF( RIS%meanFl .LT. 0.) THEN 
-            write(*,*)" **** Not admissible, it should be closed **** "
-            RIS%status = .FALSE.
+!        If the valve is open, chech the flow, 
+!        if the flow is negative the valve should be closed
+!        -> the status is then not admissible
+            IF( RIS%meanFl(iProj) .LT. 0.) THEN 
+               write(*,*) "RIS Proj=",iProj," **** Not admissible, 
+     2              it should be closed **** "
+               RIS%status = .FALSE.
+            END IF
          END IF
-      END IF
+      END DO
 
       RETURN
       END SUBROUTINE RIS_STATUS
@@ -413,9 +427,8 @@
       REAL(KIND=RKIND), INTENT(IN) :: lK(dof*dof,d,d), lR(dof,d)
 
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
-     2                    jM, mapIdxC(2), iProj, counter
+     2                    jM, mapIdxC(2), iProj
       INTEGER(KIND=IKIND) :: rowNadj=0
-      counter = 0
       DO iProj=1, RIS%nbrRIS
          DO a=1, d
 
@@ -469,16 +482,9 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
                      right = ptr
                   END IF
                   ptr = (right + left)/2
-                  IF ((colN.NE.colPtr(ptr)).AND.(right-left.LE.1)) THEN
-
-                      counter = counter + 1
-                      EXIT
-                  END IF 
                END DO
              
-               IF (colN.EQ.colPtr(ptr)) THEN
-                  Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
-               END IF
+               Val(:,ptr) = Val(:,ptr) + lK(:,a,b)
 
 C                Val(1:nsd*2+2,ptr) = Val(1:nsd*2+2,ptr) + lK(1:nsd*2+2,a,b)
 
@@ -512,7 +518,7 @@ C      2                                            lK(nsd+2:2*nsd+2,a,b)
             
             IF(mapIdx(1).EQ.0) CYCLE 
 
-            DO jM=1, nMsh  
+            DO jM=1, 2
                
                IF(jM .EQ. mapIdx(1)) CYCLE
                IF(grisMapList(iProj)%map(jM, mapIdx(2)) .EQ. 0) CYCLE
@@ -531,7 +537,7 @@ C             R(:,rowNadj) = R(:,rowNadj) + lR(:,a)
                mapIdxC = FINDLOC(grisMapList(iProj)%map, colN)
 
                IF(mapIdxC(1).NE.0) THEN 
-                  DO jM=1, nMsh  
+                  DO jM=1, 2
                      IF(jM .EQ. mapIdxC(1)) CYCLE
                      IF(grisMapList(iProj)%map(jM,mapIdxC(2)).EQ.0) THEN
                         CYCLE
@@ -580,7 +586,7 @@ C         2                                         lK(nsd+2:2*nsd+2,a,b)
       DO iProj=1, RIS%nbrRIS
          nStk = SIZE(grisMapList(iProj)%map,2)
 
-         DO iM=1, nMsh  
+         DO iM=1, 2
             DO j=1, nStk
                Ac = grisMapList(iProj)%map(iM,j)
                IF(Ac .EQ. 0) CYCLE
@@ -604,7 +610,7 @@ C         2                                         lK(nsd+2:2*nsd+2,a,b)
       DO iProj=1, RIS%nbrRIS
          nStk = SIZE(grisMapList(iProj)%map,2)
 
-         DO iM=1, nMsh  
+         DO iM=1, 2 
             DO j=1, nStk
                Ac = grisMapList(iProj)%map(iM,j)
                IF(Ac .EQ. 0) CYCLE

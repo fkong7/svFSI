@@ -750,6 +750,13 @@
          IF(ALLOCATED(risMapList)) DEALLOCATE(risMapList)
          IF(ALLOCATED(grisMapList)) DEALLOCATE(grisMapList)
          IF(ALLOCATED(RIS%lst))    DEALLOCATE(RIS%lst)
+         IF(ALLOCATED(RIS%nbrIter))    DEALLOCATE(RIS%nbrIter)
+         IF(ALLOCATED(RIS%Res))    DEALLOCATE(RIS%Res)
+         IF(ALLOCATED(RIS%clsFlg))    DEALLOCATE(RIS%clsFlg)
+         IF(ALLOCATED(RIS%meanP))    DEALLOCATE(RIS%meanP)
+         IF(ALLOCATED(RIS%meanFl))    DEALLOCATE(RIS%meanFl)
+         IF(ALLOCATED(RIS%status))    DEALLOCATE(RIS%status)
+         
          DEALLOCATE(RIS)
       END IF
 

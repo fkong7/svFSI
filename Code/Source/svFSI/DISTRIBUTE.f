@@ -444,6 +444,12 @@
             ALLOCATE(grisMapList(iProj)%map(2, nStks(iProj)))
           END DO
           ALLOCATE(RIS)
+          ALLOCATE(RIS%nbrIter(nProj))
+          ALLOCATE(RIS%Res(nProj))
+          ALLOCATE(RIS%clsFlg(nProj))
+          ALLOCATE(RIS%meanP(nProj, 2))
+          ALLOCATE(RIS%meanFl(nProj))
+          ALLOCATE(RIS%status(nProj))
           IF (ALLOCATED(RIS%lst)) DEALLOCATE(RIS%lst)
           ALLOCATE(RIS%lst(dims(1), dims(2), dims(3)))
       END IF
@@ -470,8 +476,12 @@
         CALL cm%bcast(grisMapList(iProj)%map)
       END DO 
       CALL cm%bcast(RIS%clsFlg)
+      CALL cm%bcast(RIS%nbrIter)
       CALL cm%bcast(RIS%Res)
       CALL cm%bcast(RIS%nbrRIS)
+      CALL cm%bcast(RIS%meanP)
+      CALL cm%bcast(RIS%meanFl)
+      CALL cm%bcast(RIS%status)
 
       DO iProj=1, nProj
         DO i=1, 2

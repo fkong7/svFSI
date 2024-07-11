@@ -494,6 +494,18 @@ C       TYPE(stackType) lPrj
          RIS%nbrRIS = nPrj
          ALLOCATE( RIS%lst(2,2,nPrj) )
          RIS%lst(2,2,nPrj) = 0
+         ALLOCATE(RIS%nbrIter(nPrj))
+         RIS%nbrIter = 0
+         ALLOCATE(RIS%Res(nPrj))
+         RIS%Res = 0._RKIND
+         ALLOCATE(RIS%clsFlg(nPrj))
+         RIS%clsFlg = .TRUE.
+         ALLOCATE(RIS%meanP(nPrj, 2))
+         RIS%meanP = 0._RKIND
+         ALLOCATE(RIS%meanFl(nPrj))
+         RIS%meanFl = 0._RKIND
+         ALLOCATE(RIS%status(nPrj))
+         RIS%status = .TRUE.
          write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
       END IF
 
@@ -520,7 +532,7 @@ C       TYPE(stackType) lPrj
          msh(jM)%res = 0._RKIND
 
          lPtr => lPP%get(msh(jM)%res,"Resistance")
-         RIS%Res = msh(jM)%res
+         RIS%Res(iProj) = msh(jM)%res
          CALL MATCHNODES(msh(iM)%fa(iFa), msh(jM)%fa(jFa), msh(jM)%tol, 
      2       nStk, risMapList(iProj)%map)
 

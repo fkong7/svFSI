@@ -278,7 +278,6 @@
 ! ---- Here we probably have to update the ris resistance value
 ! ---- If the state has to change, we recompute this time step GOTO 1
 ! ---- Control where if the time and the new has changed! 
-         write(*,*) "CHECK RIS: ", cEq, risFlag
          IF ( risFlag ) THEN 
             CALL RIS_MEANQ
             CALL RIS_UPDATER
@@ -288,7 +287,7 @@
             write(*,*)" Is the valve close? ", RIS%clsFlg
             CALL RIS_STATUS
             write(*,*)" The status is ", RIS%status
-            IF( RIS%nbrIter .LE. 6) GOTO 11
+            IF( ANY(RIS%nbrIter .LE. 6)) GOTO 11
 !             IF( RIS%nbrIter .EQ. 0) GOTO 11
 
          END IF

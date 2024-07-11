@@ -171,7 +171,6 @@
       coef(3) = 1._RKIND / eq(cEq)%am
       coef(4) = eq(cEq)%af*coef(1)*coef(3)
 
-      !write(*,*) "Yn DEBUG PICC-1", Yn(:, 1:5)
       IF (sstEq) THEN
 !        ustruct, FSI (ustruct)
          IF (eq(cEq)%phys .EQ. phys_ustruct .OR.
@@ -190,14 +189,12 @@
                Dn(s:e,a)   = Dn(s:e,a) - R(:,a)*coef(2)
             END DO
          END IF
-         !write(*,*) "Yn DEBUG PICC-2", Yn(:, 1:5)
       ELSE
          DO a=1, tnNo
             An(s:e,a) = An(s:e,a) - R(:,a)
             Yn(s:e,a) = Yn(s:e,a) - R(:,a)*coef(1)
             Dn(s:e,a) = Dn(s:e,a) - R(:,a)*coef(2)
          END DO
-         !write(*,*) "Yn DEBUG PICC-3, Residuals", R(:, 1:5)
       END IF
 
       IF ((eq(cEq)%phys .EQ. phys_stokes) .OR.

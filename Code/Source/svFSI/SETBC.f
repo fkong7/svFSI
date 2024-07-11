@@ -716,7 +716,7 @@
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
       INTEGER(KIND=IKIND) :: iBc, iFa, iM
-      INTEGER(KIND=IKIND) :: i, j, M, Fa, found
+      INTEGER(KIND=IKIND) :: i, j, M, Fa, found, projFound,iProj
 
       DO iBc=1, eq(cEq)%nBc
          iM  = eq(cEq)%bc(iBc)%iM
@@ -724,22 +724,28 @@
          IF (.NOT.eq(cEq)%bc(iBc)%weakDir) CYCLE
 
 !        IF we are in ris and the valve isn't close, cycle 
-         IF( risFlag ) THEN 
-            found = 0
-            DO i = 1, 2 
-               M = RIS%lst(i,1,1)
-               IF( M .EQ. iM ) THEN 
+         found = 0
+         projFound = 0
+         DO iProj = 1, RIS%nbrRIS
+            IF( risFlag ) THEN 
+               DO i = 1, 2 
+                  M = RIS%lst(i,1,iProj)
+                  IF( M .EQ. iM ) THEN 
 
-                  Fa = RIS%lst(i,2,1)
-                  IF( (Fa .EQ. iFa ) ) 
-     2                       THEN 
-                     found = 1 
+                     Fa = RIS%lst(i,2,iProj)
+                     IF( (Fa .EQ. iFa ) ) 
+     2                          THEN 
+!                       The face of this mesh should be associated with
+!                       only one RIS projection.                     
+                        found = 1 
+                        projFound = iProj
+                     END IF
                   END IF
-               END IF
-            END DO
-         END IF
+               END DO
+            END IF
+         END DO
 
-         IF( (found .EQ. 1).AND.(RIS%clsFlg.EQ.0)) THEN 
+         IF( (found .EQ. 1).AND.(.NOT.RIS%clsFlg(projFound))) THEN 
             CYCLE
          END IF 
 
