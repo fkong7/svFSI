@@ -206,8 +206,10 @@ C                 write(*,*)" DDir = ", DDir
          ELSE
 #endif
             CALL DOASSEM(eNoN, ptr, lK, lR)
-            IF( risFlag .AND. (.NOT.ALL(RIS%clsFlg))) THEN 
-                CALL DOASSEM_RIS(eNoN, ptr, lK, lR)
+            IF( risFlag ) THEN 
+                IF (.NOT.ALL(RIS%clsFlg)) THEN
+                   CALL DOASSEM_RIS(eNoN, ptr, lK, lR)
+                END IF
             END IF
 C             IF( risFlag .AND. (RIS%clsFlg.EQ.1)) THEN 
 C                 CALL DOASSEM_VELRIS(eNoN, ptr, lK, lR)

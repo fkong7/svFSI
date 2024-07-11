@@ -105,11 +105,6 @@
      &      "is not supported."
       END IF
 
-      !write(*,*) "FSILS_SOLVE in SVFSILS-2 S", SHAPE(Val)
-      !write(*,*) "FSILS_SOLVE in SVFSILS-2 R, lhs, ls%RI dof Val", 
-      !2 ls%RI
-      !write(*,*) "FSILS_SOLVE in SVFSILS-2"
-
       SELECT CASE (ls%LS_type)
          CASE (LS_TYPE_NS)
             CALL NSSOLVER(lhs, ls, dof, Val, R)

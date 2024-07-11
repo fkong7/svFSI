@@ -499,7 +499,7 @@ C       TYPE(stackType) lPrj
          ALLOCATE(RIS%Res(nPrj))
          RIS%Res = 0._RKIND
          ALLOCATE(RIS%clsFlg(nPrj))
-         RIS%clsFlg = .TRUE.
+         RIS%clsFlg = .FALSE.
          ALLOCATE(RIS%meanP(nPrj, 2))
          RIS%meanP = 0._RKIND
          ALLOCATE(RIS%meanFl(nPrj))

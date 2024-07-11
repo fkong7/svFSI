@@ -1306,7 +1306,6 @@
 
       fTmp = TRIM(appPath)//".partitioning_"//TRIM(lM%name)//".bin"
       flag = .FALSE.
-      !write(*,*) "!!!!!=======++!!!!", fTmp
       IF (rmsh%isReqd) INQUIRE(FILE=TRIM(fTmp), EXIST=flag)
       IF (lM%eType .EQ. eType_NRB) THEN
          part = cm%id()
@@ -1361,7 +1360,6 @@
 !     Doing partitioning, using ParMetis
          edgecut = SPLIT(nEl, eNoN, eNoNb, lM%IEN, cm%np(), lM%eDist,
      2      wgt, part)
-         !write(*,*) "Part array ", cm%id(), "-p", SIZE(part), "-p", part
          IF (edgecut .EQ. 0) THEN
 c            wrn = " ParMETIS failed to partition the mesh"
             part = cm%id()
