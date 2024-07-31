@@ -129,7 +129,7 @@
          lBc%bType = IBSET(lBc%bType,bType_flat)
          ALLOCATE(lBc%eDrn(nsd))
          lBc%eDrn = 0
-         DO i = 1, 2 ! We always have two meshes 
+         DO i = 1, 2 ! We always have two meshes for 1 projection
             iM = RIS%lst(i,1,iProj)
             iFa = RIS%lst(i,2,iProj)
 
@@ -430,6 +430,7 @@
      2                    jM, mapIdxC(2), iProj
       INTEGER(KIND=IKIND) :: rowNadj=0
       DO iProj=1, RIS%nbrRIS
+         IF(RIS%clsFlg(iProj)) CYCLE
          DO a=1, d
 
             rowN = eqN(a)
@@ -510,6 +511,7 @@ C      2                                            lK(nsd+2:2*nsd+2,a,b)
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
      2                    jM, rowNadj, mapIdxC(2), iProj
       DO iProj=1, RIS%nbrRIS
+         IF(RIS%clsFlg(iProj)) CYCLE
          DO a=1, d
 
             rowN = eqN(a)

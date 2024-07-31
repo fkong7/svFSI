@@ -724,9 +724,9 @@
          IF (.NOT.eq(cEq)%bc(iBc)%weakDir) CYCLE
 
 !        IF we are in ris and the valve isn't close, cycle 
-         found = 0
-         projFound = 0
          DO iProj = 1, RIS%nbrRIS
+            found = 0
+            projFound = 0
             IF( risFlag ) THEN 
                DO i = 1, 2 
                   M = RIS%lst(i,1,iProj)
@@ -743,17 +743,17 @@
                   END IF
                END DO
             END IF
+            IF( (found .EQ. 1).AND.(.NOT.RIS%clsFlg(projFound))) THEN 
+               CYCLE
+            END IF 
+
+            IF( found .EQ. 1) write(*,*)"We do weakly RIS BC for 
+     2          RIS Proj", iProj
+
+            CALL SETBCDIRWL(eq(cEq)%bc(iBc), msh(iM), msh(iM)%fa(iFa), 
+     2          Yg, Dg)
          END DO
 
-         IF( (found .EQ. 1).AND.(.NOT.RIS%clsFlg(projFound))) THEN 
-            CYCLE
-         END IF 
-
-         IF( found .EQ. 1) write(*,*)" We do weakly RIS BC "
-
-
-         CALL SETBCDIRWL(eq(cEq)%bc(iBc), msh(iM), msh(iM)%fa(iFa), Yg,
-     2      Dg)
       END DO
 
       RETURN
