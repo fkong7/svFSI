@@ -159,6 +159,7 @@
          i = i + nXion
          IF (cem%cpld) i = i + 1
       END IF
+      IF (risFlag) i = i + RIS%nbrRIS
       i = IKIND*(1+SIZE(stamp)) + RKIND*(2+nEq+cplBC%nX+i*tnNo)
 
       IF (ibFlag) i = i + RKIND*(3*nsd+1)*ib%tnNo
@@ -541,6 +542,10 @@
      2               "combination. Cannot load restart files"
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad, Xion, cem%Ya
+               ELSE IF (risFlag) THEN
+                  READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad, RIS%clsFlg
+
                ELSE
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad
@@ -554,6 +559,9 @@
      2               "combination. Cannot load restart files"
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Xion, cem%Ya
+               ELSE IF (risFlag) THEN
+                  READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2               eq%iNorm, cplBC%xo, Yo, Ao, Do, RIS%clsFlg
                ELSE
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do
@@ -563,6 +571,9 @@
             IF (cepEq) THEN
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2          eq%iNorm, cplBC%xo, Yo, Ao, Xion
+            ELSE IF (risFlag) THEN
+               READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2            eq%iNorm, cplBC%xo, Yo, Ao, RIS%clsFlg
             ELSE
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2            eq%iNorm, cplBC%xo, Yo, Ao

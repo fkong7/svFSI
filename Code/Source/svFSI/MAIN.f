@@ -99,7 +99,6 @@
 !     variables, i.e. An, Yn, and Dn
          cTS    = cTS + 1
          time   = time + dt
-
 ! --- RIS GOTO 1 should be here, we do not update the time but we redo all the rest          
 11       cEq    = 1
          eq%itr = 0
@@ -280,15 +279,20 @@
 ! ---- Control where if the time and the new has changed! 
          IF ( risFlag ) THEN 
             CALL RIS_MEANQ
-            CALL RIS_UPDATER
-
+            CALL RIS_STATUS
+            IF (.NOT. ALL(RIS%status)) THEN 
+                CALL RIS_UPDATER
+                Ao = An
+                Yo = Yn
+                IF (dFlag) Do = Dn
+                cplBC%xo = cplBC%xn
+                GOTO 11
+            END IF
             write(*,*)" Iteration : " , cTS
             write(*,*)" RIS iteration: ", RIS%nbrIter
             write(*,*)" Is the valve close? ", RIS%clsFlg
-            CALL RIS_STATUS
             write(*,*)" The status is ", RIS%status
-            IF( ANY(RIS%nbrIter .LE. 6)) GOTO 11
-!             IF( RIS%nbrIter .EQ. 0) GOTO 11
+            !IF( ANY(RIS%nbrIter .LE. 3)) GOTO 11
 
          END IF
 

@@ -351,7 +351,7 @@
 
       DO iProj = 1, RIS%nbrRIS
          RIS%nbrIter(iProj) = RIS%nbrIter(iProj) + 1
-         IF( RIS%nbrIter(iProj) .LE. 10 ) CYCLE
+         !IF((RIS%nbrIter(iProj).LE.1) .AND. (RIS%status(iProj))) CYCLE
 
 !        The valve is closed check if it should open
          IF (RIS%clsFlg(iProj)) THEN 
@@ -405,7 +405,7 @@
             IF( RIS%meanFl(iProj) .LT. 0.) THEN 
                write(*,*) "RIS Proj=",iProj," **** Not admissible, 
      2              it should be closed **** "
-               RIS%status = .FALSE.
+               RIS%status(iProj) = .FALSE.
             END IF
          END IF
       END DO

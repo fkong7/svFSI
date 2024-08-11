@@ -505,7 +505,7 @@ C       TYPE(stackType) lPrj
          ALLOCATE(RIS%meanFl(nPrj))
          RIS%meanFl = 0._RKIND
          ALLOCATE(RIS%status(nPrj))
-         RIS%status = .TRUE.
+         RIS%status = .FALSE.
          write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
       END IF
 
