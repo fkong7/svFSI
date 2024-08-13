@@ -93,9 +93,10 @@
         iFa = RIS%lst(1,2,iProj)
 
         RIS%meanFl(iProj) = Integ(msh(iM)%fa(iFa),tmpV,1,m)
-        write(*,*)" For RIS projection #", iProj
-        write(*,*)" The average pressure is: ", RIS%meanP(iProj, :)
-        write(*,*)" The average flow is: ", RIS%meanFl(iProj)
+        std = "For RIS projection "//iProj
+        std = "    The average pressure is: "//RIS%meanP(iProj,
+     2      1)//", "//RIS%meanP(iProj, 2)
+        std = "    The average flow is: "//RIS%meanFl(iProj)
       END DO
 
 
@@ -358,7 +359,7 @@
 !          OPENING CONDITION: Check condition on the pressure difference        
             IF( RIS%meanP(iProj, 1) .GT. RIS%meanP(iProj, 2)  ) THEN 
                RIS%clsFlg(iProj) = .FALSE.
-               write(*,*) "RIS Proj=",iProj," Going from close to open."
+               std="RIS Proj "//iProj//": Going from close to open."
                RIS%nbrIter(iProj) = 0 
 
 !               CALL restore equal velocity at the interface - mean vel at the node 
@@ -368,7 +369,7 @@
 !           CLOSING CONDITION: Check existence of a backflow
             IF( RIS%meanFl(iProj) .LT. 0.) THEN 
                RIS%clsFlg(iProj) = .TRUE.
-               write(*,*) "RIS Proj=",iProj," Going from open to close "
+               std="RIS Proj "//iProj//": Going from open to close "
                RIS%nbrIter(iProj) = 0 
             END IF
          END IF
@@ -393,7 +394,7 @@
 !        -> the status is then not admissible
          IF (RIS%clsFlg(iProj)) THEN 
             IF( RIS%meanP(iProj,1) .GT. RIS%meanP(iProj,2)  ) THEN 
-               write(*,*) "RIS Proj=",iProj," **** Not admissible, 
+               std= "RIS Proj "//iProj//": **** Not admissible, 
      2              it should be open **** "
                RIS%status(iProj) = .FALSE.
             END iF
@@ -403,7 +404,7 @@
 !        if the flow is negative the valve should be closed
 !        -> the status is then not admissible
             IF( RIS%meanFl(iProj) .LT. 0.) THEN 
-               write(*,*) "RIS Proj=",iProj," **** Not admissible, 
+               std = "RIS Proj "//iProj//": **** Not admissible, 
      2              it should be closed **** "
                RIS%status(iProj) = .FALSE.
             END IF
@@ -429,6 +430,8 @@
       INTEGER(KIND=IKIND) a, b, ptr, rowN, colN, left, right, mapIdx(2), 
      2                    jM, mapIdxC(2), iProj
       INTEGER(KIND=IKIND) :: rowNadj=0
+     
+      !IF(.NOT.cm%mas()) RETURN
       DO iProj=1, RIS%nbrRIS
          IF(RIS%clsFlg(iProj)) CYCLE
          DO a=1, d
@@ -475,7 +478,6 @@ C             R(1:nsd,rowNadj) = R(1:nsd,rowNadj) + lR(1:nsd,a)
                right = rowPtr(rowNadj+1)
                ptr   = (right + left)/2
 
-               
                DO WHILE (colN.NE.colPtr(ptr))
                   IF (colN .GT. colPtr(ptr)) THEN
                      left  = ptr
@@ -759,7 +761,7 @@ C          END IF
                IF (.NOT.cm%seq()) THEN 
                   CALL cm%bcast(eq(cEq)%bc(iBc)%clsFlgRis) 
                END IF
-               write(*,*)"!!! -- Going from close to open "
+               std = "!!! -- Going from close to open "
                RisnbrIter = 0 
 
 !            CALL restore equal velocity at the interface - mean vel at the node 
@@ -772,7 +774,7 @@ C          END IF
                IF (.NOT.cm%seq()) THEN 
                   CALL cm%bcast(eq(cEq)%bc(iBc)%clsFlgRis) 
                END IF
-               write(*,*)"!!! -- Going from open to close "
+               std = "!!! -- Going from open to close "
                RisnbrIter = 0 
             END IF
          END IF
@@ -786,7 +788,7 @@ C          END IF
 !     -> the status is then not admissible
          IF (eq(cEq)%bc(iBc)%clsFlgRis .EQ. 1) THEN 
             IF( eq(cEq)%bc(iBc)%g .LT. meanP  ) THEN 
-               write(*,*)"** Not admissible, should be open **"
+               std = "** Not admissible, should be open **"
                ! status = .FALSE.
             END IF
          ELSE 
@@ -794,7 +796,7 @@ C          END IF
 !     if the flow is negative the valve should be closed
 !     -> the status is then not admissible
             IF( meanFl .LT. 0.) THEN 
-               write(*,*)"** Not admissible, it should be closed **"
+               std = "** Not admissible, it should be closed **"
                ! status = .FALSE.
             END IF
          END IF

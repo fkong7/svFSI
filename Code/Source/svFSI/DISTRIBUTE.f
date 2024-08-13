@@ -44,6 +44,7 @@
 
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: a, e, i, Ac, iEq, iM, iFa, iBf
+      INTEGER(KIND=IKIND) :: iProj, jM, risProc, j, tmp
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), gmtl(:)
       REAL(KIND=RKIND4), ALLOCATABLE :: iWgt(:)
@@ -92,15 +93,44 @@
             ltg(a) = a
          END DO
       END IF
+      
+      ! Need the ris flag here
+      CALL cm%bcast(risFlag)
+      !     Communicating RIS info
+      IF (risFlag) CALL DISTRIS(gmtl)
+
       DO iM=1, nMsh
          dbg = "Partitioning mesh "//iM
-         !write(*,*) "CHECK GLOBAL NODE -p", cm%id(), "m", msh(iM)%gN
          iWgt = REAL(wgt(iM,:)/SUM(wgt(iM,:)), KIND=RKIND4)
-         !IF (iM.EQ.1) iWgt = (/0.6, 0.4, 0., 0.0/)
-         !IF (iM.EQ.2) iWgt = (/0.0, 0.2, 0.4, 0.4/)
+         IF (risFlag) THEN
+             DO iProj=1, RIS%nbrRIS
+                 ! Find the adjacent mesh
+                 IF (RIS%lst(1,1,iProj).EQ.iM) THEN
+                    jM = RIS%lst(2,1,iProj)
+                 ELSE IF (RIS%lst(2,1,iProj).EQ.iM) THEN
+                    jM = RIS%lst(1,1,iProj)
+                 ELSE
+                    CYCLE
+                 END IF
+                 ! right now just assign all nodes to the same proc
+                 risProc = -1
+                 DO e=1, msh(jM)%gnEl
+                     IF (msh(jM)%eRIS(e)) THEN 
+                        risProc=msh(jM)%partRIS(e)
+                        EXIT
+                    END IF
+                 END DO
+                 IF (risProc.NE.-1) THEN
+                    DO e=1, msh(iM)%gnEl
+                        IF (msh(iM)%eRIS(e)) THEN 
+                            msh(iM)%partRIS(e) = risProc
+                        END IF
+                    END DO
+                 END IF
+             END DO
+         END IF 
          CALL PARTMSH(msh(iM), gmtl, cm%np(), iWgt)
       END DO
-
 !     Setting gtl pointer in case that it is needed and mapping IEN
       DO iM=1, nMsh
          IF (ALLOCATED(msh(iM)%lN)) DEALLOCATE(msh(iM)%lN)
@@ -163,6 +193,7 @@
      2         gmtl)
          END DO
       END DO
+
 
 !     Sending data from read by master in READFILES to slaves
       IF (.NOT.resetSim) THEN
@@ -333,7 +364,6 @@
          cmmBdry = LOCAL(part)
          DEALLOCATE(part)
       END IF
-
 !     For CMM variable wall properties
       flag = ALLOCATED(varWallProps)
       CALL cm%bcast(flag)
@@ -365,10 +395,22 @@
          IF (cplBC%nX .NE. 0) CALL cm%bcast(cplBC%xo)
       END IF
       CALL cm%bcast(cplBC%initRCR)
-
-!     Communicating RIS node maps
-      IF (risFlag) CALL DISTRIS(gmtl)
-
+        
+      IF (risFlag) THEN
+        DO iProj=1, RIS%nbrRIS
+          DO i=1, 2
+              DO j=1, SIZE(risMapList(iProj)%map, 2)
+                  tmp = gmtl(grisMapList(iProj)%map(i,j))
+                  IF (.NOT. tmp .EQ. 0) THEN
+                      risMapList(iProj)%map(i,j) = msh(i)%lN(tmp)
+                  ELSE
+                      risMapList(iProj)%map(i,j) = 0
+                  END IF
+                  grisMapList(iProj)%map(i,j) = tmp
+              END DO
+          END DO
+        END DO
+      END IF
       DO iM=1, nMsh
          CALL DESTROY(tMs(iM))
       END DO
@@ -409,32 +451,33 @@
       END SUBROUTINE DISTIB
 !--------------------------------------------------------------------
 !     This routine distributes data structures for RIS
-      SUBROUTINE DISTRIS(gmtl)
+      SUBROUTINE DISTRIS()
       USE COMMOD
       IMPLICIT NONE
-      INTEGER(KIND=IKIND), INTENT(IN) :: gmtl(gtnNo)
-      INTEGER(KIND=IKIND) iProj, nProj, tmp, i, j 
+      INTEGER(KIND=IKIND) iProj, nProj, tmp_left, tmp_right, i, j, nNo,
+     2      tmp
+      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, tnNoOld
       INTEGER(KIND=IKIND), ALLOCATABLE :: dims(:)
       INTEGER(KIND=IKIND), ALLOCATABLE :: nStks(:)
-      INTEGER(KIND=IKIND), ALLOCATABLE :: flat_lst(:)
+      INTEGER(KIND=IKIND), ALLOCATABLE :: flat_lst(:), tmpI(:)
       INTEGER(KIND=IKIND) lst_size
-
+    
       ! First find the RIS nodes between mesh pairs on the current processor
       ALLOCATE(dims(3))
       IF (cm%mas()) THEN
           nProj = RIS%nbrRIS
+          dims = SHAPE(RIS%lst)
           ALLOCATE(nStks(nProj))
           DO iProj=1, nProj
             nStks(iProj) = SIZE(risMapList(iProj)%map, 2)
           END DO
-          dims = SHAPE(RIS%lst)
           lst_size = SIZE(RIS%lst)
       END IF
       CALL cm%bcast(nProj)
+      IF (.NOT. ALLOCATED(nStks)) ALLOCATE(nStks(nProj))
       CALL cm%bcast(dims)
       CALL cm%bcast(lst_size)
-
-      IF (.NOT. ALLOCATED(nStks)) ALLOCATE(nStks(nProj))
+      CALL cm%bcast(nStks)
 
       IF (cm%slv()) THEN
           ALLOCATE(risMapList(nProj))
@@ -455,7 +498,6 @@
       END IF
 
       DEALLOCATE(dims)
-      DEALLOCATE(nStks)
 
       ! Flatten the 3D array to 1D for broadcasting
       IF (cm%mas()) THEN
@@ -464,6 +506,13 @@
           ALLOCATE(flat_lst(lst_size))
       END IF
       CALL cm%bcast(flat_lst)
+      CALL cm%bcast(RIS%clsFlg)
+      CALL cm%bcast(RIS%nbrIter)
+      CALL cm%bcast(RIS%Res)
+      CALL cm%bcast(RIS%nbrRIS)
+      CALL cm%bcast(RIS%meanP)
+      CALL cm%bcast(RIS%meanFl)
+      CALL cm%bcast(RIS%status)
 
       ! Reshape the 1D array back to 3D after broadcasting
       IF (cm%slv()) THEN
@@ -475,27 +524,18 @@
         CALL cm%bcast(risMapList(iProj)%map)
         CALL cm%bcast(grisMapList(iProj)%map)
       END DO 
-      CALL cm%bcast(RIS%clsFlg)
-      CALL cm%bcast(RIS%nbrIter)
-      CALL cm%bcast(RIS%Res)
-      CALL cm%bcast(RIS%nbrRIS)
-      CALL cm%bcast(RIS%meanP)
-      CALL cm%bcast(RIS%meanFl)
-      CALL cm%bcast(RIS%status)
 
-      DO iProj=1, nProj
-        DO i=1, 2
-            DO j=1, nStks(iProj)
-                tmp = gmtl(grisMapList(iProj)%map(i,j))
-                IF (.NOT. tmp .EQ. 0) THEN
-                    risMapList(iProj)%map(i,j) = msh(i)%lN(tmp)
-                ELSE
-                    risMapList(iProj)%map(i,j) = 0
-                END IF
-                grisMapList(iProj)%map(i,j) = tmp
-            END DO
-        END DO
+      DO iM =1, nMsh
+        CALL cm%bcast(msh(iM)%gnEl)
+        IF (cm%slv()) THEN
+            ALLOCATE(msh(iM)%eRIS(msh(iM)%gnEl))
+            ALLOCATE(msh(iM)%partRIS(msh(iM)%gnEl))
+        END IF
+        CALL cm%bcast(msh(iM)%eRIS)
+        CALL cm%bcast(msh(iM)%partRIS)
       END DO
+          
+      DEALLOCATE(nStks)
       RETURN
       END SUBROUTINE DISTRIS
 !--------------------------------------------------------------------
@@ -605,7 +645,6 @@
       TYPE(mshType), INTENT(IN) :: tMs(nMsh)
 
       INTEGER(KIND=IKIND) iDmn, iOut, iBc, iBf
-
 !     Distribute equation parameters
       CALL cm%bcast(lEq%nOutput)
       CALL cm%bcast(lEq%coupled)
@@ -1214,7 +1253,7 @@
       LOGICAL :: flag, fnFlag
       INTEGER(KIND=MPI_OFFSET_KIND) :: idisp
       INTEGER(KIND=IKIND) :: i, a, Ac, e, Ec, edgecut, nEl, nNo, eNoN,
-     2   eNoNb, ierr, fid, SPLIT, insd, nFn
+     2   eNoNb, ierr, fid, SPLIT, insd, nFn, eRisCt, partRisCt
       CHARACTER(LEN=stdL) fTmp
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), gPart(:),
@@ -1401,7 +1440,24 @@ c            wrn = " ParMETIS failed to partition the mesh"
       DEALLOCATE(part)
       IF (cm%mas()) THEN
          sCount = 0
+         eRisCt = 0
+         partRisCt = 0
          DO e=1, lM%gnEl
+            IF (risFlag) THEN
+                ! If we found that this element needs to be shared
+                ! since elements on the other mesh had been assigned 
+                ! a processor, then we change the gPart id
+                IF (lM%partRIS(e).NE.-1) THEN
+                    gPart(e) = lM%partRIS(e)
+                    partRisCt = partRisCt + 1
+                ELSE IF (lM%eRIS(e)) THEN
+                    eRisCt = eRisCt +1
+                    ! If this element is on a ris projection,
+                    ! we record the processor id so that next mesh
+                    ! will know that this element needs to be shared
+                    lM%partRIS(e) = gPart(e)
+                END IF
+            END IF
             sCount(gPart(e) + 1) = sCount(gPart(e) + 1) + 1
          END DO
          DO i=1, cm%np()
@@ -1456,6 +1512,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
       CALL cm%bcast(flag)
       CALL cm%bcast(fnFlag)
       CALL cm%bcast(lM%eDist)
+      IF (risFlag) CALL cm%bcast(lM%partRIS)
 
       nEl = lM%eDist(cm%id() + 1) - lM%eDist(cm%id())
       lM%nEl = nEl

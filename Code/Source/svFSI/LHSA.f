@@ -43,10 +43,12 @@
 
       LOGICAL flag
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic, mapIdx(2), jM, iProj
+     2   mnnzeic, mapIdx(2), iMRIS, jMRIS, iProj, nRows, nCols, rowNR,
+     3   rowNR2
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
+      flag = .FALSE.
       ALLOCATE(idMap(tnNo))
       DO a=1, tnNo
          idMap(a) = a
@@ -75,20 +77,21 @@
                   ! is associated with the current mesh
                   DO iProj=1, RIS%nbrRIS
                      IF (RIS%lst(1,1,iProj).EQ.iM) THEN
-                        jM = 2
+                        jMRIS = 2
+                        iMRIS = 1
                      ELSE IF (RIS%lst(2,1,iProj).EQ.iM) THEN
-                        jM = 1
+                        jMRIS = 1
+                        iMRIS = 2
                      ELSE
                         CYCLE
                      END IF
                      mapIdx = FINDLOC(grisMapList(iProj)%map, rowN)
                      IF(mapIdx(1).NE.0) THEN 
-                        !print*,rowN, "RIS found ", rowN
-                        rowN = grisMapList(iProj)%map(jM, mapIdx(2))
-                        if (rowN .EQ. 0) CYCLE
+                        rowNR = grisMapList(iProj)%map(jMRIS, mapIdx(2))
+                        if (rowNR .EQ. 0) CYCLE
                         DO b=1, msh(iM)%eNoN
                            colN = msh(iM)%IEN(b,e)
-                           CALL ADDCOL(rowN, colN)
+                           CALL ADDCOL(rowNR, colN)
                         END DO
                      END IF
                   END DO
@@ -96,7 +99,6 @@
             END DO
          END DO
       END DO
-
 !     Treat shells with triangular elements here
       DO iM=1, nMsh
          IF (.NOT.shlEq .OR. .NOT.msh(iM)%lShl) CYCLE
@@ -126,7 +128,6 @@
 !     master node as a column entry in each row for all the slave nodes.
 !     This step is performed even for ghost master nodes where the idMap
 !     points to the ghost master node.
-      flag = .FALSE.
       DO i=1, nEq
          DO j=1, eq(i)%nBc
             iM  = eq(i)%bc(j)%iM
@@ -145,7 +146,6 @@
             END IF
          END DO
       END DO
-
 !     Change uInd if idMap has been changed
       IF (flag) THEN
          DO a=1, tnNo
@@ -188,13 +188,15 @@
 !                 If column is mapped, add the mapped column to assemble
 !                 stiffness matrix
                   colN = idMap(b)
+                  IF (b .NE. colN) THEN
+                  END IF
                   IF (b .NE. colN) CALL ADDCOL(rowN, colN)
                   IF (i .EQ. mnnzeic) EXIT
                END DO
             END IF
          END DO
       END IF
-
+      
 !--------------------------------------------------------------------
 !     Finding number of non-zeros in colPtr vector
       nnz = 0
@@ -224,7 +226,6 @@
          rowPtr(rowN+1) = j
       END DO
       DEALLOCATE (uInd)
-
       RETURN
       CONTAINS
 !--------------------------------------------------------------------
@@ -233,7 +234,7 @@
          INTEGER(KIND=IKIND), INTENT(IN) :: row, col
 
          INTEGER(KIND=IKIND) i, j
-
+         
          i = 0
          DO
             i = i + 1
@@ -250,7 +251,6 @@
 
 !           If column entry already exists, exit
             IF (col .EQ. uInd(i,row)) EXIT
-
 !           If we are this point, then then the current entry is bigger.
 !           Shift all the entries from here to the end of the list. If
 !           list is full, we request a larger list, otherwise we shift
@@ -278,8 +278,7 @@
          DEALLOCATE(uInd)
          ! After resizing it's still not big enough??
          mnnzeic = n + MAX(5,n/5)
-         ! Need to +1 ?? Otherwise it will go out of bound in ADDCOL?
-         ALLOCATE(uInd(mnnzeic+1,tnNo))
+         ALLOCATE(uInd(mnnzeic,tnNo))
          uInd(:,:)   = 0
          uInd(1:n,:) = tmp(:,:)
          DEALLOCATE(tmp)

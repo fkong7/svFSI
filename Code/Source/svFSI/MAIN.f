@@ -42,7 +42,8 @@
       IMPLICIT NONE
 
       LOGICAL l1, l2, l3
-      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, j
+      INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, j, 
+     2      iProj
       REAL(KIND=RKIND) timeP(3)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
@@ -288,10 +289,13 @@
                 cplBC%xo = cplBC%xn
                 GOTO 11
             END IF
-            write(*,*)" Iteration : " , cTS
-            write(*,*)" RIS iteration: ", RIS%nbrIter
-            write(*,*)" Is the valve close? ", RIS%clsFlg
-            write(*,*)" The status is ", RIS%status
+            std = " Iteration: "//cTS
+            DO iProj=1, RIS%nbrRIS
+                std = "Status for RIS projection: "//iProj
+                std = "  RIS iteration: "//RIS%nbrIter(iProj)
+                std = "  Is the valve close? "//RIS%clsFlg(iProj)
+                std = "  The status is "//RIS%status(iProj)
+            END DO
             !IF( ANY(RIS%nbrIter .LE. 3)) GOTO 11
 
          END IF

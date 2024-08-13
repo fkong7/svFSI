@@ -476,7 +476,8 @@ c               END IF
       IMPLICIT NONE
       TYPE(listType), INTENT(INOUT) :: list
 
-      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, nStk, i, j,iProj
+      INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, nStk, i, j,
+     2     iProj,mapIdx(2), a, e, Ac, eRisCt
       REAL(KIND=RKIND) tol
       CHARACTER(LEN=stdL) ctmpi, ctmpj
 C       TYPE(stackType) lPrj
@@ -506,6 +507,12 @@ C       TYPE(stackType) lPrj
          RIS%meanFl = 0._RKIND
          ALLOCATE(RIS%status(nPrj))
          RIS%status = .FALSE.
+         DO iM=1, nMsh
+            ALLOCATE(msh(iM)%eRIS(msh(iM)%gnEl))
+            ALLOCATE(msh(iM)%partRIS(msh(iM)%gnEl))
+            msh(iM)%eRIS = .FALSE.
+            msh(iM)%partRIS = -1
+         END DO
          write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
       END IF
 
@@ -558,6 +565,30 @@ C       TYPE(stackType) lPrj
                END IF
             END DO
          END DO
+      END DO
+      ! mark elements of mesh that are connected to the RIS surface
+      DO iProj=1, RIS%nbrRIS
+         DO j=1, 2
+            iM = RIS%lst(j, 1, iProj)
+            DO e=1, msh(iM)%gnEl
+                DO a=1, msh(iM)%eNoN
+                    Ac = msh(iM)%gIEN(a,e)
+                    Ac = msh(iM)%gN(Ac)
+                    mapIdx = FINDLOC(grisMapList(iProj)%map, Ac)
+                    IF(mapIdx(1).NE.0) THEN
+                        msh(iM)%eRIS(e) = .TRUE.
+                    END IF
+                 END DO
+             END DO
+         END DO 
+      END DO
+
+      DO iM=1, nMsh
+        eRisCt = 0
+        DO e=1, msh(iM)%gnEl
+            IF(msh(iM)%eRIS(e)) eRisCt = eRisCt +1
+        END DO
+        write(*,*) "READMSH eRisCt", iM, eRisCt
       END DO
 
       RETURN

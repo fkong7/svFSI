@@ -609,6 +609,10 @@
          TYPE(faceType), ALLOCATABLE :: fa(:)
 !        IB: tracers
          TYPE(traceType) :: trc
+!        RIS: flags of whether elemets are adjacent to RIS projections
+         LOGICAL, ALLOCATABLE :: eRIS(:)
+!        RIS: processor ids to change element partitions to
+         INTEGER(KIND=IKIND), ALLOCATABLE :: partRIS(:)
       END TYPE mshType
 
 !     Equation type
