@@ -477,7 +477,7 @@ c               END IF
       TYPE(listType), INTENT(INOUT) :: list
 
       INTEGER(KIND=IKIND) iM, jM, iFa, jFa, nPrj, nStk, i, j,
-     2     iProj,mapIdx(2), a, e, Ac, eRisCt
+     2     iProj,mapIdx(2), a, e, Ac 
       REAL(KIND=RKIND) tol
       CHARACTER(LEN=stdL) ctmpi, ctmpj
 C       TYPE(stackType) lPrj
@@ -581,14 +581,6 @@ C       TYPE(stackType) lPrj
                  END DO
              END DO
          END DO 
-      END DO
-
-      DO iM=1, nMsh
-        eRisCt = 0
-        DO e=1, msh(iM)%gnEl
-            IF(msh(iM)%eRIS(e)) eRisCt = eRisCt +1
-        END DO
-        write(*,*) "READMSH eRisCt", iM, eRisCt
       END DO
 
       RETURN

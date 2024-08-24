@@ -43,8 +43,7 @@
 
       LOGICAL flag
       INTEGER(KIND=IKIND) a, b, e, i, j, rowN, colN, iM, iFa, masN,
-     2   mnnzeic, mapIdx(2), iMRIS, jMRIS, iProj, nRows, nCols, rowNR,
-     3   rowNR2
+     2   mnnzeic, mapIdx(2), jMRIS, iProj, rowNR
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: uInd(:,:)
 
@@ -78,10 +77,8 @@
                   DO iProj=1, RIS%nbrRIS
                      IF (RIS%lst(1,1,iProj).EQ.iM) THEN
                         jMRIS = 2
-                        iMRIS = 1
                      ELSE IF (RIS%lst(2,1,iProj).EQ.iM) THEN
                         jMRIS = 1
-                        iMRIS = 2
                      ELSE
                         CYCLE
                      END IF
@@ -188,8 +185,6 @@
 !                 If column is mapped, add the mapped column to assemble
 !                 stiffness matrix
                   colN = idMap(b)
-                  IF (b .NE. colN) THEN
-                  END IF
                   IF (b .NE. colN) CALL ADDCOL(rowN, colN)
                   IF (i .EQ. mnnzeic) EXIT
                END DO
