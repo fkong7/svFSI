@@ -281,14 +281,6 @@
          IF ( risFlag ) THEN 
             CALL RIS_MEANQ
             CALL RIS_STATUS
-            IF (.NOT. ALL(RIS%status)) THEN 
-                CALL RIS_UPDATER
-                Ao = An
-                Yo = Yn
-                IF (dFlag) Do = Dn
-                cplBC%xo = cplBC%xn
-                GOTO 11
-            END IF
             std = " Iteration: "//cTS
             DO iProj=1, RIS%nbrRIS
                 std = "Status for RIS projection: "//iProj
@@ -296,8 +288,14 @@
                 std = "  Is the valve close? "//RIS%clsFlg(iProj)
                 std = "  The status is "//RIS%status(iProj)
             END DO
-            !IF( ANY(RIS%nbrIter .LE. 3)) GOTO 11
-
+            IF((.NOT.ALL(RIS%status)))THEN 
+                IF (ANY(RIS%nbrIter.LE.1)) THEN
+                    std = "Valve status just changed. Do not update"
+                ELSE
+                    CALL RIS_UPDATER
+                END IF
+                GOTO 11
+            END IF
          END IF
 
          IF ((cEq.EQ.1) .AND. ris0DFlag ) THEN 

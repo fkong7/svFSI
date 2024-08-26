@@ -1253,7 +1253,7 @@
       LOGICAL :: flag, fnFlag
       INTEGER(KIND=MPI_OFFSET_KIND) :: idisp
       INTEGER(KIND=IKIND) :: i, a, Ac, e, Ec, edgecut, nEl, nNo, eNoN,
-     2   eNoNb, ierr, fid, SPLIT, insd, nFn, eRisCt, partRisCt
+     2   eNoNb, ierr, fid, SPLIT, insd, nFn, eRisProc
       CHARACTER(LEN=stdL) fTmp
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), gPart(:),
@@ -1440,8 +1440,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
       DEALLOCATE(part)
       IF (cm%mas()) THEN
          sCount = 0
-         eRisCt = 0
-         partRisCt = 0
+         eRisProc = -1
          DO e=1, lM%gnEl
             IF (risFlag) THEN
                 ! If we found that this element needs to be shared
@@ -1449,13 +1448,18 @@ c            wrn = " ParMETIS failed to partition the mesh"
                 ! a processor, then we change the gPart id
                 IF (lM%partRIS(e).NE.-1) THEN
                     gPart(e) = lM%partRIS(e)
-                    partRisCt = partRisCt + 1
                 ELSE IF (lM%eRIS(e)) THEN
-                    eRisCt = eRisCt +1
                     ! If this element is on a ris projection,
                     ! we record the processor id so that next mesh
-                    ! will know that this element needs to be shared
-                    lM%partRIS(e) = gPart(e)
+                    ! will know that this element needs to be shared.
+                    ! Ideally, we might want to handle the case where
+                    ! elements next to the same projection are sent
+                    ! to different processors. Yet, this doesn't often
+                    ! happen and for simplicity, we
+                    ! force the processor id to be the same for all 
+                    ! elements next to the same projection.
+                    IF (eRisProc.EQ.-1) eRisProc = gPart(e)
+                    lM%partRIS(e) = eRisProc
                 END IF
             END IF
             sCount(gPart(e) + 1) = sCount(gPart(e) + 1) + 1

@@ -351,7 +351,6 @@
       INTEGER(KIND=IKIND) :: iProj
 
       DO iProj = 1, RIS%nbrRIS
-         RIS%nbrIter(iProj) = RIS%nbrIter(iProj) + 1
          !IF((RIS%nbrIter(iProj).LE.1) .AND. (RIS%status(iProj))) CYCLE
 
 !        The valve is closed check if it should open
@@ -361,8 +360,14 @@
                RIS%clsFlg(iProj) = .FALSE.
                std="RIS Proj "//iProj//": Going from close to open."
                RIS%nbrIter(iProj) = 0 
-
-!               CALL restore equal velocity at the interface - mean vel at the node 
+               ! I needed to update the state variables when the valve 
+               ! goes from close to open to prevent the valve goes back
+               ! to close at the next iteration. This is needed only for
+               ! close to open and cannot be used for open to close.
+               Ao = An
+               Yo = Yn
+               IF (dFlag) Do = Dn
+               cplBC%xo = cplBC%xn
             END iF
          ELSE 
 !        The valve is open, check if it should close. 
@@ -388,6 +393,7 @@
       INTEGER(KIND=IKIND) :: iProj
 
       DO iProj = 1, RIS%nbrRIS
+         RIS%nbrIter(iProj) = RIS%nbrIter(iProj) + 1
          RIS%status(iProj) = .TRUE.
 !        If the valve is closed, chech the pressure difference, 
 !        if the pressure difference is negative the valve should be open
