@@ -76,6 +76,7 @@
 #ifdef WITH_TRILINOS
       INTEGER(KIND=IKIND) a
 
+!     Set up resistance/coupled-Neumann BC for Trilinos linear solver
       IF (lEq%useTLS) CALL INIT_DIR_AND_COUPNEU_BC(incL, res)
 
       IF (lEq%assmTLS) THEN

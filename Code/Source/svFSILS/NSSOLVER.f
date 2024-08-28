@@ -125,6 +125,8 @@
 !        MU2 = K*U
          CALL FSILS_SPARMULVV(lhs, lhs%rowPtr, lhs%colPtr, nsd, mK,     &
      &      U(:,:,i), MU(:,:,iBB))
+!        Contribution of coupled BCs is added to the matrix-vector
+!        product operation.
          CALL ADDBCMUL(lhs, BCOP_TYPE_ADD, nsd, U(:,:,i), MU(:,:,iBB))
 !        MP1 = L*P
          CALL FSILS_SPARMULSS(lhs, lhs%rowPtr, lhs%colPtr, mL, P(:,i),  &

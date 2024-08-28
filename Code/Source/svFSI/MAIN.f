@@ -119,7 +119,6 @@
 !     Inner loop for iteration
          DO
             iEqOld = cEq
-
             IF (cplBC%coupled .AND. cEq.EQ.1) THEN
                CALL SETBCCPL
                CALL SETBCDIR(An, Yn, Dn)
@@ -158,7 +157,7 @@
             IF (ris0DFlag)  CALL RIS0D_BC(Yg, Dg)
 
 !        Apply contact model and add its contribution to residue
-            IF (iCntct) CALL CONTACTFORCES(Dg)
+            IF (iCntct) CALL CONSTRUCT_CONTACTPNLTY(Dg)
 
 !        Synchronize R across processes. Note: that it is important
 !        to synchronize residue, R before treating immersed bodies as
@@ -177,7 +176,8 @@
                CALL THOOD_ValRC()
             END IF
 
-            CALL SETBCUNDEFNEU()
+!        Update LHS for clamped BC
+            CALL SETBC_CLMPD()
 
 !        IB treatment: for explicit coupling, simply construct residue.
             IF (ibFlag) THEN
@@ -193,7 +193,8 @@
             DO iBc=1, eq(cEq)%nBc
                i = eq(cEq)%bc(iBc)%lsPtr
                IF (i .NE. 0) THEN
-                  res(i) = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
+!              Resistance term for coupled Neu face tangent contribution
+                  res(i)  = eq(cEq)%gam*dt*eq(cEq)%bc(iBc)%r
                   incL(i) = 1
                END IF
             END DO
@@ -201,7 +202,8 @@
             dbg = "Solving equation <"//eq(cEq)%sym//">"
             !2, incL, res
             CALL LSSOLVE(eq(cEq), incL, res)
-!        Solution is obtained, now updating (Corrector)
+
+!        Solution is obtained. Corrector and check for convergence
             CALL PICC
 
 !        Checking for exceptions

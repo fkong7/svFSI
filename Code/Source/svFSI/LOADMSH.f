@@ -78,6 +78,24 @@
                   END DO
                END DO
             END IF
+
+!           Read virtual face flag. A face is virtual if it does not lie
+!           on the computational mesh (default value: false)
+            lPtr => lPBC%get(lM%fa(iFa)%vrtual, "Virtual")
+
+!           GlobalElementID is not defined for a virtual face. Allocate
+!           lFa%gE and set the values to 0
+            IF (lM%fa(iFa)%vrtual) THEN
+               e = lM%fa(iFa)%nEl
+               a = lM%fa(iFa)%eNoN
+               lM%fa(iFa)%gnEl = e
+               ALLOCATE(lM%fa(iFa)%gE(e))
+               lM%fa(iFa)%gE = 0
+               ALLOCATE(lM%fa(iFa)%gebc(a+1,e))
+               lM%fa(iFa)%gebc(1,:) = 0
+               lM%fa(iFa)%gebc(2:a+1,:) = lM%fa(iFa)%IEN(:,:)
+            END IF
+
          ELSE
             lPtr => lPBC%get(ftmp,"End nodes face file path")
             IF (.NOT.ASSOCIATED(lPtr)) err =

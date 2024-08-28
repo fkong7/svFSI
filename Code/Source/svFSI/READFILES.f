@@ -43,7 +43,7 @@
       IMPLICIT NONE
 
       LOGICAL :: flag
-      INTEGER(KIND=IKIND) :: i, iEq
+      INTEGER(KIND=IKIND) :: i, e, iEq, iM
       INTEGER(KIND=IKIND) :: tArray(8)
       REAL(KIND=RKIND) :: roInf
       CHARACTER(LEN=8) :: date
@@ -84,6 +84,7 @@
          saveIncr     = 10
          nITs         = 0
          startTS      = 0
+         start_time   = 0._RKIND
          roInf        = 0.2_RKIND
          stFileName   = "stFile"
          iniFilePath  = ""
@@ -98,6 +99,8 @@
          urisActFlag  = .FALSE.
          pstEq        = .FALSE.
          sstEq        = .FALSE.
+         cepEq        = .FALSE.
+         ecCpld       = .FALSE.
          ibFlag       = .FALSE.
 
          i = IARGC()
@@ -124,7 +127,7 @@
             saveName = ""
             appPath = STR(cm%np())//"-procs"//delimiter
          END IF
-
+         IF (appPath .NE. "") CALL SYSTEM("mkdir -p "//TRIM(appPath))
          lPtr => list%get(std%oTS,"Verbose")
          lPtr => list%get(wrn%oTS,"Warning")
          lPtr => list%get(dbg%oTS,"Debug")
@@ -163,13 +166,14 @@
 
          lPtr => list%get(fTmp,"Simulation initialization file path")
          IF (ASSOCIATED(lPtr)) iniFilePath = fTmp%fname
+         lPtr => list%get(startTS,"Starting time step",ll=0)
+         lPtr => list%get(start_time,"Simulation start time")
 
          lPtr => list%get(nsd,"Number of spatial dimensions",
      2      1,ll=2,ul=3)
          nsymd = 3*(nsd-1)
 
          lPtr => list%get(nTs,"Number of time steps",1,ll=1)
-         lPtr => list%get(startTS,"Starting time step",ll=0)
          lPtr => list%get(dt,"Time step size",1,lb=0._RKIND)
          lPtr => list%get(nITs,"Number of initialization time steps",
      2      ll=0)
@@ -290,35 +294,68 @@
          END IF
       END DO
 
-      IF (cem%cpld) THEN
-         IF (nEq .EQ. 1) err = "Min equations (2) not solved for"//
-     2      " electro-mechanics coupling"
-         i = 0
+!     Check for inconsistencies in excitation-contraction model inputs
+!     for electromechanics simulations
+      IF (ecCpld) THEN
+         IF (nEq .EQ. 1) THEN
+!           Only struct/ustruct is allowed when nEq = 1
+            IF (eq(1)%phys.NE.phys_struct .AND.
+     2          eq(1)%phys.NE.phys_ustruct) THEN
+               err = " Min equations not solved for excitation-"//
+     2            "contraction coupling"
+            END IF
+         ELSE
+!           One of the equations solved must be `cep' unless FSI
+            IF (.NOT.cepEq .AND. eq(1)%phys.NE.phys_FSI) THEN
+               err = " Electrophysiology equations should be solved"//
+     2            " for excitation-contraction coupling"
+            END IF
+         END IF
 
+!        Check for inconsistencies in domain inputs with EC coupling
          DO iEq=1, nEq
-            IF (eq(iEq)%phys .EQ. phys_CEP .OR.
-     2          eq(iEq)%phys .EQ. phys_struct .OR.
-     3          eq(iEq)%phys .EQ. phys_ustruct) i = i + 1
-         END DO
-         IF (i .NE. 2) err = "Both electrophysiology and struct have"//
-     2      " to be solved for electro-mechanics"
+            DO i=1, eq(iEq)%nDmn
+               flag = (eq(iEq)%dmn(i)%ec%astrain .OR.
+     2                 eq(iEq)%dmn(i)%ec%astress) .AND.
+     3                eq(iEq)%dmn(i)%cep%cepType .EQ. cepModel_FN
+               IF (flag) THEN
+                  err = " Excitation-contraction coupling is not"//
+     2               " allowed for Fitzhugh-Nagumo model"
+               END IF
 
-         IF (cem%aStress .AND. cem%aStrain) err = "Cannot set "//
-     2      "both active strain and active stress coupling"
+!        Note: Active strain should be used with TTP activation model
+!              or in a decoupled way
+               flag = eq(iEq)%dmn(i)%ec%astrain .AND.
+     2               (eq(iEq)%dmn(i)%cep%cepType.EQ.cepModel_AP)
+               IF (flag) THEN
+                  err = " Active-strain coupling is allowed for TTP"//
+     2               " and BO activation models only"
+               END IF
+               flag = eq(iEq)%dmn(i)%ec%astrain .AND.
+     2               (eq(iEq)%dmn(i)%cep%cepType.EQ.cepModel_BO)
+               IF (flag) THEN
+                  wrn = " Active-strain coupling with Bueno-Orovio"//
+     2               " model can lead to unexpected results"
+               END IF
 
-         IF (cem%aStrain) THEN
-            IF (nsd .NE. 3) err = "Active strain coupling is allowed"//
-     2         " only for 3D bodies"
-            DO iEq=1, nEq
-               DO i=1, eq(iEq)%nDmn
-                  IF (eq(iEq)%dmn(i)%phys .NE. phys_ustruct .AND.
-     2                eq(iEq)%dmn(i)%phys .NE. phys_struct) CYCLE
-                  IF (eq(iEq)%dmn(i)%stM%isoType .NE. stIso_HO_d) err =
-     2               "Active strain is allowed with Holzapfel-Ogden "//
-     3               "passive constitutive model only"
+               IF (eq(iEq)%dmn(i)%ec%astrain .AND. nsd.NE.3) THEN
+                  err = " Active strain coupling is allowed only for"//
+     2               " 3D bodies"
+               END IF
+            END DO
+
+            DO iM=1, nMsh
+               DO e=1, msh(iM)%gnEl
+                  i = DOMAIN(msh(iM), iEq, e)
+                  IF (eq(iEq)%dmn(i)%ec%asnType .EQ. asnType_hetortho
+     2                .AND. .NOT.ALLOCATED(msh(iM)%tmX)) THEN
+                     err = " Transmural coordinate not provided for"//
+     2                   " transmurally heterogenous orthotropic"//
+     3                   " excitation-contraction coupling"
+                  END IF
                END DO
             END DO
-         END IF
+         END DO
       END IF
 
       IF (.NOT.ALLOCATED(cplBC%xo)) THEN
@@ -349,7 +386,7 @@
       TYPE(listType), INTENT(INOUT) :: list
       CHARACTER(LEN=stdL), INTENT(IN) :: eqName
 
-      INTEGER(KIND=IKIND), PARAMETER :: maxOutput = 22
+      INTEGER(KIND=IKIND), PARAMETER :: maxOutput = 26
 
       LOGICAL THflag
       INTEGER(KIND=IKIND) fid, iBc, iBf, iM, iFa, phys(4),
@@ -421,6 +458,7 @@
      2            "File name for saving unknowns")
                cplBC%saveName = TRIM(appPath)//cplBC%saveName
 
+               cplBC%nXp = cplBC%nX
                lPtr => lPBC%get(cplBC%nXp,
      2            "Number of user-defined outputs")
                ALLOCATE(cplBC%xp(cplBC%nXp))
@@ -529,10 +567,9 @@
          propL(2,1) = damping
          propL(3,1) = elasticity_modulus
          propL(4,1) = poisson_ratio
-         propL(5,1) = solid_viscosity
-         propL(6,1) = f_x
-         propL(7,1) = f_y
-         IF (nsd .EQ. 3) propL(8,1) = f_z
+         propL(5,1) = f_x
+         propL(6,1) = f_y
+         IF (nsd .EQ. 3) propL(7,1) = f_z
          CALL READDOMAIN(lEq, propL, list)
 
          lPtr => list%get(pstEq, "Prestress")
@@ -544,7 +581,7 @@
             outPuts(3)  = out_cauchy
             outPuts(4)  = out_strain
          ELSE
-            nDOP = (/12,2,0,0/)
+            nDOP = (/16,2,0,0/)
             outPuts(1)  = out_displacement
             outPuts(2)  = out_mises
             outPuts(3)  = out_stress
@@ -557,6 +594,10 @@
             outPuts(10) = out_fibAlign
             outPuts(11) = out_velocity
             outPuts(12) = out_acceleration
+            outPuts(13) = out_fibStrtch
+            outPuts(14) = out_CGstrain
+            outPuts(15) = out_CGInv1
+            outPuts(16) = out_active
          END IF
 
          CALL READLS(lSolver_CG, lEq, list)
@@ -570,18 +611,17 @@
          propL(1,1) = solid_density
          propL(2,1) = elasticity_modulus
          propL(3,1) = poisson_ratio
-         propL(4,1) = solid_viscosity
-         propL(5,1) = ctau_M
-         propL(6,1) = ctau_C
-         propL(7,1) = f_x
-         propL(8,1) = f_y
-         IF (nsd .EQ. 3) propL(9,1) = f_z
+         propL(4,1) = ctau_M
+         propL(5,1) = ctau_C
+         propL(6,1) = f_x
+         propL(7,1) = f_y
+         IF (nsd .EQ. 3) propL(8,1) = f_z
          CALL READDOMAIN(lEq, propL, list)
 
          lPtr => list%get(pstEq, "Prestress")
          IF (pstEq) err = "Prestress for USTRUCT is not implemented yet"
 
-         nDOP = (/14,2,0,0/)
+         nDOP = (/18,2,0,0/)
          outPuts(1)  = out_displacement
          outPuts(2)  = out_mises
          outPuts(3)  = out_stress
@@ -596,6 +636,10 @@
          outPuts(12) = out_pressure
          outPuts(13) = out_acceleration
          outPuts(14) = out_divergence
+         outPuts(15) = out_fibStrtch
+         outPuts(16) = out_CGstrain
+         outPuts(17) = out_CGInv1
+         outPuts(18) = out_active
 
          CALL READLS(lSolver_GMRES, lEq, list)
 
@@ -619,10 +663,16 @@
          lPtr => list%get(pstEq, "Prestress")
          IF (pstEq) err = "Prestress for SHELLS is not implemented yet"
 
-         nDOP = (/3,1,0,0/)
+         nDOP = (/9,1,0,0/)
          outPuts(1) = out_displacement
-         outPuts(2) = out_velocity
-         outPuts(3) = out_integ
+         outPuts(2) = out_stress
+         outPuts(3) = out_strain
+         outPuts(4) = out_jacobian
+         outPuts(5) = out_defGrad
+         outPuts(6) = out_velocity
+         outPuts(7) = out_integ
+         outPuts(8) = out_CGstrain
+         outPuts(9) = out_CGInv1
 
          CALL READLS(lSolver_CG, lEq, list)
 
@@ -745,21 +795,19 @@
          propL(2,2) = elasticity_modulus
          propL(3,2) = poisson_ratio
          propL(4,2) = damping
-         propL(5,2) = solid_viscosity
-         propL(6,2) = f_x
-         propL(7,2) = f_y
-         IF (nsd .EQ. 3) propL(8,2) = f_z
+         propL(5,2) = f_x
+         propL(6,2) = f_y
+         IF (nsd .EQ. 3) propL(7,2) = f_z
 
 !        ustruct properties
          propL(1,3) = solid_density
          propL(2,3) = elasticity_modulus
          propL(3,3) = poisson_ratio
-         propL(4,3) = solid_viscosity
-         propL(5,3) = ctau_M
-         propL(6,3) = ctau_C
-         propL(7,3) = f_x
-         propL(8,3) = f_y
-         IF (nsd .EQ. 3) propL(9,3) = f_z
+         propL(4,3) = ctau_M
+         propL(5,3) = ctau_C
+         propL(6,3) = f_x
+         propL(7,3) = f_y
+         IF (nsd .EQ. 3) propL(8,3) = f_z
 
 !        lElas properties
          propL(1,4) = solid_density
@@ -771,7 +819,7 @@
 
          CALL READDOMAIN(lEq, propL, list, phys)
 
-         nDOP = (/22,4,2,0/)
+         nDOP = (/26,4,2,0/)
          outPuts(1)  = out_velocity
          outPuts(2)  = out_pressure
          outPuts(3)  = out_displacement
@@ -794,9 +842,13 @@
          outPuts(18) = out_integ
          outPuts(19) = out_fibDir
          outPuts(20) = out_fibAlign
+         outPuts(21) = out_CGstrain
+         outPuts(22) = out_CGInv1
+         outPuts(23) = out_fibStrtch
+         outPuts(24) = out_active
 
-         outPuts(21) = out_divergence
-         outPuts(22) = out_acceleration
+         outPuts(25) = out_divergence
+         outPuts(26) = out_acceleration
 
          CALL READLS(lSolver_GMRES, lEq, list)
 
@@ -825,20 +877,6 @@
       CASE ('CEP')
          lEq%phys = phys_CEP
          cepEq    = .TRUE.
-
-         lPtr => list%get(ctmp, "Coupling with mechanics")
-         IF (ASSOCIATED(lPtr)) THEN
-            cem%cpld = .TRUE.
-            CALL TO_LOWER(ctmp)
-            SELECT CASE (TRIM(ctmp))
-            CASE ("active stress", "active_stress")
-               cem%aStress = .TRUE.
-            CASE ("active strain", "active_strain")
-               cem%aStrain = .TRUE.
-            CASE DEFAULT
-               err = "Undefined coupling for cardiac electromechanics"
-            END SELECT
-         END IF
 
          CALL READDOMAIN(lEq, propL, list)
 
@@ -904,6 +942,21 @@
          CALL READBC(lEq%bc(iBc), lPBC, lEq%phys)
       END DO
 
+!     If an LPN-coupled face has a cap, automatically create a coupled
+!     BC for the cap face. This is necessary because we need svFSI to
+!     process the cap face as a coupled BC to add its contribution to
+!     the tangent
+      DO iBc=1, lEq%nBc
+         IF (BTEST(lEq%bc(iBc)%bType, bType_cpl)) THEN
+            IF (lEq%bc(iBc)%capName .NE. "") THEN
+               ! Add a bc for the cap to the end of lEq%bc(:), and add
+               ! cap face info to the face being capped (capName and
+               ! capID fields)
+               CALL ADDCAPBC(lEq, iBc)
+            END IF
+         END IF
+      END DO
+
 !     Initialize cplBC for RCR-type BC
       IF (ANY(BTEST(lEq%bc(:)%bType,bType_RCR))) THEN
          IF ((lEq%phys .NE. phys_fluid) .AND.
@@ -917,7 +970,7 @@
             cplBC%schm = cplBC_E
          END IF
          cplBC%nX   = cplBC%nFa
-         cplBC%nXp  = cplBC%nFa + 1
+         cplBC%nXp  = cplBC%nX + 1
          IF (ALLOCATED(cplBC%xo)) err = "ERROR: cplBC structure is "//
      2      "already initialized. Unexpected behavior."
          ALLOCATE(cplBc%xo(cplBc%nX), cplBC%xp(cplBC%nXp))
@@ -1053,8 +1106,6 @@
             CASE (poisson_ratio)
                lPtr => lPD%get(rtmp,"Poisson ratio",1,ll=0._RKIND,
      2            ul=0.5_RKIND)
-            CASE (solid_viscosity)
-               lPtr => lPD%get(rtmp,"Viscosity",ll=0._RKIND)
             CASE (conductivity)
                lPtr => lPD%get(rtmp,"Conductivity",1,ll=0._RKIND)
             CASE (f_x)
@@ -1087,25 +1138,45 @@
             lEq%dmn(iDmn)%prop(prop) = rtmp
          END DO
 
+!        Read cellular activation model inputs for cardiac electro-
+!        physiology simulations
          IF (lEq%dmn(iDmn)%phys .EQ. phys_CEP) THEN
             CALL READCEP(lEq%dmn(iDmn), lPD)
          END IF
 
-         IF (lEq%dmn(iDmn)%phys.EQ.phys_struct  .OR.
-     2       lEq%dmn(iDmn)%phys.EQ.phys_ustruct) THEN
+!        Read material/constitutive model parameters for nonlinear
+!        elastodynamics simulations (both solids and shells)
+         IF ((lEq%dmn(iDmn)%phys.EQ.phys_shell)  .OR.
+     2       (lEq%dmn(iDmn)%phys.EQ.phys_struct) .OR.
+     3       (lEq%dmn(iDmn)%phys.EQ.phys_ustruct)) THEN
             CALL READMATMODEL(lEq%dmn(iDmn), lPD)
+
+!           Check for incompressibility
             IF (ISZERO(lEq%dmn(iDmn)%stM%Kpen) .AND.
      2          lEq%dmn(iDmn)%phys .EQ. phys_struct) THEN
-
                err = "Incompressible struct is not allowed. Use "//
      2            "penalty method or ustruct"
             END IF
          END IF
 
+!        Read excitation-contraction coupling parameters for electro-
+!        mechanics modeling
+         IF ((lEq%dmn(iDmn)%phys.EQ.phys_struct)  .OR.
+     2       (lEq%dmn(iDmn)%phys.EQ.phys_ustruct)) THEN
+            CALL READECCPL(lEq%dmn(iDmn), lPD)
+         END IF
+
+!        Read fluid viscosity model parameters
          IF ((lEq%dmn(iDmn)%phys .EQ. phys_fluid)  .OR.
      2       (lEq%dmn(iDmn)%phys .EQ. phys_stokes) .OR.
      3       (lEq%dmn(iDmn)%phys.EQ.phys_CMM .AND. .NOT.cmmInit)) THEN
-            CALL READVISCMODEL(lEq%dmn(iDmn), lPD)
+            CALL READ_VISC_FLUID(lEq%dmn(iDmn), lPD)
+         END IF
+
+!        Read solid viscosity model parameters
+         IF ((lEq%dmn(iDmn)%phys .EQ. phys_struct)  .OR.
+     2       (lEq%dmn(iDmn)%phys .EQ. phys_ustruct)) THEN
+            CALL READ_VISC_SOLID(lEq%dmn(iDmn), lPD)
          END IF
       END DO
 
@@ -1428,6 +1499,16 @@
             lEq%output(iOut)%o    = 0
             lEq%output(iOut)%l    = nsymd
             lEq%output(iOut)%name = "Strain"
+         CASE (out_CGstrain)
+            lEq%output(iOut)%grp  = outGrp_C
+            lEq%output(iOut)%o    = 0
+            lEq%output(iOut)%l    = nsymd
+            lEq%output(iOut)%name = "Cauchy_strain"
+         CASE (out_CGInv1)
+            lEq%output(iOut)%grp  = outGrp_I1
+            lEq%output(iOut)%o    = 0
+            lEq%output(iOut)%l    = 1
+            lEq%output(iOut)%name = "Cauchy_strain_trace"
          CASE (out_divergence)
             lEq%output(iOut)%grp  = outGrp_divV
             lEq%output(iOut)%o    = 0
@@ -1438,6 +1519,16 @@
             lEq%output(iOut)%o    = 0
             lEq%output(iOut)%l    = 1
             lEq%output(iOut)%name = "Viscosity"
+         CASE (out_fibStrtch)
+            lEq%output(iOut)%grp  = outGrp_I4f
+            lEq%output(iOut)%o    = 0
+            lEq%output(iOut)%l    = 1
+            lEq%output(iOut)%name = "Fiber_stretch"
+         CASE (out_active)
+            lEq%output(iOut)%grp  = outGrp_Ya
+            lEq%output(iOut)%o    = 0
+            lEq%output(iOut)%l    = 1
+            lEq%output(iOut)%name = "Active"
          CASE DEFAULT
             err = "Internal output undefined"
          END SELECT
@@ -1519,8 +1610,6 @@
          lBc%bType = IBSET(lBc%bType,bType_Dir)
       CASE ("Neumann","Neu")
          lBc%bType = IBSET(lBc%bType,bType_Neu)
-         IF (phys.EQ.phys_fluid .OR. phys.EQ.phys_FSI)
-     2      lBc%bType = IBSET(lBc%bType,bType_bfs)
       CASE ("Traction","Trac")
          lBc%bType = IBSET(lBc%bType,bType_trac)
 
@@ -1647,6 +1736,10 @@
             err = "'Couple to cplBC' must be specified before"//
      2         " using Coupled BC"
          END IF
+
+!        Read cap face name for this coupled BC
+         lPtr => list%get(lBc%capName, "Capping face")
+
       CASE ('Resistance')
          lBc%bType = IBSET(lBc%bType,bType_res)
          IF (.NOT.BTEST(lBc%bType,bType_Neu)) err = "Resistance"//
@@ -1863,7 +1956,7 @@
 
 !     Read BCs for shells with triangular elements. Not necessary for
 !     NURBS elements
-      lPtr => list%get(ctmp,"Shell BC type")
+      lPtr => list%get(ctmp,"CST shell BC type")
       IF (ASSOCIATED(lPtr)) THEN
          SELECT CASE (ctmp)
          CASE ("Fixed", "fixed", "Clamped", "clamped")
@@ -1889,7 +1982,7 @@ c     2         "can be applied for Neumann boundaries only"
          END SELECT
       END IF
 
-!     For Neumann BC, is load vector changing with deformation
+!     For Neumann BC, if the load vector changes with deformation
 !     (follower pressure)
       lBc%flwP = .FALSE.
       IF (BTEST(lBc%bType,bType_Neu)) THEN
@@ -1898,19 +1991,26 @@ c     2         "can be applied for Neumann boundaries only"
          END IF
       END  IF
 
-!     If a Neumann BC face is undeforming
+!     If a clamped BC is applied
       lBc%masN = 0
       IF (BTEST(lBc%bType,bType_Neu)) THEN
          ltmp = .FALSE.
-         lBc%bType = IBCLR(lBc%bType,bType_undefNeu)
-         lPtr => list%get(ltmp, "Undeforming Neu face")
+         lBc%bType = IBCLR(lBc%bType,bType_clmpd)
+         lPtr => list%get(ltmp, "Clamped Neu face")
          IF (ltmp) THEN
-            IF (phys .NE. phys_ustruct) err = "Undeforming Neu "//
-     2         "face is currently formulated for USTRUCT only"
+            IF ((phys .NE. phys_lElas)   .AND.
+     2          (phys .NE. phys_shell)   .AND.
+     3          (phys .NE. phys_struct)  .AND.
+     4          (phys .NE. phys_ustruct)) THEN
+               err = "Clamped Neu BC is currently formulated"//
+     2            "for LELAS, SHELL, STRUCT, and USTRUCT only"
+            END IF
 
             IF (BTEST(lBc%bType,bType_cpl) .OR.
-     2          BTEST(lBc%bType,bType_res)) err = "Undeforming Neu "//
-     2         "BC cannot be used with resistance or couple BC yet"
+     2          BTEST(lBc%bType,bType_res)) THEN
+                err = "Clamped Neu BC cannot be used with"//
+     2             "resistance or couple BC yet"
+            END IF
 
 !           Clear any BC profile
             lBc%bType = IBCLR(lBc%bType,bType_flat)
@@ -1918,15 +2018,15 @@ c     2         "can be applied for Neumann boundaries only"
             IF (BTEST(lBc%bType,bType_ud) .OR.
      2          BTEST(lBc%bType,bType_gen)) THEN
                err = "General BC or user defined spatial profile "//
-     2            "cannot be imposed on an undeforming Neu face"
+     2            "cannot be imposed on a clamped Neu face"
             END IF
 
 !           Clear zero perimeter flag
             lBc%bType = IBCLR(lBc%bType,bType_zp)
 
-!           Reset profile to flat and set undeforming Neumann BC flag
+!           Reset profile to flat and set clamped Neumann BC flag
             lBc%bType = IBSET(lBc%bType,bType_flat)
-            lBc%bType = IBSET(lBc%bType,bType_undefNeu)
+            lBc%bType = IBSET(lBc%bType,bType_clmpd)
 
 !           Set master-slave node parameters. Set a master node that
 !           is not part of any other face (not on perimeter)
@@ -2263,31 +2363,28 @@ c     2         "can be applied for Neumann boundaries only"
 
       TYPE(listType), POINTER :: lPtr, list
 
+      LOGICAL flag
       INTEGER(KIND=IKIND) i
       REAL(KIND=RKIND) rtmp
       CHARACTER(LEN=stdL) ctmp
 
-      lPtr => lPD%get(ctmp, "Electrophysiology model")
+      list => lPD%get(ctmp, "Electrophysiology model")
       lDmn%cep%nG = 0
       CALL TO_LOWER(ctmp)
       SELECT CASE(TRIM(ctmp))
-      CASE ("ap", "aliev-panfilov")
+      CASE ("ap", "aliev_panfilov")
          lDmn%cep%cepType = cepModel_AP
          lDmn%cep%nX = 2
-         IF (cem%aStrain) err = " Active strain is not formulated "//
-     2      "Aliev-Panfilov model"
 
-      CASE ("bo", "bueno-orovio")
+      CASE ("bo", "bueno_orovio")
          lDmn%cep%cepType = cepModel_BO
          lDmn%cep%nX = 4
 
-      CASE ("fn", "fitzhugh-nagumo")
+      CASE ("fn", "fitzhugh_nagumo")
          lDmn%cep%cepType = cepModel_FN
          lDmn%cep%nX = 2
-         IF (cem%cpld) err = " Electromechanics is not formulated "//
-     2      "Fitzhugh-Nagumo model"
 
-      CASE ("ttp", "tentusscher-panfilov")
+      CASE ("ttp", "tentusscher_panfilov")
          lDmn%cep%cepType = cepModel_TTP
          lDmn%cep%nX = 7
          lDmn%cep%nG = 12
@@ -2300,6 +2397,20 @@ c     2         "can be applied for Neumann boundaries only"
          nXion = lDmn%cep%nX + lDmn%cep%nG
       END IF
 
+!     Parameters file path to overwrite default parameters
+      lDmn%cep%fpar_in = ""
+      lPtr => list%get(ctmp, "CEP model parameters file path")
+      IF (ASSOCIATED(lPtr)) THEN
+         flag = .FALSE.
+         INQUIRE(FILE=TRIM(ctmp), EXIST=flag)
+         IF (flag) THEN
+            lDmn%cep%fpar_in = TRIM(ctmp)
+         ELSE
+            err = " CEP model parameters file doesn't exist"
+         END IF
+      END IF
+
+!     Conductivity (isotropic, anisotropic)
       lPtr => lPD%get(lDmn%cep%Diso,"Conductivity (iso)",ll=0._RKIND)
       i = lPD%srch("Conductivity (ani)")
       lDmn%cep%nFn = i
@@ -2313,6 +2424,7 @@ c     2         "can be applied for Neumann boundaries only"
          END DO
       END IF
 
+!     Myocardial zone
       lDmn%cep%imyo = 1
       lPtr => lPD%get(ctmp, "Myocardial zone")
       IF (ASSOCIATED(lPtr)) THEN
@@ -2328,10 +2440,19 @@ c     2         "can be applied for Neumann boundaries only"
             lDmn%cep%imyo = 3
 
          CASE DEFAULT
-            err = "Undefined myocardium zone"
+            err = " Undefined myocardium zone"
          END SELECT
+
+         flag = (lDmn%cep%imyo .GT. 1) .AND.
+     2          (lDmn%cep%cepType .NE. cepModel_TTP) .AND.
+     3          (lDmn%cep%cepType .NE. cepModel_BO)
+         IF (flag) THEN
+            err = " Mid-myocardium and endocardium zones are"//
+     2         " allowed only for TTP and BO activation models"
+         END IF
       END IF
 
+!     Stimulus parameters
       lDmn%cep%Istim%A  = 0._RKIND
       lDmn%cep%Istim%Ts = 99999._RKIND
       lDmn%cep%Istim%CL = 99999._RKIND
@@ -2350,40 +2471,38 @@ c     2         "can be applied for Neumann boundaries only"
          END IF
       END IF
 
+!     ODE solver options for the cellular activation model
+      list => lPD%get(ctmp, "ODE solver", 1)
+      CALL TO_LOWER(ctmp)
+      SELECT CASE (ctmp)
+      CASE ("fe", "euler", "explicit")
+         lDmn%cep%odes%tIntType = tIntType_FE
+
+      CASE ("rk", "rk4", "runge")
+         lDmn%cep%odes%tIntType = tIntType_RK4
+
+      CASE ("cn", "cn2", "implicit")
+         lDmn%cep%odes%tIntType = tIntType_CN2
+         IF (lDmn%cep%cepType .EQ. cepModel_TTP) THEN
+            err = "Implicit time integration for tenTusscher-"//
+     2         "Panfilov model can give unexpected results. "//
+     3         "Use FE or RK4 instead"
+         END IF
+
+      CASE DEFAULT
+         err = " Unknown ODE time integrator"
+      END SELECT
+
 !     Dual time stepping for cellular activation model
-      lPtr => lPD%get(rtmp, "Time step for integration")
+      lPtr => list%get(rtmp, "Time step size")
       IF (ASSOCIATED(lPtr)) THEN
          lDmn%cep%dt = rtmp
       ELSE
          lDmn%cep%dt = dt
       END IF
 
-      lDmn%cep%odes%tIntType = tIntType_FE
-      lPtr => lPD%get(ctmp, "ODE solver")
-      IF (ASSOCIATED(lPtr)) THEN
-         CALL TO_LOWER(ctmp)
-         SELECT CASE (ctmp)
-         CASE ("fe", "euler", "explicit")
-            lDmn%cep%odes%tIntType = tIntType_FE
-
-         CASE ("rk", "rk4", "runge")
-            lDmn%cep%odes%tIntType = tIntType_RK4
-
-         CASE ("cn", "cn2", "implicit")
-            lDmn%cep%odes%tIntType = tIntType_CN2
-            IF (lDmn%cep%cepType .EQ. cepModel_TTP) THEN
-               err = "Implicit time integration for tenTusscher-"//
-     2            "Panfilov model can give unexpected results. "//
-     3            "Use FE or RK4 instead"
-            END IF
-
-         CASE DEFAULT
-            err = " Unknown ODE time integrator"
-         END SELECT
-      END IF
-
+!     Read additional parameters for Crank-Nicholson method
       IF (lDmn%cep%odes%tIntType .EQ. tIntType_CN2) THEN
-         list => lPtr
          lDmn%cep%odes%maxItr = 5
          lDmn%cep%odes%absTol = 1.E-8_RKIND
          lDmn%cep%odes%relTol = 1.E-4_RKIND
@@ -2392,14 +2511,184 @@ c     2         "can be applied for Neumann boundaries only"
          lPtr => list%get(lDmn%cep%odes%relTol, "Relative tolerance")
       END IF
 
+!     Read the type of excitation-contraction coupling
+      lPtr => lPD%get(ctmp, "Excitation-contraction coupling")
+      IF (ASSOCIATED(lPtr)) THEN
+         IF (.NOT.ecCpld) THEN
+            ecCpld = .TRUE.
+         END IF
+
+         CALL TO_LOWER(ctmp)
+         SELECT CASE (TRIM(ctmp))
+         CASE ("active_stress", "stress")
+            lDmn%ec%astress = .TRUE.
+
+         CASE ("active_strain", "strain")
+            lDmn%ec%astrain = .TRUE.
+
+         CASE DEFAULT
+            err = " Unknown excitation-contraction coupling"
+         END SELECT
+      END IF
+
+!     Read stretch-activation current parameter
       lDmn%cep%Ksac = 0._RKIND
       lPtr => lPD%get(rtmp, "Feedback parameter for "//
      2   "stretch-activated-currents")
       IF (ASSOCIATED(lPtr)) lDmn%cep%Ksac = rtmp
-      IF (.NOT.cem%cpld) lDmn%cep%Ksac = 0._RKIND
 
       RETURN
       END SUBROUTINE READCEP
+!####################################################################
+!     Read excitation-contraction coupling inputs for cardiac
+!     electromechanics modeling
+      SUBROUTINE READECCPL(lDmn, lPD)
+      USE COMMOD
+      USE LISTMOD
+      IMPLICIT NONE
+      TYPE(dmnType), INTENT(INOUT) :: lDmn
+      TYPE(listType), INTENT(INOUT) :: lPD
+
+      TYPE(listType), POINTER :: lPtr, lSub, list
+
+      LOGICAL flag
+      INTEGER(KIND=IKIND) fid, i, j
+      REAL(KIND=RKIND) rtmp
+      CHARACTER(LEN=stdL) ctmp
+
+      TYPE(fileType) fTmp
+
+      list => lPD%get(ctmp, "Excitation-contraction coupling")
+      IF (.NOT.ASSOCIATED(list)) RETURN
+
+      IF (.NOT.ecCpld) THEN
+         ecCpld = .TRUE.
+      END IF
+
+!     Read the type of excitation-contraction coupling
+      CALL TO_LOWER(ctmp)
+      SELECT CASE (TRIM(ctmp))
+      CASE ("active_stress", "stress")
+         lDmn%ec%astress = .TRUE.
+         lPtr => list%get(lDmn%ec%eta_s, "Cross-fiber stress parameter")
+
+      CASE ("active_strain", "strain")
+         lDmn%ec%astrain = .TRUE.
+
+         lPtr => list%get(ctmp,"Active strain coupling type")
+         CALL TO_LOWER(ctmp)
+         SELECT CASE (TRIM(ctmp))
+         CASE ("trans_iso", "transverse_isotropy")
+            lDmn%ec%asnType = asnType_tiso
+
+         CASE ("ortho", "orthotropy")
+            lDmn%ec%asnType = asnType_ortho
+            lDmn%ec%k = 4._RKIND
+            lPtr => list%get(lDmn%ec%k, "Orthotropy parameter",
+     2          ll=1._RKIND)
+
+         CASE ("hetero_ortho", "heterogenous_orthotropy")
+            lDmn%ec%asnType = asnType_hetortho
+            lDmn%ec%k = 5.5_RKIND
+            lPtr => list%get(lDmn%ec%k, "Orthotropy parameter",
+     2         ll=1._RKIND)
+
+         CASE DEFAULT
+            err = " Invalid active strain coupling type"
+         END SELECT
+
+      CASE DEFAULT
+         err = " Unknown excitation-contraction coupling"
+      END SELECT
+
+!     Read optional additional inputs for decoupled non-CEP excitation-
+!     contraction (uniform activation and no coupling with cellular
+!     activation model)
+      lPtr => list%get(lDmn%ec%caCpld,
+     2   "Coupled with cellular activation model", 1)
+
+      lDmn%ec%fpar_in = ""
+      IF (.NOT.lDmn%ec%caCpld) THEN
+!        Parameters file path to overwrite default parameters
+         lPtr => list%get(ctmp, "Parameters file path")
+         IF (ASSOCIATED(lPtr)) THEN
+            flag = .FALSE.
+            INQUIRE(FILE=TRIM(ctmp), EXIST=flag)
+            IF (flag) THEN
+               lDmn%ec%fpar_in = TRIM(ctmp)
+            ELSE
+               err = " Decoupled EC model parameters file doesn't exist"
+            END IF
+         END IF
+
+         lSub => list%get(ctmp, "Prescribed fiber shortening")
+         IF (ASSOCIATED(lSub)) THEN
+            CALL TO_LOWER(ctmp)
+            SELECT CASE (TRIM(ctmp))
+            CASE ("steady")
+               lDmn%ec%dType = IBSET(lDmn%ec%dType, bType_std)
+               lPtr => lSub%get(lDmn%ec%Ya, "Value")
+
+            CASE ("unsteady")
+               lDmn%ec%dType = IBSET(lDmn%ec%dType, bType_ustd)
+               lPtr => lSub%get(fTmp, "Temporal values file path")
+               flag = .FALSE.
+               lPtr => lSub%get(flag, "Ramp function")
+               lDmn%ec%Yat%lrmp = flag
+               fid = fTmp%open()
+               READ(fid,*) i, j
+               IF (i .LT. 2) THEN
+                  std = " Enter nPts nFCoef; nPts*(t Q)"
+                  err = " Wrong format in: "//fTmp%fname
+               END IF
+               lDmn%ec%Yat%d = 1
+               lDmn%ec%Yat%n = j
+               IF (lDmn%ec%Yat%lrmp) lDmn%ec%Yat%n = 1
+               ALLOCATE(lDmn%ec%Yat%qi(lDmn%ec%Yat%d),
+     2            lDmn%ec%Yat%qs(lDmn%ec%Yat%d),
+     3            lDmn%ec%Yat%r(lDmn%ec%Yat%d,lDmn%ec%Yat%n),
+     4            lDmn%ec%Yat%i(lDmn%ec%Yat%d,lDmn%ec%Yat%n))
+               CALL FFT(fid, i, lDmn%ec%Yat)
+               CLOSE(fid)
+
+            CASE DEFAULT
+               err = " Undefined function for fiber shortening"
+            END SELECT
+         END IF
+
+         lSub => list%get(ctmp, "ODE solver for EC coupling")
+         IF (ASSOCIATED(lSub)) THEN
+            CALL TO_LOWER(ctmp)
+            SELECT CASE (TRIM(ctmp))
+            CASE ("fe", "euler", "forward_euler", "explicit")
+               lDmn%ec%odeS%tIntType = tIntType_FE
+
+            CASE ("rk", "rk4", "runge")
+               lDmn%ec%odeS%tIntType = tIntType_RK4
+
+            CASE ("be", "backward_euler", "implicit")
+               lDmn%ec%odeS%tIntType = tIntType_BE
+
+            CASE ("cn", "cn2")
+               err = " Crank-Nicholson time integration cannot "//
+     2            "be used for excitation-contraction coupling"
+
+            CASE DEFAULT
+               err = " Unknown ODE time integration scheme"
+            END SELECT
+
+!           Dual time stepping for excitation-contraction coupling
+            lPtr => lSub%get(rtmp, "Time step size")
+            IF (ASSOCIATED(lPtr)) THEN
+               lDmn%ec%dt = rtmp
+            ELSE
+               lDmn%ec%dt = dt
+            END IF
+         END IF
+      END IF
+
+      RETURN
+      END SUBROUTINE READECCPL
 !####################################################################
 !     This subroutine reads properties of structure constitutive model
       SUBROUTINE READMATMODEL(lDmn, lPD)
@@ -2441,9 +2730,8 @@ c     2         "can be applied for Neumann boundaries only"
 
 !     Default: NeoHookean model
       IF (.NOT.ASSOCIATED(lSt)) THEN
-         lDmn%stM%isoType = stIso_nHook
-         lDmn%stM%C10 = mu*0.5_RKIND
-         RETURN
+         wrn = "Couldn't find any penalty model."//
+     2      " Using default NeoHookean model."
       END IF
 
       SELECT CASE (TRIM(ctmp))
@@ -2503,7 +2791,7 @@ c     2         "can be applied for Neumann boundaries only"
          lDmn%stM%isoType = stIso_Gucci
          lPtr => lSt%get(lDmn%stM%C10, "C")
          lPtr => lSt%get(lDmn%stM%bff, "bf")
-         lPtr => lSt%get(lDmn%stM%bss, "bt")
+         lPtr => lSt%get(lDmn%stM%bss, "bs")
          lPtr => lSt%get(lDmn%stM%bfs, "bfs")
          IF (nsd .NE. 3) THEN
             err = "Guccione material model is used for 3D problems "//
@@ -2536,8 +2824,18 @@ c     2         "can be applied for Neumann boundaries only"
          lPtr => lSt%get(lDmn%stM%bfs, "bfs")
          lPtr => lSt%get(lDmn%stM%khs, "k")
 
+      CASE ("Lee-Sacks", "L-Scks", "LS")
+      ! Lee-Sacks model for cardiac valves !
+         lDmn%stM%isoType = stIso_LS
+         lPtr => lSt%get(lDmn%stM%a, "a")
+         lPtr => lSt%get(lDmn%stM%a0, "a0")
+         lPtr => lSt%get(lDmn%stM%b1, "b1")
+         lPtr => lSt%get(lDmn%stM%b2, "b2")
+         lPtr => lSt%get(lDmn%stM%mu0, "mu0")
+
       CASE DEFAULT
-         err = "Undefined constitutive model used"
+         lDmn%stM%isoType = stIso_nHook
+         lDmn%stM%C10 = mu*0.5_RKIND
       END SELECT
 
 !     Fiber reinforcement stress
@@ -2574,12 +2872,27 @@ c     2         "can be applied for Neumann boundaries only"
          CASE DEFAULT
             err = "Undefined type of fiber reinforcement stress"
          END SELECT
+         lPtr => lFib%get(lDmn%stM%Tf%eta_s,
+     2      "Cross-fiber stress parameter")
+      END IF
+
+!     Check for shell model
+      IF (lDmn%phys .EQ. phys_shell) THEN
+!        ST91 is the default and the only dilational penalty model for
+!        compressible shell elements. This is set to avoid any square-
+!        root evaulations of the Jacobian during Newton iterations for
+!        satisfying plane-stress condition.
+         lDmn%stM%Kpen = kap
+         IF (.NOT.incompFlag) THEN
+            lDmn%stM%volType = stVol_ST91
+         END IF
+         RETURN
       END IF
 
 !     Look for dilational penalty model. HGO uses quadratic penalty model
       lPtr => lPD%get(ctmp, "Dilational penalty model")
       IF (.NOT.ASSOCIATED(lPtr)) wrn =
-     2   "Couldn't find any penalty model"
+     2   "Couldn't find any penalty model. Using default ST91."
       SELECT CASE(TRIM(ctmp))
       CASE ("quad", "Quad", "quadratic", "Quadratic")
          lDmn%stM%volType = stVol_Quad
@@ -2601,67 +2914,6 @@ c     2         "can be applied for Neumann boundaries only"
 
       RETURN
       END SUBROUTINE READMATMODEL
-!####################################################################
-!     This subroutine reads parameters of non-Newtonian viscosity model
-      SUBROUTINE READVISCMODEL(lDmn, lPD)
-      USE COMMOD
-      USE LISTMOD
-      USE ALLFUN
-      IMPLICIT NONE
-      TYPE(dmnType), INTENT(INOUT) :: lDmn
-      TYPE(listType), INTENT(INOUT) :: lPD
-
-      TYPE(listType), POINTER :: lPtr, lVis
-      REAL(KIND=RKIND) :: rtmp
-      CHARACTER(LEN=stdL) ctmp
-
-      lVis => lPD%get(ctmp,"Viscosity",1)
-
-      CALL TO_LOWER(ctmp)
-      SELECT CASE (TRIM(ctmp))
-      CASE ("constant", "const", "newtonian")
-         lDmn%visc%viscType = viscType_Const
-         lPtr => lVis%get(lDmn%visc%mu_i,"Value",1,lb=0._RKIND)
-
-      CASE ("carreau-yasuda", "cy")
-         lDmn%visc%viscType = viscType_CY
-         lPtr => lVis%get(lDmn%visc%mu_i,
-     2      "Limiting high shear-rate viscosity",1,lb=0._RKIND)
-         lPtr => lVis%get(lDmn%visc%mu_o,
-     2      "Limiting low shear-rate viscosity",1,lb=0._RKIND)
-         lPtr => lVis%get(lDmn%visc%lam,
-     2      "Shear-rate tensor multiplier (lamda)",1,lb=0._RKIND)
-         lPtr => lVis%get(lDmn%visc%a,
-     2      "Shear-rate tensor exponent (a)",1,lb=0._RKIND)
-         lPtr => lVis%get(lDmn%visc%n,"Power-law index (n)",1,
-     2      lb=0._RKIND)
-         IF (lDmn%visc%mu_i .GT. lDmn%visc%mu_o) THEN
-            err = "Unexpected inputs for Carreau-Yasuda model. "//
-     2         "High shear-rate viscosity value should be higher than"//
-     3         " low shear-rate value"
-         END IF
-
-      CASE ("cassons", "cass")
-         lDmn%visc%viscType = viscType_Cass
-         lPtr => lVis%get(lDmn%visc%mu_i,
-     2      "Asymptotic viscosity parameter",1,lb=0._RKIND)
-         lPtr => lVis%get(lDmn%visc%mu_o,
-     2      "Yield stress parameter",1,lb=0._RKIND)
-         lDmn%visc%lam = 0.5_RKIND
-         lPtr => lVis%get(rtmp,"Low shear-rate threshold")
-         IF (ASSOCIATED(lPtr)) lDmn%visc%lam = rtmp
-
-      CASE DEFAULT
-         err = "Undefined constitutive model for viscosity used"
-      END SELECT
-
-      IF ((lDmn%phys .EQ. phys_stokes) .AND.
-     2    (lDmn%visc%viscType .NE. viscType_Const)) THEN
-         err = "Only constant viscosity is allowed for Stokes flow"
-      END IF
-
-      RETURN
-      END SUBROUTINE READVISCMODEL
 !####################################################################
 !     This subroutine reads general velocity data from bct.vtp
       SUBROUTINE READBCT(lMB, lFa, fName)
@@ -3179,4 +3431,149 @@ c     2         "can be applied for Neumann boundaries only"
 
       RETURN
       END SUBROUTINE READWALLPROPSFF
+!#######################################################################
+!     Adds a bc to lEq%bc(:) at the end for a cap. Copies most of the bc
+!     info from lEq%bc(iBc), which corresponds to the capped surface.
+!     Also, sets info about capping face in capped face (capName
+!     and capID fields)
+      SUBROUTINE ADDCAPBC(lEq, iBc)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(eqType), INTENT(INOUT) :: lEq
+      INTEGER(KIND=IKIND), INTENT(IN) :: iBc
+
+      TYPE(bcType), ALLOCATABLE :: oldBCs(:)
+      INTEGER(KIND=IKIND) jBc, iFa, iM
+
+!     We are adding a new BC for the cap, so we need to update the
+!     the relevant structures
+!     Store old BCs in oldBcs
+      ALLOCATE(oldBcs(lEq%nBc))
+      DO jBc=1, lEq%nBc
+         CALL COPYBC(lEq%bc(jBc), oldBcs(jBc))
+         CALL DESTROY(lEq%bc(jBc))
+      END DO
+
+!     Increment number of BCs
+      lEq%nBc = lEq%nBc + 1
+
+!     Reallocate lEq%bc with space for extra cap BC
+      DEALLOCATE(lEq%bc)
+      ALLOCATE(lEq%bc(lEq%nBc))
+
+!     Copy old BCs to lEq%bc
+      DO jBc=1, lEq%nBc-1
+         CALL COPYBC(oldBcs(jBc), lEq%bc(jBc))
+      END DO
+
+!     Add on new BC for capping surface. Copy BC information from the
+!     capped surface. This surface corresponds to index iBc - argument
+!     passed as input to this subroutine
+      CALL COPYBC(lEq%bc(iBc),  lEq%bc(lEq%nBc))
+
+!     Correct some values in capping surface BC (corresponding to nBc)
+      cplBC%nFa = cplBC%nFa + 1
+      lEq%bc(lEq%nBc)%cplBcPtr = cplBC%nFa
+      CALL FINDFACE(lEq%bc(iBc)%capName,
+     2              lEq%bc(lEq%nBc)%iM, lEq%bc(lEq%nBc)%iFa)
+      lEq%bc(lEq%nBC)%capName = ""
+
+!     Set capID pointer in the capped face
+      iFa = lEq%bc(iBc)%iFa
+      iM  = lEq%bc(iBc)%iM
+      msh(iM)%fa(iFa)%capID = lEq%bc(lEq%nBc)%iFa ! Copy cap face ID
+
+!     Set a pointer to the capping surface BC in the capped surface bc
+      lEq%bc(iBc)%iCapBC = lEq%nBc
+
+      END SUBROUTINE ADDCAPBC
+!#######################################################################
+!     Performs a deep copy of old BC (oBc) to new BC (nBc)
+      SUBROUTINE COPYBC(oBc, nBc)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(bcType), INTENT(IN) :: oBc
+      TYPE(bcType), INTENT(OUT) :: nBc
+
+      INTEGER(KIND=IKIND) iFa, iM
+
+!     Copy bool, integers, and real values
+      nBc%weakDir  = oBc%weakDir
+      nBc%flwP     = oBc%flwP
+      nBc%rbnN     = oBc%rbnN
+      nBc%bType    = oBc%bType
+      nBc%cplBCptr = oBc%cplBCptr
+      nBc%iFa      = oBc%iFa
+      nBc%iM       = oBc%iM
+      nBc%lsPtr    = oBc%lsPtr
+      nBc%masN     = oBc%masN
+      nBc%g        = oBc%g
+      nBc%r        = oBc%r
+      nBc%k        = oBc%k
+      nBc%c        = oBc%c
+      nBc%tauB     = oBc%tauB
+
+!     Set local iFa and iM
+      iFa = nBc%iFa
+      iM  = nBc%iM
+
+!     Now copy allocatable types but are always allocated
+      ALLOCATE(nBc%eDrn(nsd), nBc%h(nsd))
+      nBc%eDrn = oBc%eDrn
+      nBc%h    = oBc%h
+
+!     Now copy allocatable but derived types
+!     If the bc has spatial profile
+      IF (ALLOCATED(oBc%gx)) THEN
+         ALLOCATE(nBc%gx(msh(iM)%fa(iFa)%nNo))
+         nBc%gx = oBc%gx
+      END IF
+
+!     If the bc is a moving boundary
+      IF (ALLOCATED(oBc%gm)) THEN
+         ALLOCATE(nBc%gm)
+         nBc%gm%dof    = oBc%gm%dof
+         nBc%gm%nTP    = oBc%gm%nTP
+         nBc%gm%period = oBc%gm%period
+
+         ALLOCATE(nBc%gm%t(nBc%gm%nTP))
+         ALLOCATE(nBc%gm%d(nBc%gm%dof,msh(iM)%fa(iFa)%nNo,nBc%gm%nTP))
+         nBc%gm%t = oBc%gm%t
+         nBc%gm%d = oBc%gm%d
+      END IF
+
+!     If the bc has Fourier Coefficients set
+      IF (ALLOCATED(oBc%gt)) THEN
+         ALLOCATE(nBc%gt)
+         nBc%gt%lrmp = oBc%gt%lrmp
+         nBc%gt%n    = oBc%gt%n
+         nBc%gt%d    = oBc%gt%d
+         nBc%gt%T    = oBc%gt%T
+         nBc%gt%ti   = oBc%gt%ti
+
+         ALLOCATE(nBc%gt%qi(nBc%gt%d), nBc%gt%qs(nBc%gt%d))
+         nBc%gt%qi   = oBc%gt%qi
+         nBc%gt%qs   = oBc%gt%qs
+
+         ALLOCATE(nBc%gt%r(nBc%gt%d,nBc%gt%n))
+         ALLOCATE(nBc%gt%i(nBc%gt%d,nBc%gt%n))
+         nBc%gt%r    = oBc%gt%r
+         nBc%gt%i    = oBc%gt%i
+      END IF
+
+!     Copy RCR data structure
+      nBc%RCR%Rp = oBc%RCR%Rp
+      nBc%RCR%C  = oBc%RCR%C
+      nBc%RCR%Rd = oBc%RCR%Rd
+      nBc%RCR%Pd = oBc%RCR%Pd
+      nBc%RCR%Xo = oBc%RCR%Xo
+
+!     Copy cap data fields
+      nBc%capName = oBc%capName
+      nBc%iCapBC  = oBc%iCapBC
+
+      RETURN
+      END SUBROUTINE COPYBC
 !####################################################################

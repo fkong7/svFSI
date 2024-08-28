@@ -223,7 +223,7 @@
 
 !     Inertia and body forces (mass) contribution
       DO g=1, lFa%nG
-         CALL GNNB(lFa, e, g, nsd-1, 3, lFa%Nx(:,:,g), nV)
+         CALL GNNB(lFa, e, g, nsd-1, 3, lFa%Nx(:,:,g), nV, 'r')
          Jac = SQRT(NORM(nV))
          nV  = nV / Jac
          w   = lFa%w(g)*Jac
@@ -342,7 +342,7 @@
       gam = SQRT(0.5_RKIND*gam)
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_x)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_x)
       IF (ISZERO(gam)) THEN
          mu_x = 0._RKIND
       ELSE

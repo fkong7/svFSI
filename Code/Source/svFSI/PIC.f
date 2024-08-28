@@ -34,6 +34,11 @@
 !     This routine contains predictor/initiator/corrector routines, as
 !     part of time integration scheme.
 !
+!     See the publication below, section 4.4 for theory and derivation:
+!     Bazilevs, et al. "Isogeometric fluid-structure interaction:
+!     theory, algorithms, and computations.", Computational Mechanics,
+!     43 (2008): 3-37. doi: 10.1007/s00466-008-0315-x
+!
 !--------------------------------------------------------------------
 
 !     This is the predictor
@@ -41,7 +46,7 @@
       USE COMMOD
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) iEq, s, e
+      INTEGER(KIND=IKIND) iEq, iDmn, s, e
       REAL(KIND=RKIND) coef
 
 !     Prestress initialization
@@ -83,16 +88,27 @@
          coef = (eq(iEq)%gam - 1._RKIND)/eq(iEq)%gam
          An(s:e,:) = Ao(s:e,:)*coef
 
-!        electrophysiology
+!        Electrophysiology
          IF (eq(iEq)%phys .EQ. phys_CEP) THEN
-            CALL CEPINTEG(iEq, e, Do)
+            CALL CEPINTEG(iEq, Do)
+         END IF
+
+!        Non-CEP excitation-contraction coupling
+         IF (ecCpld) THEN
+            DO iDmn=1, eq(iEq)%nDmn
+               IF ((eq(iEq)%dmn(iDmn)%phys .NE. phys_struct) .AND.
+     2             (eq(iEq)%dmn(iDmn)%phys .NE. phys_ustruct)) CYCLE
+               IF (.NOT.eq(iEq)%dmn(iDmn)%ec%caCpld) THEN
+                  CALL EC_DCPLD_GETY(eq(iEq)%dmn(iDmn)%ec)
+               END IF
+            END DO
          END IF
 
          Yn(s:e,:) = Yo(s:e,:)
 
          IF (dFlag) THEN
             IF (.NOT.sstEq) THEN
-!              struct, lElas, FSI (struct, mesh)
+!              struct, lElas, shells, FSI (struct, mesh)
                coef = dt*dt*(0.5_RKIND*eq(iEq)%gam - eq(iEq)%beta)
      2            /(eq(iEq)%gam - 1._RKIND)
                Dn(s:e,:) = Do(s:e,:) + Yn(s:e,:)*dt + An(s:e,:)*coef
@@ -118,7 +134,7 @@
       RETURN
       END SUBROUTINE PICP
 !====================================================================
-!     This is the initiator
+!     This is the initiator. Compute quantities at (n+am) or (n+af)
       SUBROUTINE PICI(Ag, Yg, Dg)
       USE COMMOD
       IMPLICIT NONE
@@ -160,7 +176,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      LOGICAL :: l1, l2, l3, l4
+      LOGICAL :: l1, l2, l3, l4, l5
       INTEGER(KIND=IKIND) :: s, e, a, Ac
       REAL(KIND=RKIND) :: coef(4), r1, dUl(nsd)
 
@@ -182,7 +198,7 @@
                Ad(:,a)     = Ad(:,a)     - dUl(:)
                Dn(s:e-1,a) = Dn(s:e-1,a) - dUl(:)*coef(1)
             END DO
-         ELSE IF (eq(cEq)%phys .EQ. phys_mesh) THEN
+         ELSE
             DO a=1, tnNo
                An(s:e,a)   = An(s:e,a) - R(:,a)
                Yn(s:e,a)   = Yn(s:e,a) - R(:,a)*coef(1)
@@ -249,6 +265,7 @@
 !     IB treatment
       IF (ibFlag) CALL IB_PICC()
 
+!     Check for the convergence of Newton-Raphson iterations
       IF (ISZERO(eq(cEq)%FSILS%RI%iNorm)) eq(cEq)%FSILS%RI%iNorm = eps
       IF (ISZERO(eq(cEq)%iNorm)) eq(cEq)%iNorm = eq(cEq)%FSILS%RI%iNorm
       IF (eq(cEq)%itr .EQ. 1) THEN
@@ -256,11 +273,12 @@
       END IF
       r1 = eq(cEq)%FSILS%RI%iNorm/eq(cEq)%iNorm
 
-      l1 = eq(cEq)%itr .GE. eq(cEq)%maxItr
-      l2 = r1 .LE. eq(cEq)%tol
-      l3 = r1 .LE. eq(cEq)%tol*eq(cEq)%pNorm
-      l4 = eq(cEq)%itr .GE. eq(cEq)%minItr
-      IF (l1 .OR. ((l2.OR.l3).AND.l4)) eq(cEq)%ok = .TRUE.
+      l1 = eq(cEq)%iNorm .LE. eq(cEq)%absTol
+      l2 = eq(cEq)%itr .GE. eq(cEq)%maxItr
+      l3 = r1 .LE. eq(cEq)%tol
+      l4 = r1 .LE. eq(cEq)%tol*eq(cEq)%pNorm
+      l5 = eq(cEq)%itr .GE. eq(cEq)%minItr
+      IF (l1 .OR. l2 .OR. ((l3.OR.l4).AND.l5)) eq(cEq)%ok = .TRUE.
       IF (ALL(eq%ok)) RETURN
 
       IF (eq(cEq)%coupled) THEN

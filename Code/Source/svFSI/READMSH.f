@@ -31,7 +31,7 @@
 !
 !--------------------------------------------------------------------
 !
-!     This routine is desinged to read the mesh/es that may come in
+!     This routine is designed to read the mesh/es that may come in
 !     several formats and setup all parameters related to meshes.
 !
 !--------------------------------------------------------------------
@@ -48,7 +48,7 @@
 
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: i, j, iM, iFa, a, b, Ac, e, lDof, lnNo
-      REAL(KIND=RKIND) :: maxX(nsd), minX(nsd), fibN(nsd), rtmp
+      REAL(KIND=RKIND) :: maxX(nsd), minX(nsd)
       CHARACTER(LEN=stdL) :: ctmp, fExt
       TYPE(listType), POINTER :: lPtr, lPM
       TYPE(stackType) :: avNds
@@ -129,13 +129,12 @@
          ALLOCATE(x(nsd,gtnNo))
          x = gX
 
-!        Checks for shell elements
+!     Checks for shell elements
          DO iM=1, nMsh
             IF (msh(iM)%lShl) THEN
-               IF (msh(iM)%eType.NE.eType_NRB .AND.
-     2             msh(iM)%eType.NE.eType_TRI3) THEN
-                  err = "Shell elements can be either triangles "//
-     2               "or C1-NURBS"
+               IF (msh(iM)%eType .EQ. eType_QUD4) THEN
+                  err = "Shell elements cannot be bilinear quads. "//
+     2               "Use higher-order quads, triangles, or NURBS."
                END IF
                IF (msh(iM)%eType .EQ. eType_NRB) THEN
                   DO i=1, nsd-1
@@ -143,10 +142,10 @@
      2                  "NURBS for shell elements should be p > 1"
                   END DO
                END IF
-c               IF (msh(iM)%eType .EQ. eType_TRI) THEN
-c                  IF (.NOT.cm%seq()) err = "Triangular shell elements"//
-c     2               " should be run sequentially"
-c               END IF
+               IF (msh(iM)%eType .EQ. eType_TRI3) THEN
+                  IF (.NOT.cm%seq()) err = "Shells with linear "//
+     2               "triangles should be run sequentially"
+               END IF
             END IF
          END DO
 
@@ -337,53 +336,29 @@ c               END IF
          END DO
       END IF
 
-!     Read fiber orientation
-      flag = .FALSE.
+      dbg = " Checking for any fiber directions"
       DO iM=1, nMsh
-         lPM => list%get(msh(iM)%name,"Add mesh",iM)
-         j = lPM%srch("Fiber direction file path")
-         IF (j .EQ. 0) j = lPM%srch("Fiber direction")
-         IF (j .NE. 0) THEN
-            flag = .TRUE.
-            EXIT
-         END IF
+         msh(iM)%fib%nFn = 0
+         lPM => list%get(msh(iM)%name, "Add mesh", iM)
+         CALL READ_FIBERS(lPM, msh(iM), msh(iM)%fib)
       END DO
 
-      IF (flag) THEN
-         DO iM=1, nMsh
-            lPM => list%get(msh(iM)%name,"Add mesh",iM)
-
-            msh(iM)%nFn = lPM%srch("Fiber direction file path")
-            IF (msh(iM)%nFn .NE. 0) THEN
-               IF (rmsh%isReqd) err = "Fiber directions read from "//
-     2            "file is not allowed with remeshing"
-               ALLOCATE(msh(iM)%fN(msh(iM)%nFn*nsd,msh(iM)%gnEl))
-               msh(iM)%fN = 0._RKIND
-               DO i=1, msh(iM)%nFn
-                  lPtr => lPM%get(cTmp,
-     2               "Fiber direction file path", i)
-                  IF (ASSOCIATED(lPtr))
-     2               CALL READFIBNFF(msh(iM), cTmp, "FIB_DIR", i)
-               END DO
-            ELSE
-               msh(iM)%nFn = lPM%srch("Fiber direction")
-               IF (msh(iM)%nFn .NE. 0) THEN
-                  ALLOCATE(msh(iM)%fN(msh(iM)%nFn*nsd,msh(iM)%gnEl))
-                  msh(iM)%fN = 0._RKIND
-                  DO i=1, msh(iM)%nFn
-                     lPtr => lPM%get(fibN, "Fiber direction", i)
-                     rtmp = SQRT(NORM(fibN))
-                     IF (.NOT.ISZERO(rtmp)) fibN(:) = fibN(:)/rtmp
-                     DO e=1, msh(iM)%gnEl
-                        msh(iM)%fN((i-1)*nsd+1:i*nsd,e) = fibN(1:nsd)
-                     END DO
-                  END DO
-               END IF
-            END IF
-         END DO
-      ELSE
-         msh(:)%nFn = 0
-      END IF
+!     Read transmural coordinate for heterohenous orthotropic active
+!     strain type excitation-contraction coupling
+      DO iM=1, nMsh
+         lPM => list%get(msh(iM)%name,"Add mesh",iM)
+         lPtr => lPM%get(ctmp, "Transmural coordinate file path")
+         IF (ASSOCIATED(lPtr)) THEN
+            ALLOCATE(msh(iM)%tmX(msh(iM)%gnNo),
+     2         msh(iM)%x(1,msh(iM)%gnNo))
+            msh(iM)%x = 0._RKIND
+            CALL READVTUPDATA(msh(iM), ctmp, "Phi_EPI", 1, 1)
+            DO a=1, msh(iM)%gnNo
+               msh(iM)%tmX(a) = msh(iM)%x(1,a)
+            END DO
+            DEALLOCATE(msh(iM)%x)
+         END IF
+      END DO
 
 !     Read prestress data
       flag = .FALSE.
@@ -459,6 +434,22 @@ c               END IF
                lPtr => lPM%get(cntctM%al,
      2            "Min norm of face normals (alpha)",1,lb=0._RKIND,
      3            ub=1._RKIND)
+            CASE ("potential")
+               cntctM%cType = cntctM_potential
+               lPtr => lPM%get(cntctM%k,
+     2            "k", 1, ll=0._RKIND)
+               lPtr => lPM%get(cntctM%p,
+     2            "p", 1, lb=4._RKIND)
+               lPtr => lPM%get(cntctM%Rin,
+     2            "Rin", 1, lb=0._RKIND)
+               lPtr => lPM%get(cntctM%Rout,
+     2            "Rout", 1, lb=0._RKIND)
+               IF (cntctM%Rout .LT. cntctM%Rin) err =
+     2            "Choose Rout > Rin for proper contact penalization"
+               lPtr => lPM%get(cntctM%gap,
+     2            "gap", 1, lb=0._RKIND)
+               lPtr => lPM%get(cntctM%c,
+     2            "c", 1, lb=0._RKIND)
             CASE DEFAULT
                err = "Undefined contact model"
             END SELECT
@@ -1106,45 +1097,6 @@ C       TYPE(stackType) lPrj
 
       RETURN
       END SUBROUTINE SETDMNIDFF
-!####################################################################
-!     Read fiber direction from a vtu file
-      SUBROUTINE READFIBNFF(lM, fName, kwrd, idx)
-      USE COMMOD
-      USE LISTMOD
-      USE ALLFUN
-      USE vtkXMLMod
-      IMPLICIT NONE
-      TYPE(mshType), INTENT(INOUT) :: lM
-      CHARACTER(LEN=*) :: fName, kwrd
-      INTEGER(KIND=IKIND), INTENT(IN) :: idx
-
-      INTEGER(KIND=IKIND) :: iStat, e
-      TYPE(vtkXMLType) :: vtu
-
-      REAL(KIND=RKIND), ALLOCATABLE :: tmpR(:,:)
-
-      iStat = 0;
-      std = " <VTK XML Parser> Loading file <"//TRIM(fName)//">"
-      CALL loadVTK(vtu, fName, iStat)
-      IF (iStat .LT. 0) err = "VTU file read error (init)"
-
-      CALL getVTK_numElems(vtu, e, iStat)
-      IF (e .NE. lM%gnEl) err = "Mismatch in num elems for "//
-     2   TRIM(kwrd)
-
-      ALLOCATE(tmpR(maxNSD,lM%gnEl))
-      tmpR = 0._RKIND
-      CALL getVTK_elemData(vtu, TRIM(kwrd), tmpR, iStat)
-      IF (iStat .LT. 0) err = "VTU file read error "//TRIM(kwrd)
-      DO e=1, lM%gnEl
-         lM%fN((idx-1)*nsd+1:idx*nsd,e) = tmpR(1:nsd,e)
-      END DO
-      DEALLOCATE(tmpR)
-
-      CALL flushVTK(vtu)
-
-      RETURN
-      END SUBROUTINE READFIBNFF
 !####################################################################
 !     Check the mesh IEN structure and ordering
       SUBROUTINE CHECKIEN(lM)

@@ -544,10 +544,33 @@
          IF (N(i).GT.Nb(1,i) .AND. N(i).LT.Nb(2,i)) j = j + 1
       END DO
       l3 = j .EQ. eNoN
-      l4 = rt.GE.0.9999_RKIND .AND. rt.LE.1.0001_RKIND
+      l4 = rt.GE.0.999_RKIND .AND. rt.LE.1.001_RKIND
 
-      l1 = ALL((/l1, l2, l3, l4/))
-      IF (.NOT.l1) err = "Error in computing shape functions"
+      l1= ALL((/l1, l2, l3, l4/))
+      IF (.NOT.l1) THEN
+c         WRITE(100+cm%tF(),'(A)') REPEAT('-',48)
+c         WRITE(100+cm%tF(),*) l2, l3, l4
+c         WRITE(100+cm%tF(),'(A)') REPEAT('-',48)
+
+c         WRITE(100+cm%tF(),'(A)',ADVANCE='NO') "l2 (xi): "
+c         DO i=1, nsd
+c            WRITE(100+cm%tF(),'(A)',ADVANCE='NO') " "//STR(xi(i))
+c         END DO
+c         WRITE(100+cm%tF(),'(A)')
+c         WRITE(100+cm%tF(),'(A)') REPEAT('-',48)
+
+c         WRITE(100+cm%tF(),'(A)',ADVANCE='NO') "l3 (N): "//STR(j)
+c         DO i=1, eNoN
+c            WRITE(100+cm%tF(),'(A)',ADVANCE='NO') " "//STR(N(i))
+c         END DO
+c         WRITE(100+cm%tF(),'(A)')
+c         WRITE(100+cm%tF(),'(A)') REPEAT('-',48)
+
+c         WRITE(100+cm%tF(),'(A)') "l4 (sum N): "//STR(rt)
+c         WRITE(100+cm%tF(),'(A)') REPEAT('-',48)
+c         CALL FLUSH(100+cm%tF())
+         err = "Error in computing shape functions"
+      END IF
 
       RETURN
       END SUBROUTINE GETNNX
@@ -714,7 +737,6 @@ c         WRITE(1000+cm%tF(),'(10X,A)') "Fail.."
          Nxi(2,10) = -4._RKIND*xi(3)
          Nxi(3,10) =  4._RKIND*( s - xi(3) )
 
-!     2D elements
       CASE(eType_HEX8)
          lx = 1._RKIND - xi(1)
          ly = 1._RKIND - xi(2)
@@ -1097,6 +1119,7 @@ c        N(27) =  lx*ux*ly*uy*lz*uz
          Nxi(2,6) = -s
          Nxi(3,6) =  uz*0.5_RKIND
 
+!     2D elements
       CASE(eType_TRI3)
          N(1) = xi(1)
          N(2) = xi(2)
@@ -1264,7 +1287,7 @@ c        N(8) = lx*my*0.5_RKIND
       END SUBROUTINE GETGNN
 !--------------------------------------------------------------------
 !     Returns second order derivatives at given natural coords
-      SUBROUTINE GETGNNxx(insd, ind2, eType, eNoN, xi, Nxx)
+      PURE SUBROUTINE GETGNNxx(insd, ind2, eType, eNoN, xi, Nxx)
       USE COMMOD
       IMPLICIT NONE
       INTEGER(KIND=IKIND), INTENT(IN) :: insd, ind2, eType, eNoN
@@ -1422,15 +1445,17 @@ c        N(8) = lx*my*0.5_RKIND
          Nb(2,5:10) =  4._RKIND
 
       CASE(eType_HEX20)
-         Nb(1,1:20) = -0.125_RKIND
+         Nb(1,1:8)  = -625._RKIND/2048._RKIND
 
       CASE(eType_HEX27)
-         Nb(1,1:20) = -0.125_RKIND
+         Nb(1,1:26) = -0.125_RKIND
          Nb(1,27)   =  0._RKIND
 
       CASE(eType_WDG)
          xib(1,1)   =  0._RKIND
          xib(1,2)   =  0._RKIND
+         Nb(1,3)    = -1._RKIND
+         Nb(1,6)    = -1._RKIND
 
 !     2D elements
       CASE(eType_TRI3)
@@ -1442,7 +1467,7 @@ c        N(8) = lx*my*0.5_RKIND
          Nb(2,4:6)  =  4._RKIND
 
       CASE(eType_QUD8)
-         Nb(1,1:8)  = -0.125_RKIND
+         Nb(1,1:4)  = -0.25_RKIND
 
       CASE(eType_QUD9)
          Nb(1,1:8)  = -0.125_RKIND
@@ -1457,11 +1482,11 @@ c        N(8) = lx*my*0.5_RKIND
       END SELECT
 
 !     Add a small tolerance around the bounds
-      xib(1,:) = xib(1,:) - 1.0E-4_RKIND
-      xib(2,:) = xib(2,:) + 1.0E-4_RKIND
+      xib(1,:) = xib(1,:) - 1.0E-3_RKIND
+      xib(2,:) = xib(2,:) + 1.0E-3_RKIND
 
-      Nb(1,:)  = Nb(1,:)  - 1.0E-4_RKIND
-      Nb(2,:)  = Nb(2,:)  + 1.0E-4_RKIND
+      Nb(1,:)  = Nb(1,:)  - 1.0E-3_RKIND
+      Nb(2,:)  = Nb(2,:)  + 1.0E-3_RKIND
 
       RETURN
       END SUBROUTINE GETNNBNDS
@@ -1608,7 +1633,7 @@ c        N(8) = lx*my*0.5_RKIND
             B(3,a) = Nxi2(3,a) - Nx(1,a)*xXi2(1,3) - Nx(2,a)*xXi2(2,3)
          END DO
 
-         CALL DGESV(l,eNoN,K,l,IPIV,B,l,INFO)
+         CALL DGESV(l, eNoN, K, l, IPIV, B, l, INFO)
          IF (INFO .NE. 0) err = "Error in Lapack @ GNNxx."
          Nxx = B
 
@@ -1703,10 +1728,10 @@ c        N(8) = lx*my*0.5_RKIND
       END DO
       nV = CROSS(xXi)
 
-!     Covariant basis
+!     Covariant basis, g_a
       gCov = xXi
 
-!     Metric tensor g_i . g_j
+!     Metric tensor g_a . g_b
       Gmat = 0._RKIND
       DO i=1, insd
          DO j=1, insd
@@ -1850,10 +1875,16 @@ c        N(8) = lx*my*0.5_RKIND
       RETURN
       END SUBROUTINE GNNIB
 !--------------------------------------------------------------------
-!     This routine returns a vector at element "e" and Gauss point
-!     "g" of face "lFa" that is the normal weigthed by Jac, i.e.
-!     Jac = SQRT(NORM(n)).
-      SUBROUTINE GNNB(lFa, e, g, insd, eNoNb, Nx, n)
+!     This routine returns a surface normal vector at element "e" and
+!     Gauss point "g" of face "lFa" weighted by Jac = SQRT(NORM(n)),
+!     the Jacobian of mapping from parent surface element to reference
+!     configuration.
+!
+!     cfg determines in which configuration to return the normal vector
+!        - cfg = 'r', reference configuration
+!        - cfg = 'o', old configuration (at timestep n)
+!        - cfg = 'n', new configuration (at timestep n+1)
+      SUBROUTINE GNNB(lFa, e, g, insd, eNoNb, Nx, n, cfg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -1861,8 +1892,9 @@ c        N(8) = lx*my*0.5_RKIND
       REAL(KIND=RKIND), INTENT(IN) :: Nx(insd,eNoNb)
       REAL(KIND=RKIND), INTENT(OUT) :: n(nsd)
       TYPE(faceType), INTENT(IN) :: lFa
+      CHARACTER, INTENT(IN) :: cfg
 
-      INTEGER(KIND=IKIND) a, Ac, i, iM, Ec, b, Bc, eNoN
+      INTEGER(KIND=IKIND) a, b, i, is, ie, Ac, Bc, Ec, iM, eNoN
       REAL(KIND=RKIND) v(nsd)
 
       LOGICAL, ALLOCATABLE :: setIt(:)
@@ -1872,6 +1904,21 @@ c        N(8) = lx*my*0.5_RKIND
       iM   = lFa%iM
       Ec   = lFa%gE(e)
       eNoN = msh(iM)%eNoN
+
+      is = 1
+      DO i=1, nEq
+         IF (eq(i)%phys .EQ. phys_struct .OR.
+     2       eq(i)%phys .EQ. phys_ustruct) THEN
+            is = eq(i)%s
+            EXIT
+         END IF
+      END DO
+      ie = is+nsd-1
+
+      IF (lFa%vrtual) THEN
+         CALL GNNBv(lFa, e, insd, eNoNb, Nx, n, cfg)
+         RETURN
+      END IF
 
       ALLOCATE(lX(nsd,eNoN), ptr(eNoN), setIt(eNoN))
 
@@ -1918,27 +1965,36 @@ c        N(8) = lx*my*0.5_RKIND
          END IF
       END DO
 
-!     Correcting the position vector if mesh is moving
+!     Correcting the geometry if mesh is moving or we want to integrate
+!     in a different configuration
       DO a=1, eNoN
          Ac = msh(iM)%IEN(a,Ec)
          lX(:,a) = x(:,Ac)
-         IF (mvMsh) lX(:,a) = lX(:,a) + Do(nsd+2:2*nsd+1,Ac)
+         IF (mvMsh) THEN
+            lX(:,a) = lX(:,a) + Do(nsd+2:2*nsd+1,Ac)
+         ELSE
+            IF (cfg .EQ. 'o') THEN
+               lX(:,a) = lX(:,a) + Do(is:ie,Ac)
+            ELSE IF (cfg .EQ. 'n') THEN
+               lX(:,a) = lX(:,a) + Dn(is:ie,Ac)
+            END IF
+         END IF
       END DO
 
 !     Calculating surface deflation
-      IF (msh(iM)%lShl) THEN
+      IF (msh(iM)%lShl) THEN ! If mesh is a shell
 !        Since the face has only one parametric coordinate (edge), find
 !        its normal from cross product of mesh normal and interior edge
 
 !        Update shape functions if NURBS
          IF (msh(iM)%eType .EQ. eType_NRB) CALL NRBNNX(msh(iM), Ec)
 
-!        Compute adjoining mesh element normal
-         ALLOCATE(xXi(nsd,insd))
+!        Compute normal of the adjoining mesh element
+         ALLOCATE(xXi(nsd,nsd-1))
          xXi = 0._RKIND
          DO a=1, eNoN
-            DO i=1, insd
-               xXi(:,i) = xXi(:,i) + lX(:,a)*msh(iM)%Nx(i,a,g)
+            DO i=1, nsd-1
+               xXi(:,i) = xXi(:,i) + lX(:,a)*msh(iM)%Nx(i,a,1)
             END DO
          END DO
          v(:) = CROSS(xXi)
@@ -1959,7 +2015,7 @@ c        N(8) = lx*my*0.5_RKIND
          n(3) = v(1)*xXi(2,1) - v(2)*xXi(1,1)
 
 !        I choose Gauss point of the mesh element for calculating
-!        interior edge
+!        interior edge vector.
          v(:) = 0._RKIND
          DO a=1, eNoN
             v(:) = v(:) + lX(:,a)*msh(iM)%N(a,g)
@@ -1984,7 +2040,7 @@ c        N(8) = lx*my*0.5_RKIND
       END IF
 
 !     Changing the sign if neccessary. a locates on the face and b
-!     outside of the face, in the parent element
+!     lies in the interior (mesh element). v points outward along ba
       a = ptr(1)
       b = ptr(lFa%eNoN+1)
       v = lX(:,a) - lX(:,b)
@@ -1994,5 +2050,92 @@ c        N(8) = lx*my*0.5_RKIND
 
       RETURN
       END SUBROUTINE GNNB
+!--------------------------------------------------------------------
+!     This routine returns a surface normal vector on the element "e"
+!     of a virtual face "lFa" weighted by Jac = SQRT(NORM(n)), the
+!     Jacobian of mapping from parent surface element to reference
+!     configuration.
+!
+!     For these elements, as there is no interior element, the direction
+!     of the normal vector is assumed from the nodal ordering.
+!
+!     cfg determines in which configuration to return the normal vector
+!        - cfg = 'r', reference configuration
+!        - cfg = 'o', old configuration (at timestep n)
+!        - cfg = 'n', new configuration (at timestep n+1)
+      SUBROUTINE GNNBv(lFa, e, insd, eNoNb, Nx, n, cfg)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      INTEGER(KIND=IKIND), INTENT(IN) :: e, insd, eNoNb
+      REAL(KIND=RKIND), INTENT(IN) :: Nx(insd,eNoNb)
+      REAL(KIND=RKIND), INTENT(OUT) :: n(nsd)
+      TYPE(faceType), INTENT(IN) :: lFa
+      CHARACTER, INTENT(IN) :: cfg
+
+      INTEGER(KIND=IKIND) a, i, Ac, is, ie
+
+      REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:), tmpX(:),
+     2   tmpDo(:), tmpDn(:)
+
+!     Allocate local arrays
+      ALLOCATE(lX(nsd,eNoNb), tmpX(nsd), tmpDo(tDof), tmpDn(tDof))
+
+!     Set the displacement degrees of freedom
+      is = 1
+      DO i=1, nEq
+         IF ((eq(i)%phys .EQ. phys_struct) .OR.
+     2       (eq(i)%phys .EQ. phys_ustruct)) THEN
+            is = eq(i)%s
+            EXIT
+         END IF
+      END DO
+      ie = is + nsd - 1
+
+!     Communicating and correcting the geometry if mesh is moving or
+!     if we want to integrate in a different configuration
+      DO a=1, eNoNb
+!        Collect node position onto Master. On slaves set tmpX to zero.
+         Ac = lFa%IEN(a,e)
+         CALL GatherMasterV(x, Ac, tmpX)
+         lX(:,a) = tmpX(:)
+
+         IF (mvMsh) THEN
+            CALL GatherMasterV(Do, Ac, tmpDo)
+            lX(:,a) = lX(:,a) + tmpDo(nsd+2:2*nsd+1)
+         ELSE
+            IF (cfg .EQ. 'o') THEN
+               CALL GatherMasterV(Do, Ac, tmpDo)
+               lX(:,a) = lX(:,a) + tmpDo(is:ie)
+            ELSE IF (cfg .EQ. 'n') THEN
+               CALL GatherMasterV(Dn, Ac, tmpDn)
+               lX(:,a) = lX(:,a) + tmpDn(is:ie)
+            END IF
+         END IF
+      END DO
+
+!     Calculate normal vector on master and broadcast to all procs
+      IF (cm%mas()) THEN
+         ALLOCATE(xXi(nsd,insd))
+         xXi = 0._RKIND
+         DO a=1, eNoNb
+            DO i=1, insd
+               xXi(:,i) = xXi(:,i) + Nx(i,a)*lX(:,a)
+            END DO
+         END DO
+         n = CROSS(xXi)
+         DEALLOCATE(xXi)
+      ELSE
+         n = 0._RKIND
+      END IF
+
+!     If master, broadcast value of n to all procs
+      CALL cm%bcast(n)
+
+!     Deallocate local arrays
+      DEALLOCATE(lX, tmpX, tmpDo, tmpDn)
+
+      RETURN
+      END SUBROUTINE GNNBv
 !####################################################################
 

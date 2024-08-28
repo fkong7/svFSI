@@ -46,8 +46,18 @@
 !--------------------------------------------------------------------
 !     The contribution of coupled BCs is added to the matrix-vector
 !     product operation. Depending on the type of operation (adding the
-!     contribution or compution the PC contribution) different
+!     contribution or computing the PC contribution) different
 !     coefficients are used.
+!
+!     AB: The resistance is stored in lhs%face(faIn)%res.
+!     The current matrix vector product is in Y. The vector to be
+!     multiplied and added is in X. The matrix is represented by res.
+!     See for reference
+!        - Moghadam et al. 2013 eq. 27
+!          (https://doi.org/10.1016/j.jcp.2012.07.035)
+!        - Moghadam et al. 2013b
+!          (https://doi.org/10.1007/s00466-013-0868-1)
+!
 !--------------------------------------------------------------------
 
       SUBROUTINE ADDBCMUL(lhs, op_Type, dof, X, Y)
@@ -57,13 +67,15 @@
       REAL(KIND=LSRP), INTENT(IN) :: X(dof, lhs%nNo)
       REAL(KIND=LSRP), INTENT(INOUT) :: Y(dof, lhs%nNo)
 
-      INTEGER(KIND=LSIP) faIn, i, a, Ac, nsd
+      INTEGER(KIND=LSIP) faIn, faInCap, i, a, Ac, nsd
       REAL(KIND=LSRP) S, FSILS_DOTV
 
-      REAL(KIND=LSRP), ALLOCATABLE :: v(:,:), coef(:)
+      REAL(KIND=LSRP), ALLOCATABLE :: v(:,:), vcap(:,:), coef(:)
 
-      ALLOCATE(coef(lhs%nFaces), v(dof,lhs%nNo))
+      ALLOCATE(coef(lhs%nFaces), v(dof,lhs%nNo), vcap(dof,lhs%nNo))
 
+!     Setting coef depending on adding resistance to stiffness or
+!     computing preconditioner
       IF (op_Type .EQ. BCOP_TYPE_ADD) THEN
          coef = lhs%face%res
       ELSE IF(op_Type .EQ. BCOP_TYPE_PRE) THEN
@@ -74,6 +86,23 @@
       END IF
 
       DO faIn=1, lhs%nFaces
+
+!        If the face is virtual, don't add anything to tangent matrix.
+         IF (lhs%face(faIn)%vrtual) CYCLE
+
+!        In the following calculations, we are computing the product of
+!        the coupled BC tangent contribution with the vector X (refer to
+!        Moghadam et al. 2013 eq. 27). This is computed by first
+!        constructing the vector v, which one of the integrals found in
+!        the expression, int{N_A * n_i} dGamma. Then, v is dotted with X
+!        to yield a quantity S. Then S is multiplied by v again, and
+!        also multiplied by the appropriate coefficients in the
+!        expression. The calculations are complicated somewhat if there
+!        is a capping surface, but these complications are explained
+!        below.
+
+!        Calculating S, which is the inner product of the right integral
+!        (v) and the vector to be multiplied (X).
          nsd = MIN(lhs%face(faIn)%dof,dof)
          IF (lhs%face(faIn)%coupledFlag) THEN
             IF (lhs%face(faIn)%sharedFlag) THEN
@@ -85,6 +114,36 @@
                   END DO
                END DO
                S = coef(faIn)*FSILS_DOTV(dof,lhs%mynNo, lhs%commu, v, X)
+
+!              If a virtual face caps this face, add contribution to S
+!              Explanation: If the coupled surface is virtually capped
+!              to compute flow rate then the right integral should be
+!              over the capped surface + capping surface, while the left
+!              integral should be over the uncapped surface (because we
+!              do not apply a pressure to the capping surface). We can
+!              achieve this by adding the capping face's contribution
+               IF (lhs%face(faIn)%faInCap .NE. 0) THEN
+                     faInCap = lhs%face(faIn)%faInCap
+                     IF(.NOT. lhs%face(faInCap)%coupledFlag) THEN
+                        PRINT*, 'ADDBCMUL(): Cap face is not coupled.',
+     2                     'Probably cap face has zero resistance.'
+                        STOP "FSILS: FATAL ERROR"
+                     END IF
+                     vcap = 0._LSRP
+                     DO a=1, lhs%face(faInCap)%nNo
+                        Ac = lhs%face(faInCap)%glob(a)
+                        DO i=1, nsd
+                           vcap(i,Ac) = lhs%face(faInCap)%valM(i,a)
+                        END DO
+                     END DO
+                     S = S + coef(faIn)*FSILS_DOTV(dof,lhs%mynNo,
+     2                  lhs%commu, vcap, X)
+               END IF
+
+!              Add S times left integral to the current matrix-vector
+!              product Y. Note that we do not add the capping surface's
+!              contribution to v (vcap), since the left integral should
+!              be over the uncapped surface.
                DO a=1, lhs%face(faIn)%nNo
                   Ac = lhs%face(faIn)%glob(a)
                   DO i=1, nsd
@@ -99,7 +158,30 @@
                      S = S + lhs%face(faIn)%valM(i,a)*X(i,Ac)
                   END DO
                END DO
+               IF (lhs%face(faIn)%faInCap .NE. 0) THEN
+                     faInCap = lhs%face(faIn)%faInCap
+                     IF(.NOT. lhs%face(faInCap)%coupledFlag) THEN
+                        PRINT*, 'ADDBCMUL(): Cap face is not coupled.',
+     2                     'Probably cap face has zero resistance.'
+                     STOP "FSILS: FATAL ERROR"
+                     END IF
+
+                     DO a=1, lhs%face(faInCap)%nNo
+                        Ac = lhs%face(faInCap)%glob(a)
+                        DO i=1, nsd
+                           S = S + lhs%face(faInCap)%valM(i,a)*X(i,Ac)
+                        END DO
+                     END DO
+               END IF
+
+!              Multiply S by the resistance or related quantity if
+!              preconditioning
                S = coef(faIn)*S
+
+!              Add S times left integral to the current matrix-vector
+!              product Y. Note that we do not add the capping surface's
+!              contribution to v (vcap), since the left integral should
+!              be over the uncapped surface.
                DO a=1, lhs%face(faIn)%nNo
                   Ac = lhs%face(faIn)%glob(a)
                   DO i=1, nsd

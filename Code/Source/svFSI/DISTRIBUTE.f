@@ -213,6 +213,7 @@
          CALL cm%bcast(nITS)
          CALL cm%bcast(nTS)
          CALL cm%bcast(startTS)
+         CALL cm%bcast(start_time)
          CALL cm%bcast(nEq)
          CALL cm%bcast(dt)
          CALL cm%bcast(zeroAve)
@@ -226,6 +227,7 @@
          CALL cm%bcast(ris0DFlag)
          CALL cm%bcast(urisFlag)
          CALL cm%bcast(urisActFlag)
+         CALL cm%bcast(ecCpld)
          IF (rmsh%isReqd) THEN
             CALL cm%bcast(rmsh%method)
             CALL cm%bcast(rmsh%freq)
@@ -244,6 +246,10 @@
             CALL cm%bcast(cntctM%c)
             CALL cm%bcast(cntctM%h)
             CALL cm%bcast(cntctM%al)
+            CALL cm%bcast(cntctM%p)
+            CALL cm%bcast(cntctM%Rin)
+            CALL cm%bcast(cntctM%Rout)
+            CALL cm%bcast(cntctM%gap)
          END IF
          CALL cm%bcast(ibFlag)
          IF (ibFlag) CALL DISTIB()
@@ -544,7 +550,6 @@
       IMPLICIT NONE
       TYPE(mshType), INTENT(INOUT) :: lM
 
-      LOGICAL fnFlag
       INTEGER(KIND=IKIND) i, insd
 
       CALL cm%bcast(lM%lShpF)
@@ -558,13 +563,13 @@
       CALL cm%bcast(lM%nFs)
       CALL cm%bcast(lM%nG)
       CALL cm%bcast(lM%vtkType)
-      CALL cm%bcast(lM%nFn)
       CALL cm%bcast(lM%scF)
       CALL cm%bcast(lM%dx)
       CALL cm%bcast(lM%name)
-
-      fnFlag = ALLOCATED(lM%fN)
-      CALL cm%bcast(fnFlag)
+      CALL cm%bcast(lM%fib%nFn)
+      CALL cm%bcast(lM%fib%locNd)
+      CALL cm%bcast(lM%fib%locEl)
+      CALL cm%bcast(lM%fib%locGP)
 
       IF (cm%slv()) THEN
          lM%nNo = lM%gnNo
@@ -574,14 +579,21 @@
          ALLOCATE(lM%IEN(lM%eNoN, lM%nEl))
          ALLOCATE(lM%eId(lM%nEl))
          ALLOCATE(lM%fa(lM%nFa))
-         IF (fnFlag) ALLOCATE(lM%fN(lM%nFn*nsd,lM%nEl))
          CALL SELECTELE(lM)
+
+         IF (lM%fib%locNd) ALLOCATE(lM%fib%fN(nsd*lM%fib%nFn,1,lM%nNo))
+         IF (lM%fib%locEl) ALLOCATE(lM%fib%fN(nsd*lM%fib%nFn,1,lM%nEl))
+         IF (lM%fib%locGP)
+     2      ALLOCATE(lM%fib%fN(nsd*lM%fib%nFn,lM%nG,lM%nEl))
       END IF
       CALL cm%bcast(lM%gN)
       CALL cm%bcast(lM%lN)
       CALL cm%bcast(lM%IEN)
       CALL cm%bcast(lM%eId)
-      IF (fnFlag) CALL cm%bcast(lM%fN)
+
+      IF (lM%fib%locNd .OR. lM%fib%locEl .OR. lM%fib%locGP) THEN
+         CALL cm%bcast(lM%fib%fN)
+      END IF
 
       IF (lM%eType .EQ. eType_NRB) THEN
          CALL cm%bcast(lM%nSl)
@@ -656,6 +668,7 @@
       CALL cm%bcast(lEq%nBc)
       CALL cm%bcast(lEq%nBf)
       CALL cm%bcast(lEq%tol)
+      CALL cm%bcast(lEq%absTol)
       CALL cm%bcast(lEq%useTLS)
       CALL cm%bcast(lEq%assmTLS)
       IF (ibFlag) THEN
@@ -694,6 +707,7 @@
          CALL cm%bcast(lEq%dmn(iDmn)%prop)
          IF (lEq%dmn(iDmn)%phys .EQ. phys_CEP) THEN
             CALL cm%bcast(lEq%dmn(iDmn)%cep%cepType)
+            CALL cm%bcast(lEq%dmn(iDmn)%cep%fpar_in)
             CALL cm%bcast(lEq%dmn(iDmn)%cep%nX)
             CALL cm%bcast(lEq%dmn(iDmn)%cep%nG)
             CALL cm%bcast(lEq%dmn(iDmn)%cep%nFn)
@@ -718,23 +732,27 @@
          END IF
 
          IF ((lEq%dmn(iDmn)%phys .EQ. phys_struct)  .OR.
-     2       (lEq%dmn(iDmn)%phys .EQ. phys_ustruct)) THEN
+     2       (lEq%dmn(iDmn)%phys .EQ. phys_ustruct) .OR.
+     3       (lEq%dmn(iDmn)%phys .EQ. phys_shell)) THEN
             CALL DIST_MATCONSTS(lEq%dmn(iDmn)%stM)
+         END IF
+
+         IF (ecCpld) THEN
+            CALL DIST_ECMODEL(lEq%dmn(iDmn)%ec)
          END IF
 
          IF ((lEq%dmn(iDmn)%phys .EQ. phys_fluid)  .OR.
      2       (lEq%dmn(iDmn)%phys .EQ. phys_stokes) .OR.
      3       (lEq%dmn(iDmn)%phys .EQ. phys_CMM .AND. .NOT.cmmInit))THEN
-            CALL DIST_VISCMODEL(lEq%dmn(iDmn)%visc)
+            CALL DIST_VISC_FLUID(lEq%dmn(iDmn)%viscF)
+         END IF
+
+         IF ((lEq%dmn(iDmn)%phys .EQ. phys_struct)  .OR.
+     2       (lEq%dmn(iDmn)%phys .EQ. phys_ustruct)) THEN
+            CALL cm%bcast(lEq%dmn(iDmn)%viscS%viscTypeS)
+            CALL cm%bcast(lEq%dmn(iDmn)%viscS%mu)
          END IF
       END DO
-
-!     Distribute cardiac electromechanics parameters
-      CALL cm%bcast(cem%cpld)
-      IF (cem%cpld) THEN
-         CALL cm%bcast(cem%aStress)
-         CALL cm%bcast(cem%aStrain)
-      END IF
 
       IF (ibFlag) THEN
          IF (cm%slv()) ALLOCATE(lEq%dmnIB(lEq%nDmnIB))
@@ -910,9 +928,8 @@
          DEALLOCATE(tmp)
       END IF
 
-!     Communicating and reordering master node data for undeforming
-!     Neumann BC faces
-      IF (BTEST(lBc%bType,bType_undefNeu)) THEN
+!     Communicating and reordering master node data for clamped Neu BC
+      IF (BTEST(lBc%bType,bType_clmpd)) THEN
          CALL cm%bcast(lBc%masN)
          iM   = lBc%iM
          iFa  = lBc%iFa
@@ -1170,7 +1187,7 @@
       END SUBROUTINE DISTBF
 !--------------------------------------------------------------------
 !     This subroutine distributes constants and parameters of the
-!     constitutive model to all processes
+!     structural constitutive model to all processes
       SUBROUTINE DIST_MATCONSTS(lStM)
       USE COMMOD
       USE ALLFUN
@@ -1194,6 +1211,10 @@
       CALL cm%bcast(lStM%bfs)
       CALL cm%bcast(lStM%kap)
       CALL cm%bcast(lStM%khs)
+      CALL cm%bcast(lStM%a0)
+      CALL cm%bcast(lStM%b1)
+      CALL cm%bcast(lStM%b2)
+      CALL cm%bcast(lStM%mu0)
 
 !     Distribute fiber stress
       CALL cm%bcast(lStM%Tf%fType)
@@ -1218,19 +1239,63 @@
          CALL cm%bcast(lStM%Tf%gt%r)
          CALL cm%bcast(lStM%Tf%gt%i)
       END IF
+      CALL cm%bcast(lStM%Tf%eta_s)
 
       RETURN
       END SUBROUTINE DIST_MATCONSTS
 !--------------------------------------------------------------------
 !     This subroutine distributes constants and parameters of the
-!     constitutive model to all processes
-      SUBROUTINE DIST_VISCMODEL(lVis)
+!     excitation-contraction coupling model
+      SUBROUTINE DIST_ECMODEL(lEc)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-      TYPE(viscModelType), INTENT(INOUT) :: lVis
+      TYPE(eccModelType), INTENT(INOUT) :: lEc
 
-      CALL cm%bcast(lVis%viscType)
+      CALL cm%bcast(lEc%astress)
+      CALL cm%bcast(lEc%astrain)
+      CALL cm%bcast(lEc%asnType)
+      CALL cm%bcast(lEc%k)
+      CALL cm%bcast(lEc%caCpld)
+      CALL cm%bcast(lEc%fpar_in)
+      IF (.NOT.lEc%caCpld) THEN
+         CALL cm%bcast(lEc%odes%tIntType)
+         CALL cm%bcast(lEc%dt)
+         CALL cm%bcast(lEc%dType)
+         IF (BTEST(lEc%dType, bType_std)) THEN
+            CALL cm%bcast(lEc%Ya)
+         ELSE IF (BTEST(lEc%dType, bType_ustd)) THEN
+            CALL cm%bcast(lEc%Yat%lrmp)
+            CALL cm%bcast(lEc%Yat%d)
+            CALL cm%bcast(lEc%Yat%n)
+            IF (cm%slv()) THEN
+               ALLOCATE(lEc%Yat%qi(lEc%Yat%d))
+               ALLOCATE(lEc%Yat%qs(lEc%Yat%d))
+               ALLOCATE(lEc%Yat%r(lEc%Yat%d,lEc%Yat%n))
+               ALLOCATE(lEc%Yat%i(lEc%Yat%d,lEc%Yat%n))
+            END IF
+            CALL cm%bcast(lEc%Yat%ti)
+            CALL cm%bcast(lEc%Yat%T)
+            CALL cm%bcast(lEc%Yat%qi)
+            CALL cm%bcast(lEc%Yat%qs)
+            CALL cm%bcast(lEc%Yat%r)
+            CALL cm%bcast(lEc%Yat%i)
+         END IF
+      END IF
+      CALL cm%bcast(lEc%eta_s)
+
+      RETURN
+      END SUBROUTINE DIST_ECMODEL
+!--------------------------------------------------------------------
+!     This subroutine distributes constants and parameters of the
+!     fluid viscosity constitutive model to all processes
+      SUBROUTINE DIST_VISC_FLUID(lVis)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(viscModelTypeFluid), INTENT(INOUT) :: lVis
+
+      CALL cm%bcast(lVis%viscTypeF)
       CALL cm%bcast(lVis%mu_i)
       CALL cm%bcast(lVis%mu_o)
       CALL cm%bcast(lVis%lam)
@@ -1238,7 +1303,7 @@
       CALL cm%bcast(lVis%n)
 
       RETURN
-      END SUBROUTINE DIST_VISCMODEL
+      END SUBROUTINE DIST_VISC_FLUID
 !####################################################################
 !     This is for partitioning a single mesh
       SUBROUTINE PARTMSH(lM, gmtl, nP, wgt)
@@ -1250,15 +1315,15 @@
       INTEGER(KIND=IKIND), INTENT(INOUT) :: gmtl(gtnNo)
       TYPE(mshType), INTENT(INOUT) :: lM
 
-      LOGICAL :: flag, fnFlag
+      LOGICAL :: flag
       INTEGER(KIND=MPI_OFFSET_KIND) :: idisp
-      INTEGER(KIND=IKIND) :: i, a, Ac, e, Ec, edgecut, nEl, nNo, eNoN,
-     2   eNoNb, ierr, fid, SPLIT, insd, nFn, eRisProc
+      INTEGER(KIND=IKIND) :: a, e, g, i, is, ie, Ac, Ec, nEl, nNo, nG,
+     2   nFn, eNoN, eNoNb, edgeCut, ierr, fid, SPLIT, insd, eRisProc
       CHARACTER(LEN=stdL) fTmp
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), gPart(:),
      2   tempIEN(:,:), gtlPtr(:), sCount(:), disp(:)
-      REAL(KIND=RKIND), ALLOCATABLE :: tmpR(:), tmpFn(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: tmpR(:), lfN(:,:), gfN(:,:)
 
       IF (cm%seq()) THEN
          lM%nEl = lM%gnEl
@@ -1288,9 +1353,13 @@
       CALL cm%bcast(lM%gnEl)
       CALL cm%bcast(lM%gnNo)
       CALL cm%bcast(lM%name)
-      CALL cm%bcast(lM%nFn)
       CALL cm%bcast(lM%scF)
-      nFn = lM%nFn
+      CALL cm%bcast(lM%fib%nFn)
+      CALL cm%bcast(lM%fib%locNd)
+      CALL cm%bcast(lM%fib%locEl)
+      CALL cm%bcast(lM%fib%locGP)
+      nFn = lM%fib%nFn
+      nG  = lM%nG
 
       insd = nsd
       IF (lM%lShl) insd = nsd - 1
@@ -1339,10 +1408,13 @@
          sCount(i) = lM%eDist(i)*eNoN - disp(i)
       END DO
 
+!     Count elements assigned to each proc and allocate space for part
+!     The part array maps an element to the proc it belongs to
       nEl = lM%eDist(cm%id() + 1) - lM%eDist(cm%id())
       idisp = lM%eDist(cm%id())*SIZEOF(nEl)
       ALLOCATE(part(nEl))
 
+!     Read domain partition from file if desired (if remesh is used)
       fTmp = TRIM(appPath)//".partitioning_"//TRIM(lM%name)//".bin"
       flag = .FALSE.
       IF (rmsh%isReqd) INQUIRE(FILE=TRIM(fTmp), EXIST=flag)
@@ -1359,11 +1431,9 @@
          CALL MPI_FILE_CLOSE(fid, ierr)
       ELSE
          ALLOCATE(lM%IEN(eNoN,nEl))
-!     Scattering the lM%gIEN array to processors
          CALL MPI_SCATTERV(lM%gIEN, sCount, disp, mpint, lM%IEN,
      2      nEl*eNoN, mpint, master, cm%com(), ierr)
 
-!     This is to get eNoNb
          SELECT CASE (lM%eType)
          CASE(eType_TET4)
             eNoNb = 3
@@ -1394,9 +1464,8 @@
          CASE DEFAULT
             err = "Undefined element type"
          END SELECT
-!     The output of this process is "part" array which part(i) says
-!     which processor element "i" belongs to
-!     Doing partitioning, using ParMetis
+
+!        Domain partitioning using ParMetis
          edgecut = SPLIT(nEl, eNoN, eNoNb, lM%IEN, cm%np(), lM%eDist,
      2      wgt, part)
          IF (edgecut .EQ. 0) THEN
@@ -1405,7 +1474,6 @@ c            wrn = " ParMETIS failed to partition the mesh"
          ELSE IF (edgecut .GT. 0) THEN
             std = " ParMETIS partitioned the mesh by cutting "//
      2         STR(edgecut)//" elements"
-!     LT 0 is for the case that all elements reside in one processor
          END IF
          DEALLOCATE(lM%IEN)
          IF (rmsh%isReqd) THEN
@@ -1420,13 +1488,11 @@ c            wrn = " ParMETIS failed to partition the mesh"
          END IF
       END IF
 
-      DO i=1, cm%np()
+      DO i=1, cm%np() ! Loop over procs
          disp(i)   = lM%eDist(i-1)
          sCount(i) = lM%eDist(i) - disp(i)
       END DO
 
-!     Gathering the parts inside master, part(e) is equal to the
-!     cm%id() that the element e belong to
       IF (cm%mas()) THEN
          ALLOCATE(gPart(lM%gnEl))
       ELSE
@@ -1436,8 +1502,10 @@ c            wrn = " ParMETIS failed to partition the mesh"
 !     is the owner of element "e"
       CALL MPI_GATHERV(part, nEl, mpint, gPart, sCount, disp, mpint,
      2   master, cm%com(), ierr)
-
       DEALLOCATE(part)
+
+!     From gPart, fill in eDist array
+!     eDist(i) = global index of first element that belongs to proc i
       IF (cm%mas()) THEN
          sCount = 0
          eRisProc = -1
@@ -1469,8 +1537,8 @@ c            wrn = " ParMETIS failed to partition the mesh"
          END DO
 
          ALLOCATE(tempIEN(eNoN,lM%gnEl), lM%otnIEN(lM%gnEl))
-!     Making the lM%IEN array in order, based on the cm%id() number in
-!     master. lM%otnIEN maps old IEN order to new IEN order.
+!        Making the lM%IEN array in order, based on the cm%id() number
+!        in master. lM%otnIEN maps old IEN order to new IEN order.
          disp = 0
          DO e=1, lM%gnEl
             Ec = lM%eDist(gPart(e)) + 1
@@ -1496,17 +1564,30 @@ c            wrn = " ParMETIS failed to partition the mesh"
             DEALLOCATE(lM%eId)
          END IF
 
-!     This it to distribute fN, if allocated
-         fnFlag = .FALSE.
-         IF (ALLOCATED(lM%fN)) THEN
-            fnFlag = .TRUE.
-            ALLOCATE(tmpFn(nFn*nsd,lM%gnEl))
-            tmpFn = 0._RKIND
+!     This it to distribute fibers, if stored at elements or at
+!     integration points. Fibers at nodes will be distributed later
+!     when gtlptr is defined.
+         IF (lM%fib%locEl) THEN
+            ALLOCATE(gfN(nsd*nFn,lM%gnEl))
+            gfN = 0._RKIND
             DO e=1, lM%gnEl
                Ec = lM%otnIEN(e)
-               tmpFn(:,Ec) = lM%fN(:,e)
+               gfN(:,Ec) = lM%fib%fN(:,1,e)
             END DO
-            DEALLOCATE(lM%fN)
+            DEALLOCATE(lM%fib%fN)
+
+         ELSE IF (lM%fib%locGP) THEN
+            ALLOCATE(gfN(nsd*nFn*nG,lM%gnEl))
+            gfN = 0._RKIND
+            DO e=1, lM%gnEl
+               Ec = lM%otnIEN(e)
+               DO g=1, nG
+                  is = (g-1)*nsd*nFn + 1
+                  ie = g*nsd*nFn
+                  gfN(is:ie,Ec) = lM%fib%fN(:,g,e)
+               END DO
+            END DO
+            DEALLOCATE(lM%fib%fN)
          END IF
       ELSE
          ALLOCATE(lM%otnIEN(0))
@@ -1514,7 +1595,6 @@ c            wrn = " ParMETIS failed to partition the mesh"
       DEALLOCATE(gPart)
 
       CALL cm%bcast(flag)
-      CALL cm%bcast(fnFlag)
       CALL cm%bcast(lM%eDist)
       IF (risFlag) CALL cm%bcast(lM%partRIS)
 
@@ -1536,20 +1616,52 @@ c            wrn = " ParMETIS failed to partition the mesh"
          DEALLOCATE(part)
       END IF
 
-!     Communicating fN, if neccessary
-      IF (fnFlag) THEN
-         ALLOCATE(lM%fN(nFn*nsd,nEl))
-         IF (.NOT.ALLOCATED(tmpFn)) ALLOCATE(tmpFn(0,0))
+!     Communicating fibers at elements, if neccessary
+      IF (lM%fib%locEl) THEN
+         ALLOCATE(lfN(nsd*nFn,nEl))
+         IF (.NOT.ALLOCATED(gfN)) ALLOCATE(gfN(0,0))
          DO i=1, cm%np()
-            disp(i)   = lM%eDist(i-1)*nFn*nsd
-            sCount(i) = lM%eDist(i)*nFn*nsd - disp(i)
+            disp(i)   = lM%eDist(i-1)*(nsd*nFn)
+            sCount(i) = lM%eDist(i)*(nsd*nFn) - disp(i)
          END DO
-         CALL MPI_SCATTERV(tmpFn, sCount, disp, mpreal, lM%fN,
-     2      nEl*nFn*nsd, mpreal, master, cm%com(), ierr)
-         DEALLOCATE(tmpFn)
+         CALL MPI_SCATTERV(gfN, sCount, disp, mpreal, lfN, nsd*nFn*nEl,
+     2      mpreal, master, cm%com(), ierr)
+         DEALLOCATE(gfN)
+
+         ALLOCATE(lM%fib%fN(nsd*nFn,1,nEl))
+         lM%fib%fN = 0._RKIND
+         DO e=1, nEl
+            lM%fib%fN(:,1,e) = lfN(:,e)
+         END DO
+         DEALLOCATE(lfN)
+
+!     Communicating fibers at integration points, if neccessary
+      ELSE IF (lM%fib%locGP) THEN
+         ALLOCATE(lfN(nsd*nFn*nG,nEl))
+         IF (.NOT.ALLOCATED(gfN)) ALLOCATE(gfN(0,0))
+         DO i=1, cm%np()
+            disp(i)   = lM%eDist(i-1)*(nsd*nFn*nG)
+            sCount(i) = lM%eDist(i)*(nsd*nFn*nG) - disp(i)
+         END DO
+         CALL MPI_SCATTERV(gfN, sCount, disp, mpreal, lfN,
+     2      (nsd*nFn*nG)*nEl, mpreal, master, cm%com(), ierr)
+         DEALLOCATE(gfN)
+
+         ALLOCATE(lM%fib%fN(nsd*nFn,nG,nEl))
+         lM%fib%fN = 0._RKIND
+         DO e=1, nEl
+            DO g=1, nG
+               is = (g-1)*(nsd*nFn) + 1
+               ie = g*nsd*nFn
+               lM%fib%fN(:,g,e) = lfN(is:ie,e)
+            END DO
+         END DO
+         DEALLOCATE(lfN)
       END IF
 
-!     Now scattering the sorted lM%IEN to all processors
+!     Now scattering the sorted lM%IEN to all processors. Data placed in
+!     lM%IEN. Now, lM%IEN maps node a of element e (local to this proc
+!     and mesh) to global node A on mesh
       IF (.NOT.ALLOCATED(tempIEN)) ALLOCATE(tempIEN(0,0))
       DO i=1, cm%np()
          disp(i)   = lM%eDist(i-1)*eNoN
@@ -1560,9 +1672,9 @@ c            wrn = " ParMETIS failed to partition the mesh"
       DEALLOCATE(tempIEN)
 
 !     Constructing the initial global to local pointer
-!     lM%IEN: eNoN,nEl --> gnNo
+!     lM%IEN: eNoN,nEl --> gnNo (global node on mesh)
 !     gtlPtr: gnNo     --> nNo
-!     lM%IEN: eNoN,nEl --> nNo
+!     lM%IEN: eNoN,nEl --> nNo (local node on the current proc and mesh)
       ALLOCATE(gtlPtr(lM%gnNo))
       nNo    = 0
       gtlPtr = 0
@@ -1579,6 +1691,53 @@ c            wrn = " ParMETIS failed to partition the mesh"
       lM%nNo = nNo
       IF (cm%slv()) ALLOCATE(lM%gN(lM%gnNo))
       CALL cm%bcast(lM%gN)
+
+!     Use gtlptr to distribute fibers at nodes, if allocated
+      IF (lM%fib%locNd) THEN
+         ALLOCATE(gfN(nsd*nFn,lM%gnNo))
+         IF (cm%mas()) THEN
+            DO a=1, lM%gnNo
+               gfN(:,a) = lM%fib%fN(:,1,a)
+            END DO
+            DEALLOCATE(lM%fib%fN)
+         END IF
+
+         CALL cm%bcast(gfN)
+
+         ALLOCATE(lM%fib%fN(nsd*nFn,1,lM%nNo))
+         lM%fib%fN = 0._RKIND
+         DO Ac=1, lM%gnNo
+            a = gtlptr(Ac)
+            IF (a .NE. 0) THEN
+               lM%fib%fN(:,1,a) = gfN(:,Ac)
+            END IF
+         END DO
+         DEALLOCATE(gfN)
+      END IF
+
+!     Use gtlptr to distribute lM%tmX, if allocated
+      flag = ALLOCATED(lM%tmX)
+      CALL cm%bcast(flag)
+      IF (flag) THEN
+         ALLOCATE(tmpR(lM%gnNo))
+         IF (cm%mas()) THEN
+            tmpR = lM%tmX
+            DEALLOCATE(lM%tmX)
+         END IF
+
+         CALL cm%bcast(tmpR)
+
+         ALLOCATE(lM%tmX(lM%nNo))
+         lM%tmX = 0._RKIND
+         DO Ac=1, lM%gnNo
+            a = gtlptr(Ac)
+            IF (a .NE. 0) THEN
+               lM%tmX(a) = tmpR(Ac)
+            END IF
+         END DO
+         DEALLOCATE(tmpR)
+      END IF
+
 !     lM%gN: gnNo --> gtnNo
 !     part:  nNo  --> gtnNo
       ALLOCATE(part(nNo))
@@ -1586,7 +1745,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
          a = gtlPtr(Ac)
          IF (a .NE. 0) part(a) = lM%gN(Ac)
       END DO
-!     mapping and converting other parameters.
+!     Mapping and converting other parameters.
 !     I will use an upper bound for gPart as a container for ltg,
 !     since there can be repeated nodes. gPart is just a temp variable.
 !     gmtl:  gtnNo --> tnNo
@@ -1631,6 +1790,8 @@ c            wrn = " ParMETIS failed to partition the mesh"
                lM%nW(a) = tmpR(Ac)
             END IF
          END DO
+         DEALLOCATE(tmpR)
+
 !     Distributing INN, using tempIEN as tmp array
          IF (cm%mas()) THEN
             ALLOCATE(tempIEN(insd,lM%gnEl))
@@ -1669,7 +1830,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), ePtr(:)
 
-!     Broadcasting the number of nodes and elements of to slaves and
+!     Broadcasting the number of nodes and elements off to followers and
 !     populating gFa to all procs
       IF (cm%mas()) THEN
          gFa%d    = lFa%d
@@ -1678,6 +1839,8 @@ c            wrn = " ParMETIS failed to partition the mesh"
          gFa%nEl  = lFa%nEl
          gFa%gnEl = lFa%gnEl
          gFa%nNo  = lFa%nNo
+         gFa%vrtual = lFa%vrtual
+         gFa%capID  = lFa%capID
          IF (rmsh%isReqd) ALLOCATE(gFa%gebc(1+gFa%eNoN,gFa%gnEl))
       ELSE
          IF (rmsh%isReqd) ALLOCATE(gFa%gebc(0,0))
@@ -1688,22 +1851,43 @@ c            wrn = " ParMETIS failed to partition the mesh"
       CALL cm%bcast(gFa%nEl)
       CALL cm%bcast(gFa%gnEl)
       CALL cm%bcast(gFa%nNo)
+      CALL cm%bcast(gFa%vrtual)
+      CALL cm%bcast(gFa%capID)
+
+!     Selects face mesh element type and sets Gauss point coordinates
+!     and shape function basis
       CALL SELECTELEB(lM, gFa)
 
-      eNoNb = gFa%eNoN
-      iM = gFa%iM
+      eNoNb = gFa%eNoN ! number of nodes in an element on this face
+      iM = gFa%iM      ! index of mesh that this face belongs to
+
       ALLOCATE(gFa%IEN(eNoNb,gFa%nEl), gFa%gE(gFa%nEl), gFa%gN(gFa%nNo),
      2   ePtr(gFa%nEl))
+
       IF (cm%mas()) THEN
          gFa = lFa
          CALL DESTROY(lFa)
       END IF
+
       CALL cm%bcast(gFa%name)
       lFa%name = gFa%name
       lFa%d    = gFa%d
       lFa%eNoN = eNoNb
+
+!     Selects face mesh element type and sets Gauss point coordinates
+!     and shape function basis
       CALL SELECTELEB(lM, lFa)
+
       lFa%iM   = iM
+      lFa%vrtual = gFa%vrtual
+      lFa%capID = gFa%capID
+
+!     A virtual face cannot be partitioned as it is not part of the
+!     parent mesh entity. Treat this separately and return.
+      IF (lFa%vrtual) THEN
+         CALL PARTFACEV(lFa, gFa, gmtl)
+         RETURN
+      END IF
 
       i = gFa%nEl*(2+eNoNb) + gFa%nNo
       ALLOCATE(part(i))
@@ -1749,6 +1933,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
          END IF
       END DO
       ALLOCATE(lFa%gE(lFa%nEl), lFa%IEN(eNoNb,lFa%nEl))
+
       lFa%nNo = 0
       DO a=1, gFa%nNo
          Ac = gmtl(gFa%gN(a))
@@ -1772,6 +1957,7 @@ c            wrn = " ParMETIS failed to partition the mesh"
             END DO
          END IF
       END DO
+
 !     Analogously copying the nodes which belong to this processor
       j = 0
       DO a=1, gFa%nNo
@@ -1797,4 +1983,115 @@ c            wrn = " ParMETIS failed to partition the mesh"
 
       RETURN
       END SUBROUTINE PARTFACE
+!--------------------------------------------------------------------
+!     This routine partitions a virtual face. Since a virtual face is
+!     not part of a mesh entity, it will be treated separately.
+      SUBROUTINE PARTFACEV(lFa, gFa, gmtl)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(faceType), INTENT(INOUT) :: lFa, gFa
+      INTEGER(KIND=IKIND), INTENT(IN) :: gmtl(gtnNo)
+
+      INTEGER(KIND=IKIND) eNoNb, e, a, Ac, i, j, iM
+
+      INTEGER(KIND=IKIND), ALLOCATABLE :: part(:), ePtr(:)
+
+!     Define some useful variables
+      eNoNb = gFa%eNoN
+      iM = gFa%iM
+
+      ALLOCATE(ePtr(gFa%nEl))
+
+      i = (gFa%nEl*eNoNb) + gFa%nNo
+      ALLOCATE(part(i))
+      IF (cm%mas()) THEN
+         DO e=1, gFa%nEl
+            j  = (e-1)*eNoNb
+            part(j+1:j+eNoNb) = gFa%IEN(:,e)
+         END DO
+         DO a=1, gFa%nNo
+            j = gFa%nEl*eNoNb + a
+            part(j) = gFa%gN(a)
+         END DO
+      END IF
+
+!     Broadcast part array to all processors
+      CALL cm%bcast(part)
+
+      IF (cm%slv()) THEN
+         gFa%gE = 0
+         DO e=1, gFa%nEl
+            j = (e-1)*eNoNb
+            gFa%IEN(:,e) = part(j+1:j+eNoNb)
+         END DO
+         DO a=1, gFa%nNo
+            j = gFa%nEl*eNoNb + a
+            gFa%gN(a) = part(j)
+         END DO
+      END IF
+      DEALLOCATE(part)
+
+!     At this point, gFa is the same across all procs, and contains all
+!     the face information
+
+!     If face is virtual, then we can't partition the face according
+!     to the element partition of the mesh, since the element of the
+!     virtual face do not lie on the mesh. In this case, set lFa%nEl
+!     equal to gFa%nEl for all procs.
+
+!     Time to form the local "face" structure in each processor
+      lFa%nEl = gFa%nEl
+
+!     Allocate local face global element list and IEN array
+      ALLOCATE(lFa%gE(lFa%nEl), lFa%IEN(eNoNb,lFa%nEl))
+
+!     Set lFa%gE = 0 for a virtual face
+      lFa%gE(:) = 0
+
+!     Compute the number of nodes on face that belong to this proc
+      lFa%nNo = 0
+      DO a=1, gFa%nNo
+         Ac = gmtl(gFa%gN(a))
+         IF (Ac .NE. 0) THEN
+            lFa%nNo = lFa%nNo + 1
+         END IF
+      END DO
+
+!     Allocate local face global node list
+      ALLOCATE(lFa%gN(lFa%nNo))
+
+!     Note that some values of lFa%IEN can be 0 if the node does not
+!     belong to the processor
+      DO e=1, lFa%nEl
+         DO a=1, eNoNb
+            lFa%IEN(a,e) = gmtl(gFa%IEN(a,e))
+         END DO
+      END DO
+
+!     Analogously copying the nodes which belong to this processor
+      j = 0
+      DO a=1, gFa%nNo
+         Ac = gmtl(gFa%gN(a))
+         IF (Ac .NE. 0) THEN
+            j = j + 1
+            lFa%gN(j) = Ac
+         END IF
+      END DO
+
+      lFa%gnEl = gFa%gnEl
+      IF (rmsh%isReqd) THEN
+         IF(cm%mas()) THEN
+            ALLOCATE(lFa%gebc(1+eNoNb,lFa%gnEl))
+            DO e=1, gFa%gnEl
+               lFa%gebc(1,e) = gFa%gebc(1,e)
+               lFa%gebc(2:1+eNoNb,e) = gFa%gebc(2:1+eNoNb,e)
+            END DO
+         ELSE
+            ALLOCATE(lFa%gebc(0,0))
+         END IF
+      END IF
+
+      RETURN
+      END SUBROUTINE PARTFACEV
 !####################################################################

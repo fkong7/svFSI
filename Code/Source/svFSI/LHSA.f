@@ -99,7 +99,7 @@
 !     Treat shells with triangular elements here
       DO iM=1, nMsh
          IF (.NOT.shlEq .OR. .NOT.msh(iM)%lShl) CYCLE
-         IF (msh(iM)%eType .EQ. eType_NRB) CYCLE
+         IF (msh(iM)%eType .NE. eType_TRI3) CYCLE
          DO e=1, msh(iM)%nEl
             DO a=1, 2*msh(iM)%eNoN
                IF (a .LE. msh(iM)%eNoN) THEN
@@ -121,7 +121,7 @@
          END DO
       END DO
 
-!     Now reset idMap for undeforming Neumann BC faces. Then insert
+!     Now reset idMap for clamped Neumann BC faces. Then insert
 !     master node as a column entry in each row for all the slave nodes.
 !     This step is performed even for ghost master nodes where the idMap
 !     points to the ghost master node.
@@ -129,7 +129,7 @@
          DO j=1, eq(i)%nBc
             iM  = eq(i)%bc(j)%iM
             iFa = eq(i)%bc(j)%iFa
-            IF (BTEST(eq(i)%bc(j)%bType, bType_undefNeu)) THEN
+            IF (BTEST(eq(i)%bc(j)%bType, bType_clmpd)) THEN
                masN = eq(i)%bc(j)%masN
                IF (masN .EQ. 0) CYCLE
                DO a=1, msh(iM)%fa(iFa)%nNo
@@ -246,7 +246,8 @@
 
 !           If column entry already exists, exit
             IF (col .EQ. uInd(i,row)) EXIT
-!           If we are this point, then then the current entry is bigger.
+
+!           If we are this point, then the current entry is bigger.
 !           Shift all the entries from here to the end of the list. If
 !           list is full, we request a larger list, otherwise we shift
 !           and add the item at the current entry position.
@@ -285,6 +286,7 @@
 !####################################################################
 !     This subroutine assembels the element stiffness matrix into the
 !     global stiffness matrix (Val sparse matrix formatted as a vector)
+!     Also assembles residual vector into global residual vector
       SUBROUTINE DOASSEM (d, eqN, lK, lR)
       USE TYPEMOD
       USE COMMOD, ONLY: dof, rowPtr, colPtr, R, Val

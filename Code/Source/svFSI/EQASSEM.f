@@ -66,11 +66,11 @@ C       END IF
       CASE (phys_ustruct)
          CALL CONSTRUCT_uSOLID(lM, Ag, Yg, Dg)
 
-      CASE (phys_CMM)
-         CALL CONSTRUCT_CMM(lM, Ag, Yg, Dg)
-
       CASE (phys_shell)
          CALL CONSTRUCT_SHELL(lM, Ag, Yg, Dg)
+
+      CASE (phys_CMM)
+         CALL CONSTRUCT_CMM(lM, Ag, Yg, Dg)
 
       CASE (phys_FSI)
          CALL CONSTRUCT_FSI(lM, Ag, Yg, Dg)
@@ -128,7 +128,7 @@ C       END IF
          IF (lFa%eType .EQ. eType_NRB) CALL NRBNNXB(msh(iM), lFa, e)
 
          DO g=1, lFa%nG
-            CALL GNNB(lFa, e, g, nsd-1, eNoN, lFa%Nx(:,:,g), nV)
+            CALL GNNB(lFa, e, g, nsd-1, eNoN, lFa%Nx(:,:,g), nV, 'r')
             Jac = SQRT(NORM(nV))
             nV  = nV/Jac
             w   = lFa%w(g)*Jac
@@ -200,10 +200,11 @@ C       END IF
 !     We use Nanson's formula to take change in normal direction with
 !     deformation into account. Additional calculations based on mesh
 !     need to be performed.
-      SUBROUTINE BNEUFOLWP(lFa, hg, Dg)
+      SUBROUTINE BNEUFOLWP(lBc, lFa, hg, Dg)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
+      TYPE(bcType), INTENT(IN) :: lBc
       TYPE(faceType), INTENT(IN) :: lFa
       REAL(KIND=RKIND), INTENT(IN) :: hg(tnNo), Dg(tDof,tnNo)
 
@@ -263,7 +264,7 @@ C       END IF
             IF (g.EQ.1 .OR. .NOT.msh(iM)%lShpF)
      2         CALL GNN(eNoN, nsd, Nxi, xl, Nx, Jac, ksix)
 
-            CALL GNNB(lFa, e, g, nsd-1, eNoNb, lFa%Nx(:,:,g), nV)
+            CALL GNNB(lFa, e, g, nsd-1, eNoNb, lFa%Nx(:,:,g), nV, 'r')
             Jac = SQRT(NORM(nV))
             nV  = nV / Jac
             w   = lFa%w(g)*Jac
@@ -307,4 +308,62 @@ C       END IF
 
       RETURN
       END SUBROUTINE BNEUFOLWP
+! ----------------------------------------------------------------------
+!     Update the surface integral involved in the coupled/resistance BC
+!     input to the linear solver to take into account the deformed
+!     geometry. This integral is sV = int_Gammat (Na * n_i)
+!     (See Moghadam 2013 eq. 27.)
+!
+!     This function recomputes this integral and updates the variable
+!     lhs%face%val with the new value, which is eventually used in
+!     ADDBCMUL() in the linear solver to add the contribution from the
+!     resistance BC to the matrix-vector product of the tangent matrix
+!     and an arbitrary vector.
+      SUBROUTINE FSILS_UPD(lBc, lFa)
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+      TYPE(bcType), INTENT(IN) :: lBc
+      TYPE(faceType), INTENT(IN) :: lFa
+
+      INTEGER(KIND=IKIND) a, e, g, Ac, iM
+      REAL(KIND=RKIND) n(nsd)
+
+      REAL(KIND=RKIND), ALLOCATABLE :: sV(:,:), sVl(:,:)
+      CHARACTER cfg
+
+      iM = lFa%iM
+      ALLOCATE(sVl(nsd,lFa%nNo), sV(nsd,tnNo))
+
+!     This is where integrals in Moghadam et al. eq. 27 are computed.
+      sV = 0._RKIND
+      DO e=1, lFa%nEl
+         IF (lFa%eType .EQ. eType_NRB) CALL NRBNNXB(msh(iM), lFa, e)
+         DO g=1, lFa%nG
+!           Normal vector is computed in the deformed configuration
+            cfg = 'n'
+            CALL GNNB(lFa, e, g, nsd-1, lFa%eNoN, lFa%Nx(:,:,g),
+     2         n, cfg)
+            DO a=1, lFa%eNoN
+               Ac = lFa%IEN(a,e)
+               IF (Ac .NE. 0) THEN
+                  sV(:,Ac) = sV(:,Ac) + lFa%N(a,g)*lFa%w(g)*n
+               END IF
+            END DO
+         END DO
+      END DO
+
+      DO a=1, lFa%nNo
+         Ac       = lFa%gN(a)
+         sVl(:,a) = sV(:,Ac)
+      END DO
+
+!     Update lhs%face(i) variables, including val if sVl exists
+      CALL FSILS_BC_UPDATE(lhs, lBc%lsPtr, lFa%nNo, nsd, BC_TYPE_Neu,
+     2   sVl)
+
+      DEALLOCATE(sVl, sV)
+
+      RETURN
+      END SUBROUTINE FSILS_UPD
 !####################################################################

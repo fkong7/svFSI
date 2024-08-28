@@ -76,10 +76,10 @@
 !     damping, shell thickness, stabilization coeffs. for USTRUCT
 !     (momentum, continuity)
       INTEGER(KIND=IKIND), PARAMETER :: prop_NA = 0, fluid_density = 1,
-     2   solid_density = 2, solid_viscosity = 3, elasticity_modulus = 4,
-     3   poisson_ratio = 5, conductivity = 6, f_x = 7, f_y = 8, f_z = 9,
-     4   backflow_stab = 10, source_term = 11, damping = 12,
-     5   shell_thickness = 13, ctau_M = 14, ctau_C = 15
+     2   solid_density = 2, elasticity_modulus = 3, poisson_ratio = 4,
+     3   conductivity = 5, f_x = 6, f_y = 7, f_z = 8, backflow_stab = 9,
+     4   source_term = 10, damping = 11, shell_thickness = 12,
+     5   ctau_M = 13, ctau_C = 14
 !--------------------------------------------------------------------
 !     Types of accepted elements
 !     Point, Line (linear), Line (quadratic), Triangle (linear),
@@ -127,15 +127,15 @@
 !     coupled, general (combination of ud/ustd), resistance, imposed
 !     flux, zero out perimeter, impose BC on the integral of state
 !     variable or D (instead of Y), flat profile, parabolic profile,
-!     user defined profile, backflow stabilization, BCs for shells
-!     (fixed, hinged, free, symmetric), undeforming Neu, RCR-Neu
+!     user defined profile, BCs for shells (fixed, hinged, free,
+!     symmetric), clamped Neu BC, RCR-Neu
       INTEGER(KIND=IKIND), PARAMETER :: bType_Dir = 0, bType_Neu = 1,
      2   bType_trac = 2, bType_CMM = 3, bType_Robin = 4, bType_std = 5,
      3   bType_ustd = 6, bType_cpl = 7, bType_gen = 8, bType_res = 9,
      4   bType_flx = 10, bType_zp = 11, bType_impD = 12, bType_flat =13,
-     5   bType_para = 14, bType_ud = 15, bType_bfs = 16, bType_fix = 17,
-     6   bType_hing = 18, bType_free = 19, bType_symm = 20,
-     7   bType_undefNeu = 21, bType_RCR = 22, bType_Ris0D = 23
+     5   bType_para = 14, bType_ud = 15, bType_fix = 16, bType_hing =17,
+     6   bType_free = 19, bType_symm = 20, bType_clmpd = 21,
+     7   bType_RCR = 22, bType_Ris0D = 23
 !--------------------------------------------------------------------
 !     Body force types: volumetric (default), traction, Neumann
 !     (pressure based), time dependence (steady, unsteady, spatially
@@ -150,7 +150,9 @@
 !     strain invariants (fluid), energy flux, heat flux, absolute
 !     velocity (for FSI), fiber directions, fiber alignment, 2nd Piola-
 !     Kirchhoff stress, Cauchy stress, von Mises stress, Jacobian,
-!     Def. grad. tensor, Green strain, divergence of velocity, viscosity
+!     Def. grad. tensor, Green strain, divergence of velocity,viscosity,
+!     fiber strain (I_4f), Cauchy-Green strain tensor, 1st Invariant of
+!     Cauchy-Green strain tensor, active stress/strain
       INTEGER(KIND=IKIND), PARAMETER :: outGrp_NA = 500, outGrp_A = 501,
      2   outGrp_Y = 502, outGrp_D = 503, outGrp_I = 504, outGrp_WSS =
      3   505, outGrp_trac = 506, outGrp_vort = 507, outGrp_vortex = 508,
@@ -158,7 +160,8 @@
      5   outGrp_absV = 512, outGrp_fN = 513, outGrp_fA = 514,
      6   outGrp_stress = 515, outGrp_cauchy = 516, outGrp_mises = 517,
      7   outGrp_J = 518, outGrp_F = 519, outGrp_strain = 520,
-     8   outGrp_divV = 521, outGrp_Visc = 522
+     8   outGrp_divV = 521, outGrp_Visc = 522, outGrp_I4f = 523,
+     9   outGrp_C = 524, outGrp_I1 = 525, outGrp_Ya = 526
 !--------------------------------------------------------------------
       INTEGER(KIND=IKIND), PARAMETER :: out_velocity = 599,
      2   out_pressure = 598, out_temperature = 597, out_voltage = 596,
@@ -168,7 +171,9 @@
      6   out_heatFlux = 586, out_absVelocity = 585, out_fibDir = 584,
      7   out_fibAlign = 583, out_stress = 582, out_cauchy = 581,
      8   out_mises = 580, out_jacobian = 579, out_defGrad = 578,
-     9   out_strain = 577, out_divergence = 576, out_viscosity = 575
+     9   out_strain = 577, out_divergence = 576, out_viscosity = 575,
+     1   out_fibStrtch = 574, out_CGstrain = 573, out_CGInv1 = 572,
+     2   out_active = 571
 !--------------------------------------------------------------------
 !     Mesher choice for remeshing for moving wall problems
       INTEGER(KIND=IKIND), PARAMETER :: RMSH_TETGEN = 1,
@@ -179,11 +184,13 @@
 !     Kirchhoff, NeoHookean, Mooney-Rivlin, Holzapfel-Gasser-Ogden with
 !     dispersion (decoupled), HGO model with modified anisotropic
 !     components, Guccione (1995), Holzapfel-Ogden (HO) model for
-!     myocardium (decoupled), HO model with modified anisotropy
+!     myocardium (decoupled), HO model with modified anisotropy,
+!     Lee-Sacks model for valve
       INTEGER(KIND=IKIND), PARAMETER :: stIso_NA = 600, stIso_lin = 601,
      2   stIso_StVK = 602, stIso_mStVK = 603, stIso_nHook = 604,
      3   stIso_MR = 605, stIso_HGO_d = 606, stIso_HGO_ma = 607,
-     4   stIso_Gucci = 608, stIso_HO_d = 609, stIso_HO_ma = 610
+     4   stIso_Gucci = 608, stIso_HO_d = 609, stIso_HO_ma = 610,
+     5   stIso_LS = 611
 !--------------------------------------------------------------------
 !     Type of constitutive model (volumetric) for structure eqn:
 !     Quadratic, Simo-Taylor91, Miehe94
@@ -192,8 +199,20 @@
 !--------------------------------------------------------------------
 !     Type of fluid viscosity: constant, Carreau-Yasuda shear-thinning
 !     model, Cassons non-Newtonian model
-      INTEGER(KIND=IKIND), PARAMETER :: viscType_NA = 699,
-     2   viscType_Const = 698, viscType_CY = 697, viscType_Cass = 696
+      INTEGER(KIND=IKIND), PARAMETER :: viscTypeF_NA = 699,
+     2   viscTypeF_Const = 698, viscTypeF_CY = 697, viscTypeF_Cass = 696
+!--------------------------------------------------------------------
+!     Type of solid viscosity: potential-based, newtonian fluid
+      INTEGER(KIND=IKIND), PARAMETER :: viscTypeS_NA = 689,
+     2   viscTypeS_Pot = 688, viscTypeS_Newt = 687
+!--------------------------------------------------------------------
+!     Type of excitation-contraction coupling for active strain-based
+!     electromechanics formulation: transversely isotropic,
+!     orthotropic activation, and transmurally heterogenous orthotropic
+!     actvation.
+      INTEGER(KIND=IKIND), PARAMETER :: asnType_NA = 300,
+     2   asnType_tiso = 301, asnType_ortho = 302,
+     3   asnType_hetortho = 303
 !--------------------------------------------------------------------
 !     Preconditioner definitions
       INTEGER(KIND=IKIND), PARAMETER :: PREC_NONE = 700,
@@ -210,7 +229,7 @@
 !--------------------------------------------------------------------
 !     Contact model
       INTEGER(KIND=IKIND), PARAMETER :: cntctM_NA = 800,
-     2   cntctM_penalty = 801
+     2   cntctM_penalty = 801, cntctM_potential = 802
 !--------------------------------------------------------------------
 !     IB method: traditional immersed finite element (IFEM)
       INTEGER(KIND=IKIND), PARAMETER :: ibMthd_NA = 850,

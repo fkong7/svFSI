@@ -402,7 +402,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_g := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
       IF (ISZERO(gam)) THEN
          mu_g = 0._RKIND
@@ -734,7 +734,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_g := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
       IF (ISZERO(gam)) THEN
          mu_g = 0._RKIND
@@ -1037,7 +1037,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_x := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
       IF (ISZERO(gam)) THEN
          mu_g = 0._RKIND
@@ -1258,7 +1258,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_x := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
       IF (ISZERO(gam)) THEN
          mu_g = 0._RKIND
@@ -1352,6 +1352,9 @@ C             END IF
       REAL(KIND=RKIND) T1, wl, hc(nsd), udn, u(nsd)
 
       wl  = w*eq(cEq)%af*eq(cEq)%gam*dt
+
+!     Compute (u.n) for backflow stabilization
+!     (e.g. Moghadam et al. 2013 Section 2.2.1)
       udn = 0._RKIND
       IF (mvMsh) THEN
          DO i=1, nsd
@@ -1371,6 +1374,14 @@ C             END IF
       hc  = h*nV + udn*u
 
 !     Here the loop is started for constructing left and right hand side
+!     Add Neumann BC contributions to residual (lR) and stiffness (lK).
+!     These include both backflow stabilization and boundary pressure.
+
+!     Note, if the boundary is a coupled or resistance boundary, the
+!     boundary pressure is added to the residual here, but the coupled
+!     boundary resistance (Moghadam et al, 2013, eq. 27) is not
+!     explicitly added to the tangent here. The resistance is accounted
+!     for by the ADDBCMUL() function within the linear solver.
       IF (nsd .EQ. 2) THEN
          DO a=1, eNoN
             lR(1,a) = lR(1,a) - w*N(a)*hc(1)
@@ -1478,7 +1489,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_g := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
 !     sigma.n (deviatoric)
       sgmn(1) = mu*(es(1,1)*nV(1) + es(2,1)*nV(2) + es(3,1)*nV(3))
@@ -1668,7 +1679,7 @@ C             END IF
 
 !     Compute viscosity based on shear-rate and chosen viscosity model
 !     The returned mu_g := (d\mu / d\gamma)
-      CALL GETVISCOSITY(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
+      CALL GET_FLUID_VISC(eq(cEq)%dmn(cDmn), gam, mu, mu_s, mu_g)
 
 !     sigma.n (deviatoric)
       sgmn(1) = mu*(es(1,1)*nV(1) + es(2,1)*nV(2))
@@ -1749,55 +1760,4 @@ C             END IF
 
       RETURN
       END SUBROUTINE BWFLUID2D
-!####################################################################
-      SUBROUTINE GETVISCOSITY(lDmn, gamma, mu, mu_s, mu_x)
-      USE COMMOD
-      IMPLICIT NONE
-      TYPE(dmnType), INTENT(IN) :: lDmn
-      REAL(KIND=RKIND), INTENT(INOUT)  :: gamma
-      REAL(KIND=RKIND), INTENT(OUT) :: mu, mu_s, mu_x
-
-      REAL(KIND=RKIND) :: mu_i, mu_o, lam, a, n, T1, T2
-
-      SELECT CASE (lDmn%visc%viscType)
-      CASE (viscType_Const)
-         mu   = lDmn%visc%mu_i
-         mu_s = mu
-         mu_x = 0._RKIND
-
-      CASE (viscType_CY)
-         mu_i = lDmn%visc%mu_i
-         mu_o = lDmn%visc%mu_o
-         lam  = lDmn%visc%lam
-         a    = lDmn%visc%a
-         n    = lDmn%visc%n
-
-         T1   = 1._RKIND + (lam*gamma)**a
-         T2   = T1**((n-1._RKIND)/a)
-         mu   = mu_i + (mu_o-mu_i)*T2
-         mu_s = mu_i
-
-         T1   = T2/T1
-         T2   = lam**a * gamma**(a-1._RKIND) * T1
-         mu_x = (mu_o-mu_i)*(n-1._RKIND)*T2
-
-      CASE (viscType_Cass)
-         mu_i = lDmn%visc%mu_i
-         mu_o = lDmn%visc%mu_o
-         lam  = lDmn%visc%lam
-
-         IF (gamma .LT. lam) THEN
-            mu_o  = mu_o/SQRT(lam)
-            gamma = lam
-         ELSE
-            mu_o = mu_o/SQRT(gamma)
-         END IF
-         mu   = (mu_i + mu_o) * (mu_i + mu_o)
-         mu_s = mu_i*mu_i
-         mu_x = 2._RKIND*mu_o*(mu_o + mu_i)/gamma
-
-      END SELECT
-
-      RETURN
-      END SUBROUTINE GETVISCOSITY
 !####################################################################
