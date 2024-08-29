@@ -237,7 +237,7 @@
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER(KIND=IKIND) iFa, iBc, iM
+      INTEGER(KIND=IKIND) iFa, iBc, iM, iProj
 
       DO iBc=1, eq(cEq)%nBc
          iFa = eq(cEq)%bc(iBc)%iFa
@@ -254,6 +254,22 @@
             CALL SETBCTRACL(eq(cEq)%bc(iBc), msh(iM)%fa(iFa))
          END IF
       END DO
+
+      IF (risFlag) THEN
+          DO iProj=1, RIS%nbrRIS
+            IF (RIS%restoreP(iProj)) THEN
+                write(*,*) "APPLY PRESSURE FOR RIS ", iProj
+                iM = RIS%lst(1, 1, iProj)
+                iFa = RIS%lst(1, 2, iProj)
+                CALL SETBCNEUL(RIS%pbc(iProj), msh(iM)%fa(iFa), Yg, Dg)
+                write(*,*) "APPLIED FOR 1"
+                iM = RIS%lst(2, 1, iProj)
+                iFa = RIS%lst(2, 2, iProj)
+                CALL SETBCNEUL(RIS%pbc(iProj), msh(iM)%fa(iFa), Yg, Dg)
+                write(*,*) "APPLIED FOR 2"
+            END IF
+          END DO
+      END IF 
 
       RETURN
       END SUBROUTINE SETBCNEU
@@ -275,6 +291,7 @@
       nNo  = lFa%nNo
 
 !     Geting the contribution of Neu BC
+      write(*,*) "NEU 0", cm%id()
       IF (BTEST(lBc%bType,bType_cpl) .OR.
      2    BTEST(lBc%bType,bType_RCR)) THEN
          h(1) = lBc%g
@@ -295,6 +312,7 @@
          END IF
       END IF
 
+      write(*,*) "NEU 1", cm%id(), lFa%gN(1)
       ALLOCATE(hg(tnNo))
       hg = 0._RKIND
 
@@ -311,6 +329,7 @@
          END DO
       END IF
 
+      write(*,*) "NEU 2", cm%id()
 !     Add Neumann BCs contribution to the residual (and tangent if flwP)
       IF (lBc%flwP) THEN
          CALL BNEUFOLWP(lBc, lFa, hg, Dg)
@@ -335,6 +354,7 @@
 !     Now treat Robin BC (stiffness and damping) here
       IF (BTEST(lBc%bType,bType_Robin))
      2   CALL SETBCRBNL(lFa, lBc%k, lBc%c, lBc%rbnN, Yg, Dg)
+      write(*,*) "NEU 3"
 
       RETURN
       END SUBROUTINE SETBCNEUL

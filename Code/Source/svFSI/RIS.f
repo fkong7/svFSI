@@ -368,6 +368,9 @@
                Yo = Yn
                IF (dFlag) Do = Dn
                cplBC%xo = cplBC%xn
+               RIS%restoreP(iProj) = .TRUE.
+               RIS%pbc(iProj)%g = 0.5 * RIS%meanP(iProj, 1) + 
+     2              0.5 * RIS%meanP(iProj, 2)
             END iF
          ELSE 
 !        The valve is open, check if it should close. 

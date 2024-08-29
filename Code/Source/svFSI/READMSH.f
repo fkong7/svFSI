@@ -492,6 +492,8 @@ C       TYPE(stackType) lPrj
          RIS%Res = 0._RKIND
          ALLOCATE(RIS%clsFlg(nPrj))
          RIS%clsFlg = .FALSE.
+         ALLOCATE(RIS%restoreP(nPrj))
+         RIS%restoreP = .FALSE.
          ALLOCATE(RIS%meanP(nPrj, 2))
          RIS%meanP = 0._RKIND
          ALLOCATE(RIS%meanFl(nPrj))
@@ -504,6 +506,7 @@ C       TYPE(stackType) lPrj
             msh(iM)%eRIS = .FALSE.
             msh(iM)%partRIS = -1
          END DO
+         ALLOCATE(RIS%pbc(nPrj))
          write(*,*)" Number of RIS surface: ", RIS%nbrRIS  
       END IF
 
@@ -574,6 +577,16 @@ C       TYPE(stackType) lPrj
          END DO 
       END DO
 
+      ! Assign pressure boundary conditions across the RIS surface
+      DO iProj=1, RIS%nbrRIS
+        RIS%pbc(iProj)%bType = IBSET(RIS%pbc(iProj)%bType, bType_Neu)
+        RIS%pbc(iProj)%bType = IBSET(RIS%pbc(iProj)%bType, bType_std)
+        RIS%pbc(iProj)%g = 0._RKIND
+        ALLOCATE(RIS%pbc(iProj)%h(nsd))
+        RIS%pbc(iProj)%h = 0._RKIND
+        ALLOCATE(RIS%pbc(iProj)%eDrn(nsd))
+        RIS%pbc(iProj)%eDrn = 0
+      END DO
       RETURN
       END SUBROUTINE SETRISPROJECTOR
 !--------------------------------------------------------------------

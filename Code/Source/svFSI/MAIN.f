@@ -226,6 +226,31 @@
                ib%Ubo = ib%Ubn
             END IF
          END IF
+! ---- Here we probably have to update the ris resistance value
+! ---- If the state has to change, we recompute this time step GOTO 1
+! ---- Control where if the time and the new has changed! 
+         IF ( risFlag ) THEN 
+            RIS%restoreP = .FALSE.
+            CALL RIS_MEANQ
+            CALL RIS_STATUS
+            std = " Iteration: "//cTS
+            DO iProj=1, RIS%nbrRIS
+                std = "Status for RIS projection: "//iProj
+                std = "  RIS iteration: "//RIS%nbrIter(iProj)
+                std = "  Is the valve close? "//RIS%clsFlg(iProj)
+                std = "  The status is "//RIS%status(iProj)
+            END DO
+            IF (cTS .GE. 0) THEN
+                IF((.NOT.ALL(RIS%status)))THEN 
+                    IF (ANY(RIS%nbrIter.LE.2).AND.(cTS.GE.2)) THEN
+                        std = "Valve status just changed. Do not update"
+                    ELSE
+                        CALL RIS_UPDATER
+                        GOTO 11
+                    END IF
+                END IF
+            END IF
+         END IF
 
 !     Saving the TXT files containing average and fluxes
          CALL TXT(.FALSE.)
@@ -277,28 +302,6 @@
 
          IF (ibFlag) CALL IB_OUTCPUT()
 
-! ---- Here we probably have to update the ris resistance value
-! ---- If the state has to change, we recompute this time step GOTO 1
-! ---- Control where if the time and the new has changed! 
-         IF ( risFlag ) THEN 
-            CALL RIS_MEANQ
-            CALL RIS_STATUS
-            std = " Iteration: "//cTS
-            DO iProj=1, RIS%nbrRIS
-                std = "Status for RIS projection: "//iProj
-                std = "  RIS iteration: "//RIS%nbrIter(iProj)
-                std = "  Is the valve close? "//RIS%clsFlg(iProj)
-                std = "  The status is "//RIS%status(iProj)
-            END DO
-            IF((.NOT.ALL(RIS%status)))THEN 
-                IF (ANY(RIS%nbrIter.LE.1)) THEN
-                    std = "Valve status just changed. Do not update"
-                ELSE
-                    CALL RIS_UPDATER
-                END IF
-                GOTO 11
-            END IF
-         END IF
 
          IF ((cEq.EQ.1) .AND. ris0DFlag ) THEN 
             CALL RIS0D_STATUS
