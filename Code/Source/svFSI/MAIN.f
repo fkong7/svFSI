@@ -50,7 +50,8 @@
       REAL(KIND=RKIND), ALLOCATABLE :: Ag(:,:), Yg(:,:), Dg(:,:), res(:)
 
       REAL(KIND=RKIND) v1(3), v2(3), v3(3), v4(3), p(3), V(3,2)
-      REAL(KIND=RKIND)  v41(3), vp1(3), N(3), dotV4, dotP
+      REAL(KIND=RKIND)  v41(3), vp1(3), N(3), dotV4, dotP, dt_ori,
+     2      dt_cum
       INTEGER(KIND=IKIND) same 
 
       IF (IKIND.NE.LSIP .OR. RKIND.NE.LSRP) THEN
@@ -60,6 +61,7 @@
       l1 = .FALSE.
       l2 = .FALSE.
       l3 = .FALSE.
+
 
       savedOnce = .FALSE.
       CALL MPI_INIT(i)
@@ -90,11 +92,14 @@
 !     Outer loop for marching in time. When entring this loop, all old
 !     variables are completely set and satisfy BCs.
       IF (cTS .LE. nITS) dt = dt/10._RKIND
+      dt_ori = dt
+      dt_cum = 0._RKIND
       DO
 !     Adjusting the time step size once initialization stage is over
          IF (cTS .EQ. nITS) THEN
             dt = dt*10._RKIND
             std = " New time step size: "//dt
+            dt_ori = dt
          END IF
 !     Incrementing time step, hence cTS will be associated with new
 !     variables, i.e. An, Yn, and Dn
@@ -234,11 +239,28 @@
             CALL RIS_MEANQ
             CALL RIS_STATUS
             std = " Iteration: "//cTS
+            dt_cum = dt_cum + dt
             DO iProj=1, RIS%nbrRIS
                 std = "Status for RIS projection: "//iProj
                 std = "  RIS iteration: "//RIS%nbrIter(iProj)
                 std = "  Is the valve close? "//RIS%clsFlg(iProj)
                 std = "  The status is "//RIS%status(iProj)
+                IF (.NOT.RIS%status(iProj)) THEN
+                    ! If pressure difference is too big, repeat this
+                    ! time step with a much smaller dt
+                    IF ((RIS%meanP(iProj,1)-RIS%meanP(iProj,2))
+     2                  .GT.ABS(RIS%meanP(iProj,1)*0.01).AND.
+     3                      dt_ori/dt.LE.8._RKIND) THEN
+                        dt = dt/2._RKIND
+                        write(*,*) "Reducing time step to", dt
+                        dt_cum = 0._RKIND
+                        An = Ao
+                        Yn = Yo
+                        IF (dFlag) Dn = Do
+                        cplBC%xn = cplBC%xo
+                        GOTO 11
+                    END IF
+                END IF
             END DO
             IF (cTS .GE. 0) THEN
                 IF((.NOT.ALL(RIS%status)))THEN 
@@ -246,9 +268,29 @@
                         std = "Valve status just changed. Do not update"
                     ELSE
                         CALL RIS_UPDATER
+                        dt_cum = 0._RKIND
                         GOTO 11
                     END IF
                 END IF
+            END IF
+            IF (dt_cum .LT. dt_ori) THEN
+                write(*,*) "Current time is: ", dt_cum, "total time is",
+     2              dt_ori, ". Solve for another time step with", dt
+                Ao = An
+                Yo = Yn
+                IF (dFlag) Do = Dn
+                cplBC%xo = cplBC%xn
+                CALL TXT(.FALSE.)
+                time = time + dt
+                write(*,*) "Set time to be", time
+                GOTO 11
+            ELSE
+                write(*,*) "Finished iterations for RIS"
+                time = time + dt - dt_cum
+                dt = dt_ori
+                dt_cum = 0._RKIND
+                write(*,*) "Restoring time step to", dt
+                write(*,*) "Restoring time to", time+dt
             END IF
          END IF
 

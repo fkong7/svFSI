@@ -75,8 +75,11 @@
 !          ^FK: But that shouldn't be a problem for pressure difference
 !          check since the area (change) above and below a RIS is the
 !          same?           
-           tmp = msh(iM)%fa(iFa)%area
+           !tmp = msh(iM)%fa(iFa)%area
+           tmp = msh(RIS%lst(1,1,iProj))%fa(RIS%lst(1,2,iProj))%area
            RIS%meanP(iProj, i) = Integ(msh(iM)%fa(iFa),tmpV,1)/tmp
+           write(*,*) "iPj", iProj, "i", i, "a", tmp, "f",  
+     2          Integ(msh(iM)%fa(iFa),tmpV,1)
         END DO
       END DO
 
