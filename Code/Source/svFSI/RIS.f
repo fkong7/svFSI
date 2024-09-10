@@ -371,9 +371,7 @@
                Yo = Yn
                IF (dFlag) Do = Dn
                cplBC%xo = cplBC%xn
-               RIS%restoreP(iProj) = .TRUE.
-               RIS%pbc(iProj)%g = 0.5 * RIS%meanP(iProj, 1) + 
-     2              0.5 * RIS%meanP(iProj, 2)
+               CALL FORCE_RIS_VEL_CONTINUITY(iProj)
             END iF
          ELSE 
 !        The valve is open, check if it should close. 
@@ -389,6 +387,84 @@
       RETURN
       END SUBROUTINE RIS_UPDATER
 
+!####################################################################
+      SUBROUTINE FORCE_RIS_VEL_CONTINUITY(iProj)
+        USE TYPEMOD
+        USE COMMOD
+        IMPLICIT NONE
+        INTEGER(KIND=IKIND), INTENT(IN) :: iProj
+        REAL(KIND=RKIND) :: tmpVn_i(nsd), tmpVo_i(nsd), tmpAn_i(nsd),
+     2      tmpAo_i(nsd), tmpPn_i(1), tmpPo_i(1)
+        REAL(KIND=RKIND) :: tmpVn_j(nsd), tmpVo_j(nsd), tmpAn_j(nsd),
+     2      tmpAo_j(nsd), tmpPn_j(1), tmpPo_j(1)
+        INTEGER(KIND=IKIND) :: iM, jM, iFa, jFa, iEq, m, s, e, 
+     2      Ac_i, Ac_j, m_p, s_p, e_p
+        INTEGER(KIND=IKIND) :: el, a
+        INTEGER(KIND=IKIND), ALLOCATABLE :: mapIdx(:)
+        
+        ! Define which mesh and faces are being used for this projection
+        iM = RIS%lst(1,1,iProj)
+        iFa = RIS%lst(1,2,iProj)
+        jM = RIS%lst(2,1,iProj)
+        jFa = RIS%lst(2,2,iProj)
+
+        iEq = 1  ! Assume first equation is the velocity one
+        m = nsd  ! Number of spatial dimensions
+        s = eq(iEq)%s
+        e = s + m - 1  ! End index for velocity components
+      
+        m_p = 1
+        s_p = eq(iEq)%s + nsd 
+        e_p = s_p + m_p - 1
+        
+        ! Loop over all elements on the interface face
+        DO el = 1, msh(iM)%fa(iFa)%nEl
+            DO a = 1, msh(iM)%fa(iFa)%eNoN
+                ! Retrieve velocity and acceleration for both time steps 
+                ! for nodes on bottom face
+                Ac_i = msh(iM)%fa(iFa)%IEN(a, el)
+                tmpVn_i = Yn(s:e, Ac_i)
+                tmpVo_i = Yo(s:e, Ac_i)
+                tmpAn_i = An(s:e, Ac_i)
+                tmpAo_i = Ao(s:e, Ac_i)
+                tmpPn_i = Yn(s_p:e_p, Ac_i)
+                tmpPo_i = Yn(s_p:e_p, Ac_i)
+
+                ! Map the node on the above face using the RIS mapping list
+                mapIdx = FINDLOC(grisMapList(iProj)%map(1,:), Ac_i)
+                IF(mapIdx(1).EQ.0) THEN
+                    ! Handle case if no corresponding node found
+                    std = 'Error: No corresponding node on the 
+     2                  opposite side of RIS.'
+                    CYCLE
+                ELSE
+                    Ac_j = grisMapList(iProj)%map(2, mapIdx(1))
+                END IF
+
+                ! Retrieve velocity and acceleration for the above face
+                tmpVn_j = Yn(s:e, Ac_j)
+                tmpVo_j = Yo(s:e, Ac_j)
+                tmpAn_j = An(s:e, Ac_j)
+                tmpAo_j = Ao(s:e, Ac_j)
+                tmpPn_j = Yn(s_p:e_p, Ac_j)
+                tmpPo_j = Yn(s_p:e_p, Ac_j)
+
+                ! Set velocities and accelerations to their average values
+                Yn(s:e, Ac_i) = 0.5 * (tmpVn_i + tmpVn_j)
+                Yn(s:e, Ac_j) = Yn(s:e, Ac_i)  ! Ensures they are equal
+                Yo(s:e, Ac_i) = 0.5 * (tmpVo_i + tmpVo_j)
+                Yo(s:e, Ac_j) = Yo(s:e, Ac_i)
+                An(s:e, Ac_i) = 0.5 * (tmpAn_i + tmpAn_j)
+                An(s:e, Ac_j) = An(s:e, Ac_i)
+                Ao(s:e, Ac_i) = 0.5 * (tmpAo_i + tmpAo_j)
+                Ao(s:e, Ac_j) = Ao(s:e, Ac_i)
+                Yn(s_p:e_p, Ac_i) = 0.5 * (tmpPn_i + tmpPn_j)
+                Yn(s_p:e_p, Ac_j) = Yn(s_p:e_p, Ac_i)  ! Ensures they are equal
+                Yo(s_p:e_p, Ac_i) = 0.5 * (tmpPo_i + tmpPo_j)
+                Yo(s_p:e_p, Ac_j) = Yo(s_p:e_p, Ac_i)
+            END DO
+        END DO
+      END SUBROUTINE FORCE_RIS_VEL_CONTINUITY
 !####################################################################
 !     This subroutine will check the valve status if it is admissible 
 !     or not, if not admissible we recompute the iteration until it will be 
