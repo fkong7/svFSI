@@ -933,11 +933,6 @@
          REAL(KIND=RKIND), ALLOCATABLE :: meanFl(:)
 !        Status RIS interface 
          LOGICAL, ALLOCATABLE :: status(:)
-!        Pressure boundary condition to restore equal pressure across
-!        RIS
-         TYPE(bcType), ALLOCATABLE :: pbc(:)
-!        Whether to apply the pressure boundary condition
-         LOGICAL, ALLOCATABLE :: restoreP(:)
       END TYPE risFace
 
 !     Unfitted Resistive Immersed surface data type

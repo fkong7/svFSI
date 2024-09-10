@@ -403,9 +403,7 @@
       CALL cm%bcast(cplBC%initRCR)
         
       IF (risFlag) THEN
-        IF (.NOT.ALLOCATED(RIS%pbc)) ALLOCATE(RIS%pbc(RIS%nbrRIS))
         DO iProj=1, RIS%nbrRIS
-          CALL DISTBC(RIS%pbc(iProj), tMs, gmtl)
           DO i=1, 2
               DO j=1, SIZE(risMapList(iProj)%map, 2)
                   tmp = gmtl(grisMapList(iProj)%map(i,j))
@@ -498,7 +496,6 @@
           ALLOCATE(RIS%nbrIter(nProj))
           ALLOCATE(RIS%Res(nProj))
           ALLOCATE(RIS%clsFlg(nProj))
-          ALLOCATE(RIS%restoreP(nProj))
           ALLOCATE(RIS%meanP(nProj, 2))
           ALLOCATE(RIS%meanFl(nProj))
           ALLOCATE(RIS%status(nProj))
@@ -516,7 +513,6 @@
       END IF
       CALL cm%bcast(flat_lst)
       CALL cm%bcast(RIS%clsFlg)
-      CALL cm%bcast(RIS%restoreP)
       CALL cm%bcast(RIS%nbrIter)
       CALL cm%bcast(RIS%Res)
       CALL cm%bcast(RIS%nbrRIS)

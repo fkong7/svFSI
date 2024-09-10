@@ -237,7 +237,7 @@
       IMPLICIT NONE
       REAL(KIND=RKIND), INTENT(IN) :: Yg(tDof,tnNo), Dg(tDof,tnNo)
 
-      INTEGER(KIND=IKIND) iFa, iBc, iM, iProj
+      INTEGER(KIND=IKIND) iFa, iBc, iM
 
       DO iBc=1, eq(cEq)%nBc
          iFa = eq(cEq)%bc(iBc)%iFa
@@ -255,21 +255,6 @@
          END IF
       END DO
 
-      !IF (risFlag) THEN
-      !    DO iProj=1, RIS%nbrRIS
-      !      IF (RIS%restoreP(iProj)) THEN
-      !          write(*,*) "APPLY PRESSURE FOR RIS ", iProj
-      !          iM = RIS%lst(1, 1, iProj)
-      !          iFa = RIS%lst(1, 2, iProj)
-      !          CALL SETBCNEUL(RIS%pbc(iProj), msh(iM)%fa(iFa), Yg, Dg)
-      !          write(*,*) "APPLIED FOR 1"
-      !          iM = RIS%lst(2, 1, iProj)
-      !          iFa = RIS%lst(2, 2, iProj)
-      !          CALL SETBCNEUL(RIS%pbc(iProj), msh(iM)%fa(iFa), Yg, Dg)
-      !          write(*,*) "APPLIED FOR 2"
-      !      END IF
-      !    END DO
-      !END IF 
 
       RETURN
       END SUBROUTINE SETBCNEU

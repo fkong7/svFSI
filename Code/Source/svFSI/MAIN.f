@@ -235,7 +235,6 @@
 ! ---- If the state has to change, we recompute this time step GOTO 1
 ! ---- Control where if the time and the new has changed! 
          IF ( risFlag ) THEN 
-            RIS%restoreP = .FALSE.
             CALL RIS_MEANQ
             CALL RIS_STATUS
             std = " Iteration: "//cTS
