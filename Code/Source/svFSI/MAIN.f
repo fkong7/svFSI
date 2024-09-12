@@ -267,7 +267,7 @@
                         std = "Valve status just changed. Do not update"
                     ELSE
                         CALL RIS_UPDATER
-                        dt_cum = 0._RKIND
+                        dt_cum = dt_cum - dt
                         GOTO 11
                     END IF
                 END IF
