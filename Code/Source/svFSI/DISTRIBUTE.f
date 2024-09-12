@@ -1458,7 +1458,11 @@ c            wrn = " ParMETIS failed to partition the mesh"
                     ! happen and for simplicity, we
                     ! force the processor id to be the same for all 
                     ! elements next to the same projection.
-                    IF (eRisProc.EQ.-1) eRisProc = gPart(e)
+                    IF (eRisProc.EQ.-1) THEN
+                        eRisProc = gPart(e)
+                    ELSE
+                        gPart(e) = eRisProc
+                    END IF
                     lM%partRIS(e) = eRisProc
                 END IF
             END IF
