@@ -800,7 +800,7 @@ C       TYPE(stackType) lPrj
          CALL FINDFACE(ctmpi, iM, iFa)
          nStk = nStk + msh(iM)%fa(iFa)%nNo
       END DO
-      ALLOCATE(stk(nStk))
+      ALLOCATE(stk(nStk+gtnNo))
       DO iPrj=1, nPrj
          lPP => list%get(ctmpi,"Add projection",iPrj)
          CALL FINDFACE(ctmpi, iM, iFa)
