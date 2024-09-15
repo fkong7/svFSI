@@ -169,10 +169,14 @@ c               END IF
             msh(iM)%gN = 0
          END DO
       END IF ! resetSim
+      
+      gtnNo = 0
+!     Examining the existance of a RIS surface and setting %risMap.
+!     Reseting gtnNo and recounting nodes that are not duplicated
+      CALL SETRISPROJECTOR(list)
 
 !     Examining the existance of projection faces and setting %gN.
 !     Reseting gtnNo and recounting nodes that are not duplicated
-      gtnNo = 0
       CALL SETPROJECTOR(list, avNds)
       DO iM=1, nMsh
          DO a=1, msh(iM)%gnNo
@@ -193,9 +197,6 @@ c               END IF
       IF (avNds%n .NE. 0) err = "There are still nodes in the stack"
       CALL DESTROYSTACK(avNds)
 
-!     Examining the existance of a RIS surface and setting %risMap.
-!     Reseting gtnNo and recounting nodes that are not duplicated
-      CALL SETRISPROJECTOR(list)
 
 
 
@@ -518,6 +519,7 @@ C       TYPE(stackType) lPrj
 
       IF(.NOT.risFlag) RETURN
       
+      
       ALLOCATE(risMapList(nPrj))
       ALLOCATE(grisMapList(nPrj))
 
@@ -553,7 +555,21 @@ C       TYPE(stackType) lPrj
      2           " mesh ", jM, " into face ", iFa, " msh ", iM 
          print*, " ** The nbr of nodes to proj is ", nStk
          print*, " ** The res is ", msh(jM)%res 
+         DO a=1, msh(iM)%gnNo
+            IF (msh(iM)%gN(a) .EQ. 0) THEN
+               gtnNo         = gtnNo + 1
+               msh(iM)%gN(a) = gtnNo
+            END IF
+         END DO
+         DO a=1, msh(jM)%gnNo
+            IF (msh(jM)%gN(a) .EQ. 0) THEN
+               gtnNo         = gtnNo + 1
+               msh(jM)%gN(a) = gtnNo
+            END IF
+         END DO
+      END DO
 !        Building the ris map between corresponding node with total enumeration
+      DO iProj=1, nPrj
          DO i = 1, 2
             print*, "proj ", iProj, " mesh ", i
             DO j = 1, nStk
@@ -588,7 +604,6 @@ C       TYPE(stackType) lPrj
 !--------------------------------------------------------------------
 !     This is match isoparameteric faces to each other. Project nodes
 !     from two adjacent meshes to each other based on a L2 norm.
-!     WARNING: SO FAR THIS FUNCTION ASSUMES TWO MESHES, nMsh=2
       SUBROUTINE MATCHNODES(lFa, pFa, ptol, nNds, map)
       USE COMMOD
       USE ALLFUN
