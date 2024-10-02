@@ -116,6 +116,7 @@
 
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
+         IF (urisFlag) CALL URIS_CALCSDF
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -341,6 +342,8 @@ C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
             IF (mvMsh) THEN 
                CALL URIS_UpdateDisp !(Do,Dn)
             END IF
+            write(*,*) "nan ck MAIN"
+            IF (ANY(ISNAN(uris%Yd))) STOP
             CALL URIS_WRITEVTUS(uris%Yd)
          END IF
 !---     end RIS/URIS stuff 

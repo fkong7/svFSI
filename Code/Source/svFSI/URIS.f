@@ -50,72 +50,28 @@
 
 !     Let's conpute the mean pressure in the two regions of the fluid mesh 
 !     For the moment let's define a flag IdSubDmn(size the number of elements)
-      INTEGER(KIND=IKIND) :: IdSubDmn(msh(1)%nEl),  a, Ac, cntM, cntP
-      REAL(KIND=RKIND) :: volU, volD, Deps, zSurf, meanPU, meanPD, 
+      INTEGER(KIND=IKIND) :: a, Ac, cntM, cntP
+      REAL(KIND=RKIND) :: volU, volD, Deps, meanPU, meanPD, 
      2                    sDST(1,tnNo), sUPS(1,tnNo), sImm(1,tnNo)
 
 
+      ! FK: What if there are multiple meshes??
+      ! TO-DO: We need to have a sdf array for each mesh
       iM = 1
 
-      Deps = 0.13_RKIND
-      zSurf = 1.25_RKIND
-
-      IdSubDmn = 0
-
-!     For each element, select the nodes, check the z-comp
-!     If z < zSurf - Deps -> Flag is -1      
-!     If z > zSurf - Deps -> Flag is +1      
-!     Loop over all elements of mesh
-      DO e=1, msh(iM)%nEl
-         cntM = 0
-         cntP = 0
-         DO a=1, msh(iM)%eNoN
-            Ac = msh(iM)%IEN(a,e)
-            
-            IF( x(3,Ac) .LT. zSurf - Deps ) THEN 
-               cntM = cntM + 1
-            ELSE IF ( x(3,Ac) .GT. zSurf + Deps ) THEN 
-               cntP = cntP + 1
-            END IF
-         END DO
-
-         IF( cntM .EQ. 3 ) IdSubDmn(e) = -1
-         IF( cntP .EQ. 3 ) IdSubDmn(e) = +1
-      END DO
-
+      Deps = 0.25_RKIND
 
 !     Let's compute left side 
       sUPS = 0._RKIND
-      DO e=1, msh(iM)%nEl
-         DO a=1, msh(iM)%eNoN
-            Ac = msh(iM)%IEN(a,e)
-            
-            IF( x(3,Ac) .LT. zSurf - Deps ) THEN 
-               sUPS(1,Ac) = 1._RKIND
-            ELSE IF ( x(3,Ac) .GT. zSurf + Deps ) THEN 
-               sUPS(1,Ac) = 0._RKIND
-            END IF
-         END DO
-      END DO
+      WHERE(uris%sdf.GE.0.AND.uris%sdf.LE.Deps) sUPS(1,:) = 1._RKIND
       volU = Integ(iM,sUPS)
       write(*,*)" volume upstream ", volU
 
 !     Let's compute right side 
       sDST = 0._RKIND
-      DO e=1, msh(iM)%nEl
-         DO a=1, msh(iM)%eNoN
-            Ac = msh(iM)%IEN(a,e)
-            
-            IF( x(3,Ac) .LT. zSurf - Deps ) THEN 
-               sDST(1,Ac) = 0._RKIND
-            ELSE IF ( x(3,Ac) .GT. zSurf + Deps ) THEN 
-               sDST(1,Ac) = 1._RKIND
-            END IF
-         END DO
-      END DO
+      WHERE(uris%sdf.LT.0.AND.uris%sdf.GE.-Deps) sDST(1,:) = 1._RKIND
       volD = Integ(iM,sDST)
       write(*,*)" volume downstream ", volD
-
 
 !     Let's compute immersed side 
 C       sImm = 1._RKIND
@@ -287,121 +243,123 @@ C       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
       LOGICAL :: ultra, fl
 
       IF(.NOT.ALLOCATED(uris%Yd)) THEN 
-         ALLOCATE(uris%Yd(nsd,uris%msh(1)%nNo))
-         uris%Yd(:,nd) = 0._RKIND
+         ALLOCATE(uris%Yd(nsd,uris%tnNo))
+         uris%Yd = 0._RKIND
       END IF
 
 !     For each point in the immersed surface we need to localize it 
 !     = find the fluid element that contains the node
-      iM = 1
+      !DO iM=1, uris%nMsh
+      DO iM=1, uris%nMsh
+        flag = 1
+        ultra = .FALSE.
+        xi = 0.5_RKIND
+        
+C         DO nd = 1, uris%msh(iM)%nNo
+        nd = 0
+        DO WHILE(nd .LE. uris%tnNo)
+!          Check if we were able to find the tetra, if not run the search with 
+!          an approximation 
+           IF(flag .EQ. 0) THEN 
+              IF( ultra ) THEN 
+                 write(*,*)"*** ERROR, tet not found for para nd ",nd-1
+                 nd = nd + 1
+                 ultra = .FALSE.
+              ELSE 
+                 ultra = .TRUE.
+                 GOTO 123
+              END IF
+           ELSE
+              nd = nd + 1
+              ultra = .FALSE.
+           END IF
 
-      flag = 1
-      ultra = .FALSE.
-      xi = 0.5_RKIND
-      
-C       DO nd = 1, uris%msh(iM)%nNo
-      nd = 0
-      DO WHILE(nd .LE. uris%msh(iM)%nNo)
-         
-!        Check if we were able to find the tetra, if not run the search with 
-!        an approximation 
-         IF(flag .EQ. 0) THEN 
-            IF( ultra ) THEN 
-               write(*,*)"*** ERROR, tet not found for para nd ",nd-1
-               nd = nd + 1
-               ultra = .FALSE.
-            ELSE 
-               ultra = .TRUE.
-               GOTO 123
-            END IF
-         ELSE
-            nd = nd + 1
-            ultra = .FALSE.
-         END IF
+C            write(*,*)" looking node ", nd,": ", xp
+           xp = uris%x(:,nd) !+ uris%Yd(:,nd)
+123        CONTINUE
+           flag = 1
+           
+           ! FK: Should we narrow down to which mesh to save time?
+           DO jM=1, nMsh
+              ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
+     2                                            Nxi(nsd,msh(jM)%eNoN))
 
-C          write(*,*)" looking node ", nd,": ", xp
-         xp = uris%x(:,nd) !+ uris%Yd(:,nd)
+C               write(*,*)" here 1 "
+              DO iEln = 1, msh(jM)%nEl
+C                  flag = 0
+C                  write(*,*)" here 2 "
+                 DO a=1, msh(jM)%eNoN
+                    Ac = msh(jM)%IEN(a,iEln)
+C                     xl(:,a)  = ( x(:,Ac) + disp)
+C                     write(*,*)" here 3 " 
+C                     IF(mvMsh) THEN 
+C                        xl(:,a) = x(:,Ac) + Dn(nsd+2:2*nsd+1,Ac) ! problem here 
+C                     ELSE 
+                       xl(:,a) = x(:,Ac) 
+C                     END IF
+                 END DO 
 
-123      CONTINUE
-         flag = 1
+C                  write(*,*)" here 4 "
+C !                 Check if it is inside 
+C                  write(*,*)" xp ", xp 
+C                  write(*,*)" here 5 "
+C                  write(*,*)" xl ", xl(:,1)
+C                  write(*,*)" xl ", xl(:,2)
+C                  write(*,*)" xl ", xl(:,3)
+C                  write(*,*)" xl ", xl(:,4)
+C                  write(*,*)" ultra ", ultra 
+                 CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
 
-         DO jM=1, nMsh
-            ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
-     2                                          Nxi(nsd,msh(jM)%eNoN))
+                 IF( flag .EQ. 1) THEN 
+C                     write(*,*)" nd parav ",nd-1," inside ",iEln,": ",xl 
+C                     write(*,*)" nd ",nd," inside ",iEln,": ",xl 
+C                     write(*,*)" nd parav ",nd-1 ," inside ",iEln-1
+C                     write(*,*)" with ultra ", ultra 
 
-C             write(*,*)" here 1 "
-            DO iEln = 1, msh(jM)%nEl
-C                flag = 0
-C                write(*,*)" here 2 "
-               DO a=1, msh(jM)%eNoN
-                  Ac = msh(jM)%IEN(a,iEln)
-C                   xl(:,a)  = ( x(:,Ac) + disp)
-C                   write(*,*)" here 3 " 
-C                   IF(mvMsh) THEN 
-C                      xl(:,a) = x(:,Ac) + Dn(nsd+2:2*nsd+1,Ac) ! problem here 
-C                   ELSE 
-                     xl(:,a) = x(:,Ac) 
-C                   END IF
-               END DO 
+!                   Get displacement  
+!                   Localize p inside the parent element  
+                    CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
+     2                      xp, xi,fl)  
+                    IF( .NOT.fl) write(*,*)" GETXI not converging "
 
-C                write(*,*)" here 4 "
-C !               Check if it is inside 
-C                write(*,*)" xp ", xp 
-C                write(*,*)" here 5 "
-C                write(*,*)" xl ", xl(:,1)
-C                write(*,*)" xl ", xl(:,2)
-C                write(*,*)" xl ", xl(:,3)
-C                write(*,*)" xl ", xl(:,4)
-C                write(*,*)" ultra ", ultra 
-               CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
+!                   evaluate N at xi 
+                    CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,N,Nxi)
 
-               IF( flag .EQ. 1) THEN 
-C                   write(*,*)" nd parav ",nd-1," inside ",iEln,": ",xl 
-C                   write(*,*)" nd ",nd," inside ",iEln,": ",xl 
-C                   write(*,*)" nd parav ",nd-1 ," inside ",iEln-1
-C                   write(*,*)" with ultra ", ultra 
+!                   use this to compute disp al node xp 
+                    d = 0._RKIND
+                    DO a=1, msh(jM)%eNoN
+                       Ac = msh(jM)%IEN(a,iEln)
+C                        d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
+C                        d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
+C                        d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
 
-!                 Get displacement  
-!                 Localize p inside the parent element  
-                  CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, xp, xi,fl)  
-                  IF( .NOT.fl) write(*,*)" GETXI not converging "
+C                        d(1) = d(1) - N(a)*Dn(1,Ac) 
+C                        d(2) = d(2) - N(a)*Dn(2,Ac) 
+C                        d(3) = d(3) - N(a)*Dn(3,Ac) 
+!                      We have to use Do because Dn contains the result 
+!                      coming from the solid 
+                       d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
+                       d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
+                       d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+                    END DO
 
-!                 evaluate N at xi 
-                  CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,N,Nxi)
+!                   update uris disp                                                   
+                    uris%Yd(:,nd) = d
 
-!                 use this to compute disp al node xp 
-                  d = 0._RKIND
-                  DO a=1, msh(jM)%eNoN
-                     Ac = msh(jM)%IEN(a,iEln)
-C                      d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-C                      d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-C                      d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+                    DEALLOCATE(xl, Nxi, N)
+                    GOTO 120
+                 END IF
+              
+              END DO
+              DEALLOCATE(xl, N, Nxi)
+           END DO
 
-C                      d(1) = d(1) - N(a)*Dn(1,Ac) 
-C                      d(2) = d(2) - N(a)*Dn(2,Ac) 
-C                      d(3) = d(3) - N(a)*Dn(3,Ac) 
-!                    We have to use Do because Dn contains the result 
-!                    coming from the solid 
-                     d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-                     d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-                     d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
-                  END DO
-
-!                 update uris disp                                                   
-                  uris%Yd(:,nd) = d
-C                   write(*,*)" disp is ", d
-
-                  DEALLOCATE(xl, Nxi, N)
-                  GOTO 120
-               END IF
-            
-            END DO
-            DEALLOCATE(xl, N, Nxi)
-         END DO
-
-120      CONTINUE
+120        CONTINUE
+        END DO
       END DO
 
+      write(*,*) "GOT NAN FROM UPDATEDISP"
+      IF (ANY(ISNAN(uris%Yd))) STOP
 
 !     Compute the projection from the disp of the element 
 
@@ -432,7 +390,9 @@ C                   write(*,*)" disp is ", d
       maxb = TINY(maxb)
 
       flag = 0
-
+    
+      ! FK: Hard coded BBox?? This is going to cause problem if scale
+      ! changes
       DO i=1, nsd
          minb(i) = MINVAL(xl(i,:) - 0.01)  
          maxb(i) = MAXVAL(xl(i,:) + 0.01)
@@ -446,6 +406,7 @@ C                   write(*,*)" disp is ", d
      5             .AND. (xp(3) .LE. maxb(3)) 
      6             .AND. (xp(3) .GE. minb(3)) ) THEN 
 !        The node is inside the Bounding Box
+         !FK: What if the node is inside the BBox but not poly??
          flag = IN_POLY(xp, xl, ext)
 !         CALL IN_POLY2(xp,xl, flag)
       END IF 
@@ -500,6 +461,7 @@ C                   write(*,*)" disp is ", d
          std = " Number of uris elements: "//uris%msh(iM)%gnEl
 
 !     Making sure face names are unique
+         write(*,*) "NUMBER OF FACES: ", uris%msh(iM)%nFa
          DO iFa=1, uris%msh(iM)%nFa
             uris%msh(iM)%fa(iFa)%iM = iM
             ctmp = uris%msh(iM)%fa(iFa)%name
@@ -541,6 +503,8 @@ C       ALLOCATE(uris%xCuo(nsd,uris%tnNo))
       uris%x = gX
       uris%xCu = gX
 C       uris%xCuo = gX
+      ALLOCATE(uris%Yd(nsd,uris%tnNo))
+      uris%Yd = 0._RKIND
       DEALLOCATE(gX)
 
 !     Setting msh%gN, msh%lN parameter
@@ -714,7 +678,7 @@ C       END IF
 
 !     we plot coord + displ
       nOut   = 2
-      outDof = 2*nsd
+      outDof = nOut * nsd
 C       DO iEq=1, nEq
 C          DO iOut=1, eq(iEq)%nOutIB
 C             IF (.NOT.eq(iEq)%outIB(iOut)%wtn(1)) CYCLE
@@ -839,16 +803,14 @@ C       write(*,*)" d%x ", SIZE(d(1)%x,2)
       IF (iStat .LT. 0) err = "VTU file write error (coords)"
 
 !     Writing the connectivity data
-      nSh = -1
       DO iM=1, uris%nMsh
          ALLOCATE(tmpI(d(iM)%eNoN,d(iM)%nEl))
          DO e=1, d(iM)%nEl
-            tmpI(:,e) = d(iM)%IEN(:,e) + nSh
+            tmpI(:,e) = d(iM)%IEN(:,e) - 1
          END DO
          CALL putVTK_elemIEN(vtu, tmpI, d(iM)%vtkType, iStat)
          IF (iStat .LT. 0) err = "VTU file write error (ien)"
          DEALLOCATE(tmpI)
-         nSh = nSh + d(iM)%nNo
       END DO
 
 C       write(*,*)" outS ",  outS
@@ -917,4 +879,100 @@ C       END IF
       END SUBROUTINE URIS_WRITEVTUS
 !####################################################################
 !--------------------------------------------------------------------
+!     Checks if a probe lies inside or outside an immersed boundary
+      SUBROUTINE URIS_CALCSDF
+      USE COMMOD
+      USE ALLFUN
+      
+      IMPLICIT NONE
+      REAL(KIND=RKIND) :: xp(nsd)
+      REAL(KIND=RKIND) :: ALLOCATABLE 
+      LOGICAL :: flag
 
+      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM
+      REAL(KIND=RKIND) :: dS, minS, Jac, nV(nsd), xb(nsd), dotP
+      REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:)
+
+      REAL(KIND=RKIND) :: minb(nsd), maxb(nsd), extra(nsd)
+      ALLOCATE(xXi(nsd, nsd-1))
+      ALLOCATE(lX(nsd, uris%msh(1)%eNoN))
+
+      IF (.NOT. ALLOCATED(uris%sdf)) THEN
+          ALLOCATE(uris%sdf(tnNo))
+      END IF
+      ! This cut off threshold needs to be specified from the input
+      ! file!
+      uris%sdf = 10._RKIND
+
+      ! FK:
+      ! Each time when the URIS moves, we need to recompute the signed
+      ! distance function
+
+      ! Now we assume that for each uris, we only have one valve
+      ! We will need to work on generalization later
+      ! Find the bounding box of the valve, the BBox will be 10% larger
+      ! than the actual valve.
+      minb = HUGE(minb)
+      maxb = TINY(maxb)
+      DO i=1, nsd
+         minb(i) = MINVAL(uris%x(i,:))  
+         maxb(i) = MAXVAL(uris%x(i,:))
+         extra(i) = (maxb(i) - minb(i)) * 0.1
+      END DO
+
+      ! Should this be computed on the reference or current
+      ! configuration?
+      DO ca=1, tnNo
+        minS = HUGE(minS)
+        xp = x(:, ca) + Do(nsd+2:2*nsd+1,ca)
+!       Is the node inside the BBox? 
+        IF (ALL(xp.GE.minb-extra).AND.ALL(xp.LE.maxb+extra)) THEN
+            ! This point is inside the BBox
+            ! Find the closest URIS face centroid
+            DO iM=1, uris%nMsh
+                ! Here we are using original coordinates, plus 
+                ! the displacements
+                DO e=1, uris%msh(iM)%nEl
+                    xb = 0._RKIND
+                    DO a=1, uris%msh(iM)%eNoN
+                        Ac = uris%msh(iM)%IEN(a,e)
+                        xb = xb + uris%x(:,Ac) + uris%Yd(:,Ac) 
+                    END DO
+                    xb = xb/REAL(uris%msh(iM)%eNoN, KIND=RKIND)
+                    dS = SQRT( SUM( (xp(:)-xb(:))**2._RKIND ) )
+                    IF (dS .LT. minS) THEN
+                        minS = dS
+                        Ec = e
+                        jM = iM
+                    END IF
+                END DO
+            END DO
+            ! We also need to compute the sign (above or below
+            ! the valve).
+            ! Compute the element normal
+            xXi = 0._RKIND
+            lX = 0._RKIND
+            xb = 0._RKIND
+            DO a=1, uris%msh(jM)%eNoN
+               Ac = uris%msh(jM)%IEN(a,Ec)
+               xb = xb + uris%x(:,Ac) + uris%Yd(:,Ac)
+               lX(:,a) = uris%x(:,Ac) + uris%Yd(:,Ac)
+            END DO
+            xb   = xb / REAL(uris%msh(jM)%eNoN, KIND=RKIND)
+            DO a = 1, uris%msh(jM)%eNoN
+                DO i = 1, nsd-1
+                    xXi(:,i) = xXi(:,i)+lX(:,a)*uris%msh(jM)%Nx(i,a,1)
+                END DO
+            END DO
+            nV(:) = CROSS(xXi)
+            nV(:) = nV(:) / SQRT(NORM(nV))
+            dotP = NORM(xp-xb, nV)
+    
+            uris%sdf(ca) = dotP
+ 
+        END IF
+
+      END DO
+
+      RETURN
+      END SUBROUTINE URIS_CALCSDF

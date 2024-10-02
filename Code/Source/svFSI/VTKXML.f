@@ -760,6 +760,15 @@
          IF (iStat .LT. 0) err = "VTU file write error (point data)"
       END DO
 
+!     Write Signed distance data for URIS
+      IF (urisFlag) THEN
+          IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+          ALLOCATE(tmpV(1,tnNo))
+          tmpV(1, :) = uris%sdf
+          CALL putVTK_pointData(vtu, "URIS_SDF", tmpV, iStat)
+          IF (iStat .LT. 0) err = "VTU file write error (uris sdf)"
+      END IF
+
 !     Write element-based variables
       ne = 0
       IF (.NOT.savedOnce .OR. nMsh.GT.1) THEN

@@ -46,8 +46,8 @@
 
       LOGICAL :: vmsStab
       INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), xq(nsd), Deps, Res, zSurf, 
-     2                 DDir, distSrf, zSurf2 
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), xq(nsd), Deps, Res, 
+     2                 DDir, distSrf
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -64,12 +64,10 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = 0.15_RKIND !0.13_RKIND
+      Deps = 0.25_RKIND !0.13_RKIND
       Res = 1.E10_RKIND
 
       IF(.NOT.urisFlag) Res = 0._RKIND
-      zSurf = 1.25_RKIND
-      zSurf2 = 2.0_RKIND
 
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
@@ -135,30 +133,33 @@
 
 
 !--         Plot the coordinates of the quad point in the current configuration 
-            xq = 0._RKIND
-            DO a=1, eNoN 
-               xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
-               xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
-               xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
-            END DO 
+            IF (urisFlag) THEN
+                xq = 0._RKIND
+                distSrf = 0._RKIND
+                DO a=1, eNoN 
+                   xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
+                   xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
+                   xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
+                   Ac = lM%IEN(a,e)
+                   distSrf = distSrf + fs(1)%N(a,g)*ABS(uris%sdf(Ac))
+                END DO 
 
-            DDir = 0._RKIND
-C             distSrf = MIN(ABS(xq(3)-zSurf),ABS(xq(3)-zSurf2))
-            distSrf = ABS(xq(3)-zSurf)
-            IF(distSrf.LE.Deps) THEN 
-                DDir = (1+COS(PI*distSrf/Deps))/(2*Deps)
-C                 write(*,*)" Element ", e
-C                 write(*,*)" Deps = ", Deps
-C                 write(*,*)" DDir = ", DDir
-            END IF
+                DDir = 0._RKIND
+                IF(distSrf.LE.Deps) THEN 
+                    DDir = (1+COS(PI*distSrf/Deps))/(2*Deps)
+C                     write(*,*)" Element ", e
+C                     write(*,*)" Deps = ", Deps
+C                     write(*,*)" DDir = ", DDir
+                END IF
 
-!           Let's initially do that, need to be improved
-            IF(.NOT.urisActFlag) DDir = 0._RKIND
+!               Let's initially do that, need to be improved
+                IF(.NOT.urisActFlag) DDir = 0._RKIND
 !--
+            END IF
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir, Deps, Res, zSurf)
+     3            bfl, lR, lK, DDir, Deps, Res)
 
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -188,7 +189,7 @@ C                 write(*,*)" DDir = ", DDir
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir, Deps, Res, zSurf)
+     3            bfl, lR, lK, DDir, Deps, Res)
 
             ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -228,7 +229,7 @@ C             END IF
       END SUBROUTINE CONSTRUCT_FLUID
 !####################################################################
       SUBROUTINE FLUID3D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res, zSurf)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -236,7 +237,7 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res, zSurf
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
@@ -869,7 +870,7 @@ C             END IF
       END SUBROUTINE FLUID2D_M
 !####################################################################
       SUBROUTINE FLUID3D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res, zSurf)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -877,7 +878,7 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res, zSurf
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 

@@ -879,6 +879,8 @@ C          INTEGER(KIND=IKIND) :: cEq = 0
          REAL(KIND=RKIND), ALLOCATABLE :: xCu(:,:)
 C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yd(:,:)
+!        Signed distance function of the domain
+         REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)         
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes

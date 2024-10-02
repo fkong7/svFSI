@@ -55,7 +55,7 @@
      3   lR(:,:), lK(:,:,:), lKd(:,:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
      2   Nwxx(:,:), Nqx(:,:)
-      REAL(KIND=RKIND)  xq(nsd), Deps, Res, zSurf, DDir, distSrf, zSurf2 
+      REAL(KIND=RKIND)  xq(nsd), Deps, Res, DDir, distSrf
 
       eNoN = lM%eNoN
       nFn  = lM%nFn
@@ -67,10 +67,9 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = 0.18_RKIND
+      ! FK: FOUND HARD CODES URIS HERE
+      Deps = 0.25_RKIND
       Res = 1.E5_RKIND !6
-      zSurf = 1.25_RKIND
-      zSurf2 = 2.0_RKIND
       DDir = 0._RKIND
 
 !     l = 3, if nsd==2 ; else 6;
@@ -158,15 +157,16 @@
 !--         Plot the coordinates of the quad point in the current configuration 
             IF(urisFlag) THEN 
                xq = 0._RKIND
+               distSrf = 0._RKIND
                DO a=1, eNoN 
                   xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
                   xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
                   xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
+                  Ac = lM%IEN(a,e)
+                  distSrf = distSrf + fs(1)%N(a,g)*ABS(uris%sdf(Ac))
                END DO 
 
                DDir = 0._RKIND
-C                distSrf = MIN(ABS(xq(3)-zSurf),ABS(xq(3)-zSurf2))
-               distSrf = ABS(xq(3)-zSurf)
                IF(distSrf.LE.Deps) THEN 
                    DDir = (1+COS(PI*distSrf/Deps))/(2*Deps)
 C                     write(*,*)" Element ", e
@@ -184,7 +184,7 @@ C                     write(*,*)" DDir = ", DDir
                CASE (phys_fluid)
                   CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir, Deps, Res, zSurf)
+     3               al, yl, bfl, lR, lK, DDir, Deps, Res)
 
                CASE (phys_lElas)
                   CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -248,7 +248,7 @@ C                     write(*,*)" DDir = ", DDir
                CASE (phys_fluid)
                   CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir, Deps, Res, zSurf)
+     3               al, yl, bfl, lR, lK, DDir, Deps, Res)
 
                CASE (phys_ustruct)
                   CALL USTRUCT3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
