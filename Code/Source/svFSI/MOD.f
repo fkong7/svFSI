@@ -881,6 +881,15 @@ C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yd(:,:)
 !        Signed distance function of the domain
          REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)         
+!        Default signed distance value away from the valve
+         REAL(KIND=RKIND) :: sdf_default = 10._RKIND 
+!        Default distance value of the valve boundary
+         REAL(KIND=RKIND) :: sdf_deps = 0.25_RKIND 
+!        Displacements of the valve when it opens
+         REAL(KIND=RKIND), ALLOCATABLE :: DxOpen(:,:,:)
+!        Displacements of the valve when it closes
+         REAL(KIND=RKIND), ALLOCATABLE :: DxClose(:,:,:)
+
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes
@@ -938,6 +947,8 @@ C          TYPE(ibCommType) :: cm
       LOGICAL :: urisFlag = .FALSE.  
 !     Whether the URIS surface is active
       LOGICAL :: urisActFlag = .FALSE.  
+!     Whether the URIS valve is closed
+      LOGICAL :: urisCloseFlag = .TRUE.
       INTEGER(KIND=IKIND) :: cntURIS = 0
 
 

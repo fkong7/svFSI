@@ -64,7 +64,7 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = 0.25_RKIND !0.13_RKIND
+      Deps = uris%sdf_deps
       Res = 1.E10_RKIND
 
       IF(.NOT.urisFlag) Res = 0._RKIND

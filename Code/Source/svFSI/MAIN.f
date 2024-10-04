@@ -311,7 +311,7 @@
 !        If the valve is active, look at the pressure difference 
          IF(urisFlag) THEN 
 
-            IF( urisActFlag ) THEN 
+            IF( urisCloseFlag ) THEN 
                cntURIS = cntURIS + 1
 
                IF(.NOT.((cTS.GE.10).AND.(cntURIS .LT. 10))) THEN 
@@ -319,9 +319,9 @@
                END IF
 
                !CALL URIS_MEANV 
-               IF( cntURIS .EQ. 0) THEN 
-                  IF( cntURIS .LT. 10) GOTO 11
-               END IF
+               !IF( cntURIS .EQ. 0) THEN 
+               !   IF( cntURIS .LT. 10) GOTO 11
+               !END IF
 
             ELSE 
                cntURIS = cntURIS + 1
@@ -342,8 +342,6 @@ C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
             IF (mvMsh) THEN 
                CALL URIS_UpdateDisp !(Do,Dn)
             END IF
-            write(*,*) "nan ck MAIN"
-            IF (ANY(ISNAN(uris%Yd))) STOP
             CALL URIS_WRITEVTUS(uris%Yd)
          END IF
 !---     end RIS/URIS stuff 

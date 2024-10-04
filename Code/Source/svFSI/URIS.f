@@ -59,7 +59,7 @@
       ! TO-DO: We need to have a sdf array for each mesh
       iM = 1
 
-      Deps = 0.25_RKIND
+      Deps = uris%sdf_deps
 
 !     Let's compute left side 
       sUPS = 0._RKIND
@@ -116,10 +116,11 @@ C       write(*,*)" volume inside ", volD
 
 !     If the uris was active, check the 
 
-      IF( (meanPU .GT. meanPD) .AND. (cntURIS .GT. 15 ) ) THEN 
-         urisActFlag = .FALSE.
-         write(*,*)" Change urisActFlag to FALSE, deactivate URIS "
-         cntURIS = 0
+      IF( (meanPD .GT. meanPU) .AND. (cntURIS .GT. 0 ) ) THEN 
+         IF (urisCloseFlag) cntURIS = 0
+         urisCloseFlag = .FALSE.
+         urisActFlag = .TRUE.
+         write(*,*) "Set urisOpenFlag to TRUE"
       END IF
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
@@ -149,9 +150,7 @@ C       write(*,*)" volume inside ", volD
       
 
       iM = 1
-
-      Deps = 0.13_RKIND
-      zSurf = 1.25_RKIND
+      Deps = uris%sdf_deps
 
       IdSubDmn = 0
 
@@ -160,21 +159,10 @@ C       write(*,*)" volume inside ", volD
 !     If z > zSurf - Deps -> Flag is +1      
 
 !     Let's compute immersed side 
-      sImm = 1._RKIND
-      DO e=1, msh(iM)%nEl
-         DO a=1, msh(iM)%eNoN
-            Ac = msh(iM)%IEN(a,e)
-            
-            IF( x(3,Ac) .LT. zSurf - Deps ) THEN 
-               sImm(1,Ac) = 0._RKIND
-            ELSE IF ( x(3,Ac) .GT. zSurf + Deps ) THEN 
-               sImm(1,Ac) = 0._RKIND
-            END IF
-         END DO
-      END DO
+      sImm = 0._RKIND
+      WHERE(uris%sdf.LE.-Deps) sImm(1,:) = 1._RKIND
       volI = Integ(iM,sImm)
       write(*,*)" volume inside ", volI
-
 
 !     Now we can compute the vel mean for component 3
       iEq = 1
@@ -184,6 +172,7 @@ C       write(*,*)" volume inside ", volD
 
       meanV = 0._RKIND
 
+      ! FK: Now hard coded for z velocity, need to define a face
       m = 1
       s = eq(iEq)%s + (nsd-1) 
       e = s + m - 1
@@ -192,32 +181,14 @@ C       write(*,*)" volume inside ", volD
       
       meanV(3) = Integ(iM,tmpV)/volI
 
-
-
-
-C !     Now we can compute the vel mean on each subdomain
-C       iEq = 1
-
-C       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
-C       ALLOCATE (tmpV(maxnsd,tnNo))
-
-C       meanV = 0._RKIND
-
-C       m = nsd
-C       s = eq(iEq)%s 
-C       e = s + m - 1
-
-C       tmpV(1:m,:) = Yn(s:e,:)*sImm
-      
-C       meanV = Integ(iM,tmpV,1,nsd)/volI
-
       write(*,*)" mean Vel ", meanV
 
 !     If the uris was active, check the 
-      IF( (meanV(3) .LT. 0._RKIND) .AND. (cntURIS .GT. 15 )) THEN 
+      IF( (meanV(3) .LT. 0._RKIND) .AND. (cntURIS .GT. 0 )) THEN 
+         IF (.NOT.urisCloseFlag) cntURIS = 0
          urisActFlag = .TRUE.
-         write(*,*)" Change urisActFlag to TRUE, activate URIS "
-         cntURIS = 0
+         urisCloseFlag = .TRUE.
+         write(*,*) "Set urisCloseFlag to TRUE"
       END IF
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
@@ -358,9 +329,6 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
         END DO
       END DO
 
-      write(*,*) "GOT NAN FROM UPDATEDISP"
-      IF (ANY(ISNAN(uris%Yd))) STOP
-
 !     Compute the projection from the disp of the element 
 
 !     Use this function to GETXI(eType, eNoN, xl, xp, xi, flag)
@@ -425,12 +393,16 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
 
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: i, j, iM, iFa, a, b, Ac, e
+      INTEGER(KIND=IKIND) :: fid, dispNtClose,dispNtOpen,dispNn,
+     2  t, ioStatus
       REAL(KIND=RKIND) :: fibN(nsd), rtmp
       CHARACTER(LEN=stdL) :: ctmp, fExt
       TYPE(listType), POINTER :: lPtr, lPM
       TYPE(fileType) :: fTmp
 
       REAL(KIND=RKIND), ALLOCATABLE :: tmpX(:,:), gX(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: tmpD(:,:,:),dispClose(:,:,:), 
+     2   dispOpen(:,:,:)
 
       uris%nMsh  = list%srch("Add URIS mesh",ll=1)
       std = " Number of immersed surfaces for uris: "//uris%nMsh
@@ -461,6 +433,7 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
          std = " Number of uris elements: "//uris%msh(iM)%gnEl
 
 !     Making sure face names are unique
+!     FK: we don't need faces for URIS right?         
          write(*,*) "NUMBER OF FACES: ", uris%msh(iM)%nFa
          DO iFa=1, uris%msh(iM)%nFa
             uris%msh(iM)%fa(iFa)%iM = iM
@@ -475,6 +448,34 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
             END DO
          END DO
 
+!     Read valve motion: note that this motion is defined on the
+!     reference configuration         
+         lPtr => lPM%get(fTmp, "Valve open motion file path")
+         fid = fTmp%open()
+         READ (fid,*) dispNtOpen, dispNn
+         IF (dispNn .NE. uris%msh(iM)%gnNo) THEN
+             err = "Mismatch in node numbers between URIS mesh and
+     2              displacements"
+         END IF
+         ALLOCATE(dispOpen(dispNtOpen, nsd, dispNn))
+         DO t=1, dispNtOpen
+            DO a=1, dispNn
+                READ (fid,*, IOSTAT=ioStatus) dispOpen(t,:,a)
+            END DO
+         END DO
+         lPtr => lPM%get(fTmp, "Valve close motion file path")
+         fid = fTmp%open()
+         READ (fid,*) dispNtClose, dispNn
+         IF (dispNn .NE. uris%msh(iM)%gnNo) THEN
+             err = "Mismatch in node numbers between URIS mesh and
+     2              displacements"
+         END IF
+         ALLOCATE(dispClose(dispNtClose, nsd, dispNn))
+         DO t=1, dispNtClose
+            DO a=1, dispNn
+                READ (fid,*, IOSTAT=ioStatus) dispClose(t,:,a)
+            END DO
+         END DO
 !     To scale the mesh, while attaching x to gX
          uris%msh(iM)%scF = 1._RKIND
          lPtr => lPM%get(uris%msh(iM)%scF,"Mesh scale factor",
@@ -487,14 +488,32 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
             ALLOCATE(gX(nsd,a))
             gX(:,1:uris%tnNo) = tmpX
             DEALLOCATE(tmpX)
+            ! Move data for open
+            ALLOCATE(tmpD(dispNtOpen,nsd,uris%tnNo))
+            tmpD = uris%DxOpen
+            DEALLOCATE(uris%DxOpen)
+            ALLOCATE(uris%DxOpen(dispNtOpen,nsd,a))
+            uris%DxOpen(:,:,1:uris%tnNo)=tmpD
+            DEALLOCATE(tmpD)
+            ! Move data for close
+            ALLOCATE(tmpD(dispNtClose,nsd,uris%tnNo))
+            tmpD = uris%DxClose
+            DEALLOCATE(uris%DxClose)
+            ALLOCATE(uris%DxClose(dispNtClose,nsd,a))
+            uris%DxClose(:,:,1:uris%tnNo)=tmpD
+            DEALLOCATE(tmpD)
          ELSE
             DEALLOCATE(gX)
             ALLOCATE(gX(nsd,a))
+            ALLOCATE(uris%DxOpen(dispNtOpen,nsd,a))
+            ALLOCATE(uris%DxClose(dispNtClose,nsd,a))
          END IF
          gX(:,uris%tnNo+1:a) = uris%msh(iM)%x * uris%msh(iM)%scF
+         uris%DxOpen(:,:,uris%tnNo+1:a)=dispOpen
+         uris%DxClose(:,:,uris%tnNo+1:a)=dispClose
          uris%tnNo           = a
          DEALLOCATE(uris%msh(iM)%x)
-
+         DEALLOCATE(dispOpen, dispClose)
 C          lPtr => lPM%get(uris%msh(iM)%dx,"Mesh global edge size",1)
       END DO
       ALLOCATE(uris%x(nsd,uris%tnNo))
@@ -900,9 +919,26 @@ C       END IF
       IF (.NOT. ALLOCATED(uris%sdf)) THEN
           ALLOCATE(uris%sdf(tnNo))
       END IF
+      ! We need to check if the valve needs to move 
       ! This cut off threshold needs to be specified from the input
       ! file!
-      uris%sdf = 10._RKIND
+      IF (cntURIS.GE.1) THEN
+        IF ((.NOT.urisCloseFlag).AND.
+     2          (cntURIS.LE.SIZE(uris%DxOpen,1)))THEN
+            write(*,*) "CHECK OPEN COORDS before: ", MINVAL(uris%x),
+     2          MAXVAL(uris%x)
+            uris%x = uris%DxOpen(cntURIS,:,:)
+            write(*,*) "CHECK OPEN COORDS: ", MINVAL(uris%x),
+     2          MAXVAL(uris%x)
+        ELSE IF (urisCloseFlag.AND.
+     2          (cntURIS.LE.SIZE(uris%DxClose,1))) THEN
+            uris%x = uris%DxClose(cntURIS,:,:)
+        ELSE
+            RETURN
+        END IF
+      END IF
+      write(*,*) "RECOMPUTING SDF"
+      uris%sdf = uris%sdf_default
 
       ! FK:
       ! Each time when the URIS moves, we need to recompute the signed
@@ -973,6 +1009,7 @@ C       END IF
         END IF
 
       END DO
-
+     
+      write(*,*) "any nan in sdf? ", ANY(ISNAN(uris%sdf))
       RETURN
       END SUBROUTINE URIS_CALCSDF
