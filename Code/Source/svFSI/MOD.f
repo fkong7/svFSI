@@ -889,7 +889,8 @@ C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: DxOpen(:,:,:)
 !        Displacements of the valve when it closes
          REAL(KIND=RKIND), ALLOCATABLE :: DxClose(:,:,:)
-
+!        Previous mean flow rate
+         REAL(KIND=RKIND) :: meanVo = 0._RKIND
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes
@@ -950,6 +951,7 @@ C          TYPE(ibCommType) :: cm
 !     Whether the URIS valve is closed
       LOGICAL :: urisCloseFlag = .TRUE.
       INTEGER(KIND=IKIND) :: cntURIS = 0
+      INTEGER(KIND=IKIND) :: urisflowDecelCnt = 0
 
 
 !     INTEGER(KIND=IKIND) VARIABLES

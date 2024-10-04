@@ -117,7 +117,10 @@ C       write(*,*)" volume inside ", volD
 !     If the uris was active, check the 
 
       IF( (meanPD .GT. meanPU) .AND. (cntURIS .GT. 0 ) ) THEN 
-         IF (urisCloseFlag) cntURIS = 0
+         IF (urisCloseFlag) THEN
+            cntURIS = 0
+            urisflowDecelCnt = 0
+         END IF
          urisCloseFlag = .FALSE.
          urisActFlag = .TRUE.
          write(*,*) "Set urisOpenFlag to TRUE"
@@ -183,13 +186,19 @@ C       write(*,*)" volume inside ", volD
 
       write(*,*)" mean Vel ", meanV
 
+      IF (meanV(3).LE.uris%meanVo) THEN
+          urisflowDecelCnt = urisflowDecelCnt + 1
+      END IF
+      uris%meanVo = meanV(3)
 !     If the uris was active, check the 
-      IF( (meanV(3) .LT. 0._RKIND) .AND. (cntURIS .GT. 0 )) THEN 
-         IF (.NOT.urisCloseFlag) cntURIS = 0
+      IF (.NOT.urisCloseFlag.AND.urisflowDecelCnt.GE.5) THEN
+         cntURIS = 0
          urisActFlag = .TRUE.
          urisCloseFlag = .TRUE.
          write(*,*) "Set urisCloseFlag to TRUE"
       END IF
+
+      write(*,*) "urisCloseFlag is ", urisCloseFlag
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
