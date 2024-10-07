@@ -853,34 +853,17 @@
 
 !     Unfitted Resistive Immersed surface data type
       TYPE urisType
+         CHARACTER(LEN=stdL) name
 !        Whether any file being saved
          LOGICAL :: savedOnce = .FALSE.
-C !        IB method
-C          INTEGER(KIND=IKIND) :: mthd = ibMthd_NA
-C !        IB coupling
-C          INTEGER(KIND=IKIND) :: cpld = ibCpld_NA
-C !        IB interpolation method
-C          INTEGER(KIND=IKIND) :: intrp = ibIntrp_NA
-C !        Current IB domain ID
-C          INTEGER(KIND=IKIND) :: cDmn
-C !        Current equation
-C          INTEGER(KIND=IKIND) :: cEq = 0
 !        Total number of IB nodes
          INTEGER(KIND=IKIND) :: tnNo
 !        Number of IB meshes
-         INTEGER(KIND=IKIND) :: nMsh
-
-!        URIS Domain ID
-         INTEGER(KIND=IKIND), ALLOCATABLE :: dmnID(:)
-
+         INTEGER(KIND=IKIND) :: nFa = 0
 !        Position coordinates
          REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
-!        Current position coordinates
-         REAL(KIND=RKIND), ALLOCATABLE :: xCu(:,:)
 C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yd(:,:)
-!        Signed distance function of the domain
-         REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)         
 !        Default signed distance value away from the valve
          REAL(KIND=RKIND) :: sdf_default = 10._RKIND 
 !        Default distance value of the valve boundary
@@ -889,8 +872,16 @@ C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: DxOpen(:,:,:)
 !        Displacements of the valve when it closes
          REAL(KIND=RKIND), ALLOCATABLE :: DxClose(:,:,:)
-!        Previous mean flow rate
-         REAL(KIND=RKIND) :: meanVo = 0._RKIND
+!        Normal vector pointing positive flow direction
+         REAL(KIND=RKIND), ALLOCATABLE :: nrm(:)
+!        Close flag
+         LOGICAL :: clsFlg = .TRUE.
+!        Iteration count
+         INTEGER(KIND=IKIND) :: cnt = 1000000
+!        URIS: signed distance function of each node to the uris
+         REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)       
+!        Mesh scale factor
+         REAL(KIND=RKIND) :: scF = 1._RKIND
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes
@@ -948,10 +939,10 @@ C          TYPE(ibCommType) :: cm
       LOGICAL :: urisFlag = .FALSE.  
 !     Whether the URIS surface is active
       LOGICAL :: urisActFlag = .FALSE.  
-!     Whether the URIS valve is closed
-      LOGICAL :: urisCloseFlag = .TRUE.
-      INTEGER(KIND=IKIND) :: cntURIS = 0
-      INTEGER(KIND=IKIND) :: urisflowDecelCnt = 0
+!     Number of URIS surfaces
+      INTEGER(KIND=IKIND) :: nUris      
+!     URIS resistance
+      REAL(KIND=RKIND) :: urisRes = 1.E10_RKIND 
 
 
 !     INTEGER(KIND=IKIND) VARIABLES
@@ -1116,6 +1107,6 @@ C          TYPE(ibCommType) :: cm
 !     risFace object
       TYPE(risFace), ALLOCATABLE :: RIS  
 !     unfitted RIS object
-      TYPE(urisType), ALLOCATABLE :: uris  
+      TYPE(urisType), ALLOCATABLE :: uris(:)
 
       END MODULE COMMOD

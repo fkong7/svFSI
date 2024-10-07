@@ -45,8 +45,8 @@
      2   Dg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd)
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn,iUris
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd),distSrf(nUris)
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -55,7 +55,7 @@
      3   lR(:,:), lK(:,:,:), lKd(:,:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
      2   Nwxx(:,:), Nqx(:,:)
-      REAL(KIND=RKIND)  xq(nsd), Deps, Res, DDir, distSrf
+      REAL(KIND=RKIND)  xq(nsd), Res, DDir, DDirTmp
 
       eNoN = lM%eNoN
       nFn  = lM%nFn
@@ -67,9 +67,6 @@
          vmsStab = .FALSE.
       END IF
 
-      ! FK: FOUND HARD CODES URIS HERE
-      Deps = 0.25_RKIND
-      Res = 1.E5_RKIND !6
       DDir = 0._RKIND
 
 !     l = 3, if nsd==2 ; else 6;
@@ -163,18 +160,22 @@
                   xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
                   xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
                   Ac = lM%IEN(a,e)
-                  distSrf = distSrf + fs(1)%N(a,g)*ABS(uris%sdf(Ac))
+                  DO iUris=1, nUris
+                     distSrf(iUris) = distSrf(iUris) + 
+     2                  fs(1)%N(a,g)*ABS(uris(iUris)%sdf(Ac))
+                  END DO
                END DO 
 
                DDir = 0._RKIND
-               IF(distSrf.LE.Deps) THEN 
-                   DDir = (1+COS(PI*distSrf/Deps))/(2*Deps)
-C                     write(*,*)" Element ", e
-C                     write(*,*)" Deps = ", Deps
-C                     write(*,*)" DDir = ", DDir
-               END IF
+               DO iUris=1, nUris
+                  IF (distSrf(iUris).LE.uris(iUris)%sdf_deps) THEN
+                      DDirTmp = (1+COS(PI*distSrf(iUris)/
+     2                      uris(iUris)%sdf_deps))/
+     2                      (2*uris(iUris)%sdf_deps**2)
+                      IF (DDirTmp.GT.DDir) DDir = DDirTmp
+                  END IF
+               END DO
 
-!           Let's initially do that, need to be improved
                IF(.NOT.urisActFlag) DDir = 0._RKIND
             END IF
 !--
@@ -184,7 +185,7 @@ C                     write(*,*)" DDir = ", DDir
                CASE (phys_fluid)
                   CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir, Deps, Res)
+     3               al, yl, bfl, lR, lK, DDir)
 
                CASE (phys_lElas)
                   CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -248,7 +249,7 @@ C                     write(*,*)" DDir = ", DDir
                CASE (phys_fluid)
                   CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir, Deps, Res)
+     3               al, yl, bfl, lR, lK, DDir)
 
                CASE (phys_ustruct)
                   CALL USTRUCT3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,

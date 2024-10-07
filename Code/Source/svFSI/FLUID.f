@@ -45,9 +45,9 @@
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys
-      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), xq(nsd), Deps, Res, 
-     2                 DDir, distSrf
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys,iUris
+      REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), xq(nsd), DDir, DDirTmp,
+     2  distSrf(nUris)
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
@@ -64,11 +64,7 @@
          vmsStab = .FALSE.
       END IF
 
-      Deps = uris%sdf_deps
-      Res = 1.E10_RKIND
-
-      IF(.NOT.urisFlag) Res = 0._RKIND
-
+      DDir = 0._RKIND
 !     l = 3, if nsd==2 ; else 6;
       l = nsymd
 
@@ -133,33 +129,36 @@
 
 
 !--         Plot the coordinates of the quad point in the current configuration 
-            IF (urisFlag) THEN
-                xq = 0._RKIND
-                distSrf = 0._RKIND
-                DO a=1, eNoN 
-                   xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
-                   xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
-                   xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
-                   Ac = lM%IEN(a,e)
-                   distSrf = distSrf + fs(1)%N(a,g)*ABS(uris%sdf(Ac))
-                END DO 
+            IF(urisFlag) THEN 
+               xq = 0._RKIND
+               distSrf = 0._RKIND
+               DO a=1, eNoN 
+                  xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
+                  xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
+                  xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
+                  Ac = lM%IEN(a,e)
+                  DO iUris=1, nUris
+                     distSrf(iUris) = distSrf(iUris) + 
+     2                  fs(1)%N(a,g)*ABS(uris(iUris)%sdf(Ac))
+                  END DO
+               END DO 
 
-                DDir = 0._RKIND
-                IF(distSrf.LE.Deps) THEN 
-                    DDir = (1+COS(PI*distSrf/Deps))/(2*Deps)
-C                     write(*,*)" Element ", e
-C                     write(*,*)" Deps = ", Deps
-C                     write(*,*)" DDir = ", DDir
-                END IF
+               DDir = 0._RKIND
+               DO iUris=1, nUris
+                  IF (distSrf(iUris).LE.uris(iUris)%sdf_deps) THEN
+                      DDirTmp = (1+COS(PI*distSrf(iUris)/
+     2                      uris(iUris)%sdf_deps))/
+     2                      (2*uris(iUris)%sdf_deps**2)
+                      IF (DDirTmp.GT.DDir) DDir = DDirTmp
+                  END IF
+               END DO
 
-!               Let's initially do that, need to be improved
-                IF(.NOT.urisActFlag) DDir = 0._RKIND
-!--
+               IF(.NOT.urisActFlag) DDir = 0._RKIND
             END IF
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir, Deps, Res)
+     3            bfl, lR, lK, DDir)
 
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -189,7 +188,7 @@ C                     write(*,*)" DDir = ", DDir
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir, Deps, Res)
+     3            bfl, lR, lK, DDir)
 
             ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -229,7 +228,7 @@ C             END IF
       END SUBROUTINE CONSTRUCT_FLUID
 !####################################################################
       SUBROUTINE FLUID3D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -237,7 +236,7 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
@@ -246,7 +245,14 @@ C             END IF
      2   kS, kU, divU, gam, mu, mu_s, mu_g, p, pa, u(3), ud(3), px(3),
      3   f(3), up(3), ua(3), ux(3,3), uxx(3,3,3), es(3,3), es_x(3,3,3),
      4   esNx(3,eNoNw), mu_x(3), rV(3), rS(3), rM(3,3), updu(3,3,eNoNw),
-     5   uNx(eNoNw), upNx(eNoNw), uaNx(eNoNw), d2u2(3), NxNx, T1, T2
+     5   uNx(eNoNw), upNx(eNoNw), uaNx(eNoNw), d2u2(3), NxNx, T1, T2,Res
+
+      IF(.NOT.urisFlag) THEN
+          Res = 0._RKIND
+      ELSE
+          Res = urisRes
+      END IF
+
 
       ctM  = 1._RKIND
       ctC  = 36._RKIND
@@ -417,7 +423,7 @@ C             END IF
 
 !     In case of unfitted RIS, compute the delta function at the quad point,
 !     add the additional value to the stabilization param 
-      kT = kT + (Res*DDir/Deps)**2._RKIND
+      kT = kT + (Res*DDir)**2._RKIND
 
 
 
@@ -443,9 +449,9 @@ C             END IF
       rS(3) = mu_x(1)*es(1,3) + mu_x(2)*es(2,3) + mu_x(3)*es(3,3)
      2      + mu*d2u2(3)
 
-      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + (Res*DDir/Deps)*u(1))
-      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + (Res*DDir/Deps)*u(2))
-      up(3) = -tauM*(rho*rV(3) + px(3) - rS(3) + (Res*DDir/Deps)*u(3))
+      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + (Res*DDir)*u(1))
+      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + (Res*DDir)*u(2))
+      up(3) = -tauM*(rho*rV(3) + px(3) - rS(3) + (Res*DDir)*u(3))
 
       IF (vmsFlag) THEN
          tauC = 1._RKIND / (tauM * (Kxi(1,1) + Kxi(2,2) + Kxi(3,3)))
@@ -510,7 +516,7 @@ C             END IF
 
          T1 = -rho*uNx(a) + mu*(Nwxx(1,a) + Nwxx(2,a) + Nwxx(3,a))
      2      + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a) + mu_x(3)*Nwx(3,a)
-     3        - (Res*DDir/Deps)*Nw(a)
+     3        - (Res*DDir)*Nw(a)
 
          updu(1,1,a) = mu_x(1)*Nwx(1,a) + d2u2(1)*mu_g*esNx(1,a) + T1
          updu(2,1,a) = mu_x(2)*Nwx(1,a) + d2u2(1)*mu_g*esNx(2,a)
@@ -548,7 +554,7 @@ C             END IF
             T2 = (mu + tauC)*rM(1,1) + esNx(1,a)*mu_g*esNx(1,b)
      2         - rho*tauM*uaNx(a)*updu(1,1,b)
             lK(1,a,b)  = lK(1,a,b)  + wl*(T2 + T1) 
-            lK(1,a,b)  = lK(1,a,b)  + (Res*DDir/Deps)*wl*Nw(b)*Nw(a)
+            lK(1,a,b)  = lK(1,a,b)  + (Res*DDir)*wl*Nw(b)*Nw(a)
 
 !           dRm_a1/du_b2
             T2 = mu*rM(2,1) + tauC*rM(1,2) + esNx(1,a)*mu_g*esNx(2,b)
@@ -569,7 +575,7 @@ C             END IF
             T2 = (mu + tauC)*rM(2,2) + esNx(2,a)*mu_g*esNx(2,b)
      2         - rho*tauM*uaNx(a)*updu(2,2,b)
             lK(6,a,b)  = lK(6,a,b)  + wl*(T2 + T1)
-            lK(6,a,b)  = lK(6,a,b)  + (Res*DDir/Deps)*wl*Nw(b)*Nw(a)
+            lK(6,a,b)  = lK(6,a,b)  + (Res*DDir)*wl*Nw(b)*Nw(a)
 
 !           dRm_a2/du_b3
             T2 = mu*rM(3,2) + tauC*rM(2,3) + esNx(2,a)*mu_g*esNx(3,b)
@@ -590,7 +596,7 @@ C             END IF
             T2 = (mu + tauC)*rM(3,3) + esNx(3,a)*mu_g*esNx(3,b)
      2         - rho*tauM*uaNx(a)*updu(3,3,b)
             lK(11,a,b) = lK(11,a,b) + wl*(T2 + T1)
-            lK(11,a,b) = lK(11,a,b) + (Res*DDir/Deps)*wl*Nw(b)*Nw(a)
+            lK(11,a,b) = lK(11,a,b) + (Res*DDir)*wl*Nw(b)*Nw(a)
          END DO
       END DO
 
@@ -610,9 +616,9 @@ C             END IF
 !     Adding URIS contribution 
 !     Local residue
       DO a=1, eNoNw
-         lR(1,a) = lR(1,a) + (Res*DDir/Deps)*w*Nw(a)*(u(1) + up(1))
-         lR(2,a) = lR(2,a) + (Res*DDir/Deps)*w*Nw(a)*(u(2) + up(2))
-         lR(3,a) = lR(3,a) + (Res*DDir/Deps)*w*Nw(a)*(u(3) + up(3))
+         lR(1,a) = lR(1,a) + (Res*DDir)*w*Nw(a)*(u(1) + up(1))
+         lR(2,a) = lR(2,a) + (Res*DDir)*w*Nw(a)*(u(2) + up(2))
+         lR(3,a) = lR(3,a) + (Res*DDir)*w*Nw(a)*(u(3) + up(3))
       END DO
 
       RETURN
@@ -870,7 +876,7 @@ C             END IF
       END SUBROUTINE FLUID2D_M
 !####################################################################
       SUBROUTINE FLUID3D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, Deps, Res)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -878,7 +884,7 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, Deps, Res
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir 
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
@@ -886,10 +892,15 @@ C             END IF
       REAL(KIND=RKIND) ctM, ctC, amd, wl, rho, tauM, kT, kS, kU, divU,
      2   gam, mu, mu_s, mu_g, u(3), ud(3), px(3), f(3), up(3), ux(3,3),
      3   uxx(3,3,3), es(3,3), es_x(3,3,3), esNx(3,eNoNw), mu_x(3), uNx,
-     4   rV(3), rS(3), updu(3,3,eNoNw), d2u2(3), upNx, NxNx, T1, T2
+     4   rV(3), rS(3), updu(3,3,eNoNw), d2u2(3), upNx, NxNx, T1, T2,Res
 
       ctM  = 1._RKIND
       ctC  = 36._RKIND
+      IF(.NOT.urisFlag) THEN
+          Res = 0._RKIND
+      ELSE
+          Res = urisRes
+      END IF
 
       rho  = eq(cEq)%dmn(cDmn)%prop(fluid_density)
       f(1) = eq(cEq)%dmn(cDmn)%prop(f_x)
@@ -1053,7 +1064,7 @@ C             END IF
 
 !        In case of unfitted RIS, compute the delta function at the quad point,
 !        add the additional value to the stabilization param 
-         kT = kT + (Res*DDir/Deps)**2._RKIND
+         kT = kT + (Res*DDir)**2._RKIND
 
          kU = u(1)*u(1)*Kxi(1,1) +u(2)*u(1)*Kxi(2,1) +u(3)*u(1)*Kxi(3,1)
      2      + u(1)*u(2)*Kxi(1,2) +u(2)*u(2)*Kxi(2,2) +u(3)*u(2)*Kxi(3,2)
@@ -1077,16 +1088,16 @@ C             END IF
          rS(3) = mu_x(1)*es(1,3) + mu_x(2)*es(2,3) + mu_x(3)*es(3,3)
      2         + mu*d2u2(3)
 
-         up(1) = -tauM*(rho*rV(1) + px(1) - rS(1)+(Res*DDir/Deps)*u(1))
-         up(2) = -tauM*(rho*rV(2) + px(2) - rS(2)+(Res*DDir/Deps)*u(2))
-         up(3) = -tauM*(rho*rV(3) + px(3) - rS(3)+(Res*DDir/Deps)*u(3))
+         up(1) = -tauM*(rho*rV(1) + px(1) - rS(1)+(Res*DDir)*u(1))
+         up(2) = -tauM*(rho*rV(2) + px(2) - rS(2)+(Res*DDir)*u(2))
+         up(3) = -tauM*(rho*rV(3) + px(3) - rS(3)+(Res*DDir)*u(3))
 
          DO a=1, eNoNw
             uNx = u(1)*Nwx(1,a) + u(2)*Nwx(2,a) + u(3)*Nwx(3,a)
 
             T1  = -rho*uNx + mu*(Nwxx(1,a) + Nwxx(2,a) + Nwxx(3,a))
      2          + mu_x(1)*Nwx(1,a) + mu_x(2)*Nwx(2,a) + mu_x(3)*Nwx(3,a)
-     3            - (Res*DDir/Deps)*Nw(a)
+     3            - (Res*DDir)*Nw(a)
 
             updu(1,1,a) = mu_x(1)*Nwx(1,a) + d2u2(1)*mu_g*esNx(1,a) + T1
             updu(2,1,a) = mu_x(2)*Nwx(1,a) + d2u2(1)*mu_g*esNx(2,a)

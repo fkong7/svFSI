@@ -38,12 +38,12 @@
 !####################################################################
 !     This subroutine computes the mean pressure and flux on the 
 !     ris surface 
-      SUBROUTINE URIS_MEANP
+      SUBROUTINE URIS_MEANP(iUris)
       USE TYPEMOD
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
-
+      INTEGER(KIND=IKIND), INTENT(IN) :: iUris
       INTEGER(KIND=IKIND) :: iEq, nPrj, m, s, e, i, iM, iFa
       REAL(KIND=RKIND) :: tmp
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
@@ -55,47 +55,33 @@
      2                    sDST(1,tnNo), sUPS(1,tnNo), sImm(1,tnNo)
 
 
-      ! FK: What if there are multiple meshes??
-      ! TO-DO: We need to have a sdf array for each mesh
-      iM = 1
-
-      Deps = uris%sdf_deps
-
-!     Let's compute left side 
-      sUPS = 0._RKIND
-      WHERE(uris%sdf.GE.0.AND.uris%sdf.LE.Deps) sUPS(1,:) = 1._RKIND
-      volU = Integ(iM,sUPS)
-      write(*,*)" volume upstream ", volU
-
-!     Let's compute right side 
-      sDST = 0._RKIND
-      WHERE(uris%sdf.LT.0.AND.uris%sdf.GE.-Deps) sDST(1,:) = 1._RKIND
-      volD = Integ(iM,sDST)
-      write(*,*)" volume downstream ", volD
-
-!     Let's compute immersed side 
-C       sImm = 1._RKIND
-C       DO e=1, msh(iM)%nEl
-C          DO a=1, msh(iM)%eNoN
-C             Ac = msh(iM)%IEN(a,e)
-            
-C             IF( x(3,Ac) .LT. zSurf - Deps ) THEN 
-C                sImm(1,Ac) = 0._RKIND
-C             ELSE IF ( x(3,Ac) .GT. zSurf + Deps ) THEN 
-C                sImm(1,Ac) = 0._RKIND
-C             END IF
-C          END DO
-C       END DO
-C       volD = Integ(iM,sImm)
-C       write(*,*)" volume inside ", volD
-
-
-
 !     Now we can compute the pressure mean on each subdomain
       iEq = 1
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
       ALLOCATE (tmpV(maxnsd,tnNo))
+      ! FK: What if there are multiple meshes??
+      ! TO-DO: We need to have a sdf array for each mesh
+      Deps = uris(iUris)%sdf_deps
+      volU = 0._RKIND
+      volD = 0._RKIND
+!     Let's compute left side 
+      sUPS = 0._RKIND
+      WHERE(uris(iUris)%sdf.GE.0.AND.uris(iUris)%sdf.LE.Deps) 
+     2     sUPS(1,:) = 1._RKIND
+      DO iM=1, nMsh
+         volU = volU + Integ(iM,sUPS)
+      END DO
+
+!     Let's compute right side 
+      sDST = 0._RKIND
+      WHERE(uris(iUris)%sdf.LT.0.AND.uris(iUris)%sdf.GE.-Deps) 
+     2    sDST(1,:) = 1._RKIND
+      DO iM=1, nMsh
+         volD = volD + Integ(iM,sDST)
+      END DO
+      write(*,*)" volume upstream ", volU
+      write(*,*)" volume downstream ", volD
 
       meanPU = 0._RKIND
       meanPD = 0._RKIND
@@ -105,27 +91,29 @@ C       write(*,*)" volume inside ", volD
       e = s + m - 1
 
       tmpV(1:m,:) = Yn(s:e,:)*sUPS
-      
-      meanPU = Integ(iM,tmpV)/volU
+      DO iM = 1, nMsh
+          meanPU = meanPU + Integ(iM,tmpV)
+      END DO
+      meanPU = meanPU/volU
 
       tmpV(1:m,:) = Yn(s:e,:)*sDST
-      meanPD = Integ(iM,tmpV)/volD
+      DO iM = 1, nMsh
+          meanPD = meanPD + Integ(iM,tmpV)
+      END DO
+      meanPD = meanPD/volD
 
       write(*,*)" mean P upstream ", meanPU
       write(*,*)" mean P downstream ", meanPD
 
-!     If the uris was active, check the 
-
-      IF( (meanPD .GT. meanPU) .AND. (cntURIS .GT. 0 ) ) THEN 
-         IF (urisCloseFlag) THEN
-            cntURIS = 0
-            urisflowDecelCnt = 0
-         END IF
-         urisCloseFlag = .FALSE.
-         urisActFlag = .TRUE.
-         write(*,*) "Set urisOpenFlag to TRUE"
+!     If the uris has passed the closing state
+      IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxClose,1)) THEN
+          IF( (meanPD .GT. meanPU)) THEN
+              uris(iUris)%cnt = 1
+              uris(iUris)%clsFlg = .FALSE.
+              urisActFlag = .TRUE.
+              write(*,*) "Set urisOpenFlag to TRUE for uris ", iUris
+          END IF
       END IF
-
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
       RETURN
@@ -134,71 +122,65 @@ C       write(*,*)" volume inside ", volD
 !--------------------------------------------------------------------
 !     This subroutine computes the mean velocity in the fluid elements near the 
 !     immersed surface  
-      SUBROUTINE URIS_MEANV
+      SUBROUTINE URIS_MEANV(iUris)
       USE TYPEMOD
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
 
+      INTEGER(KIND=IKIND), INTENT(IN) :: iUris
       INTEGER(KIND=IKIND) :: iEq, nPrj, m, s, e, i, iM, iFa
       REAL(KIND=RKIND) :: tmp
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
 
 !     Let's conpute the mean pressure in the two regions of the fluid mesh 
 !     For the moment let's define a flag IdSubDmn(size the number of elements)
-      INTEGER(KIND=IKIND) :: IdSubDmn(msh(1)%nEl),  a, Ac, cntM, cntP
-      REAL(KIND=RKIND) :: volI, Deps, zSurf, meanV(nsd), 
-     2                    sImm(1,tnNo)
+      INTEGER(KIND=IKIND) :: a, Ac, cntM, cntP
+      REAL(KIND=RKIND) :: volI, Deps, zSurf, meanV, 
+     2                    sImm(1,tnNo), tmpVNrm(1,tnNo)
 
-      
-
-      iM = 1
-      Deps = uris%sdf_deps
-
-      IdSubDmn = 0
-
-!     For each element, select the nodes, check the z-comp
-!     If z < zSurf - Deps -> Flag is -1      
-!     If z > zSurf - Deps -> Flag is +1      
-
-!     Let's compute immersed side 
-      sImm = 0._RKIND
-      WHERE(uris%sdf.LE.-Deps) sImm(1,:) = 1._RKIND
-      volI = Integ(iM,sImm)
-      write(*,*)" volume inside ", volI
-
-!     Now we can compute the vel mean for component 3
+!     Let's compute the neighboring region below the valve normal. When
+!     the valve is open, this region should roughly be valve oriface.
       iEq = 1
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
       ALLOCATE (tmpV(maxnsd,tnNo))
+     
+      Deps = uris(iUris)%sdf_deps
+      sImm = 0._RKIND
+      volI = 0._RKIND
+      WHERE(uris(iUris)%sdf.LE.-Deps) sImm(1,:) = 1._RKIND
+      DO iM=1, nMsh
+        volI = volI + Integ(iM,sImm)
+      END DO
+      write(*,*)" volume inside ", volI
 
-      meanV = 0._RKIND
-
-      ! FK: Now hard coded for z velocity, need to define a face
-      m = 1
-      s = eq(iEq)%s + (nsd-1) 
+      m = nsd
+      s = eq(iEq)%s 
       e = s + m - 1
 
       tmpV(1:m,:) = Yn(s:e,:)*sImm
-      
-      meanV(3) = Integ(iM,tmpV)/volI
 
+      DO i = 1, tnNo
+        tmpVNrm(1,i) = NORM(tmpV(1:m,i),uris(iUris)%nrm)
+      END DO
+     
+      meanV = 0._RKIND
+      DO iM=1, nMsh 
+        meanV = meanV + Integ(iM,tmpV)/volI
+      END DO
       write(*,*)" mean Vel ", meanV
 
-      IF (meanV(3).LE.uris%meanVo) THEN
-          urisflowDecelCnt = urisflowDecelCnt + 1
+!     If the uris has passed the open state
+      IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxOpen,1)) THEN
+          IF (meanV.LE.0._RKIND) THEN
+              uris(iUris)%cnt = 1
+              urisActFlag = .TRUE.
+              uris(iUris)%clsFlg = .TRUE.
+              write(*,*) "Set urisCloseFlag to TRUE"
+          END IF
       END IF
-      uris%meanVo = meanV(3)
-!     If the uris was active, check the 
-      IF (.NOT.urisCloseFlag.AND.urisflowDecelCnt.GE.5) THEN
-         cntURIS = 0
-         urisActFlag = .TRUE.
-         urisCloseFlag = .TRUE.
-         write(*,*) "Set urisCloseFlag to TRUE"
-      END IF
-
-      write(*,*) "urisCloseFlag is ", urisCloseFlag
+      write(*,*) "urisCloseFlag is ", uris(iUris)%clsFlg
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
@@ -217,131 +199,123 @@ C       write(*,*)" volume inside ", volD
 C       REAL(KIND=RKIND), INTENT(IN) :: lDo(nsd,tnNo)
 C       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
 
-      INTEGER(KIND=IKIND) :: flag, iM, jM, iEln, a, nd, Ac
+      INTEGER(KIND=IKIND) :: flag, iM, jM, iEln, a, nd, Ac, iUris
       REAL(KIND=RKIND) :: xp(nsd), xi(nsd), d(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), N(:), Nxi(:,:)
       LOGICAL :: ultra, fl
 
-      IF(.NOT.ALLOCATED(uris%Yd)) THEN 
-         ALLOCATE(uris%Yd(nsd,uris%tnNo))
-         uris%Yd = 0._RKIND
-      END IF
-
 !     For each point in the immersed surface we need to localize it 
 !     = find the fluid element that contains the node
-      !DO iM=1, uris%nMsh
-      DO iM=1, uris%nMsh
-        flag = 1
-        ultra = .FALSE.
-        xi = 0.5_RKIND
-        
-C         DO nd = 1, uris%msh(iM)%nNo
-        nd = 0
-        DO WHILE(nd .LE. uris%tnNo)
-!          Check if we were able to find the tetra, if not run the search with 
-!          an approximation 
-           IF(flag .EQ. 0) THEN 
-              IF( ultra ) THEN 
-                 write(*,*)"*** ERROR, tet not found for para nd ",nd-1
+      DO iUris=1, nUris
+         DO iM=1, uris(iUris)%nFa
+           flag = 1
+           ultra = .FALSE.
+           xi = 0.5_RKIND
+           
+C            DO nd = 1, uris(iUris)%msh(iM)%nNo
+           nd = 0
+           DO WHILE(nd .LE. uris(iUris)%tnNo)
+!             Check if we were able to find the tetra, if not run the search with 
+!             an approximation 
+              IF(flag .EQ. 0) THEN 
+                 IF( ultra ) THEN 
+                    write(*,*)"***ERROR,tet not found for para nd ",nd-1
+                    nd = nd + 1
+                    ultra = .FALSE.
+                 ELSE 
+                    ultra = .TRUE.
+                    GOTO 123
+                 END IF
+              ELSE
                  nd = nd + 1
                  ultra = .FALSE.
-              ELSE 
-                 ultra = .TRUE.
-                 GOTO 123
               END IF
-           ELSE
-              nd = nd + 1
-              ultra = .FALSE.
-           END IF
 
-C            write(*,*)" looking node ", nd,": ", xp
-           xp = uris%x(:,nd) !+ uris%Yd(:,nd)
-123        CONTINUE
-           flag = 1
-           
-           ! FK: Should we narrow down to which mesh to save time?
-           DO jM=1, nMsh
-              ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
-     2                                            Nxi(nsd,msh(jM)%eNoN))
+              xp = uris(iUris)%x(:,nd) !+ uris(iUris)%Yd(:,nd)
+123           CONTINUE
+              flag = 1
+              
+              ! FK: Should we narrow down to which mesh to save time?
+              ! This will also be problematic for parallelization
+              DO jM=1, nMsh
+                 ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
+     2                                           Nxi(nsd,msh(jM)%eNoN))
 
-C               write(*,*)" here 1 "
-              DO iEln = 1, msh(jM)%nEl
-C                  flag = 0
-C                  write(*,*)" here 2 "
-                 DO a=1, msh(jM)%eNoN
-                    Ac = msh(jM)%IEN(a,iEln)
-C                     xl(:,a)  = ( x(:,Ac) + disp)
-C                     write(*,*)" here 3 " 
-C                     IF(mvMsh) THEN 
-C                        xl(:,a) = x(:,Ac) + Dn(nsd+2:2*nsd+1,Ac) ! problem here 
-C                     ELSE 
-                       xl(:,a) = x(:,Ac) 
-C                     END IF
-                 END DO 
-
-C                  write(*,*)" here 4 "
-C !                 Check if it is inside 
-C                  write(*,*)" xp ", xp 
-C                  write(*,*)" here 5 "
-C                  write(*,*)" xl ", xl(:,1)
-C                  write(*,*)" xl ", xl(:,2)
-C                  write(*,*)" xl ", xl(:,3)
-C                  write(*,*)" xl ", xl(:,4)
-C                  write(*,*)" ultra ", ultra 
-                 CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
-
-                 IF( flag .EQ. 1) THEN 
-C                     write(*,*)" nd parav ",nd-1," inside ",iEln,": ",xl 
-C                     write(*,*)" nd ",nd," inside ",iEln,": ",xl 
-C                     write(*,*)" nd parav ",nd-1 ," inside ",iEln-1
-C                     write(*,*)" with ultra ", ultra 
-
-!                   Get displacement  
-!                   Localize p inside the parent element  
-                    CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
-     2                      xp, xi,fl)  
-                    IF( .NOT.fl) write(*,*)" GETXI not converging "
-
-!                   evaluate N at xi 
-                    CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,N,Nxi)
-
-!                   use this to compute disp al node xp 
-                    d = 0._RKIND
+C                  write(*,*)" here 1 "
+                 DO iEln = 1, msh(jM)%nEl
+C                     flag = 0
+C                     write(*,*)" here 2 "
                     DO a=1, msh(jM)%eNoN
                        Ac = msh(jM)%IEN(a,iEln)
-C                        d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-C                        d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-C                        d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+C                        xl(:,a)  = ( x(:,Ac) + disp)
+C                        write(*,*)" here 3 " 
+C                        IF(mvMsh) THEN 
+C                           xl(:,a) = x(:,Ac) + Dn(nsd+2:2*nsd+1,Ac) ! problem here 
+C                        ELSE 
+                          xl(:,a) = x(:,Ac) 
+C                        END IF
+                    END DO 
 
-C                        d(1) = d(1) - N(a)*Dn(1,Ac) 
-C                        d(2) = d(2) - N(a)*Dn(2,Ac) 
-C                        d(3) = d(3) - N(a)*Dn(3,Ac) 
-!                      We have to use Do because Dn contains the result 
-!                      coming from the solid 
-                       d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-                       d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-                       d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
-                    END DO
+C                     write(*,*)" here 4 "
+C !                    Check if it is inside 
+C                     write(*,*)" xp ", xp 
+C                     write(*,*)" here 5 "
+C                     write(*,*)" xl ", xl(:,1)
+C                     write(*,*)" xl ", xl(:,2)
+C                     write(*,*)" xl ", xl(:,3)
+C                     write(*,*)" xl ", xl(:,4)
+C                     write(*,*)" ultra ", ultra 
+                    CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
 
-!                   update uris disp                                                   
-                    uris%Yd(:,nd) = d
+                    IF( flag .EQ. 1) THEN 
+C                        write(*,*)" nd parav ",nd-1," inside ",iEln,": ",xl 
+C                        write(*,*)" nd ",nd," inside ",iEln,": ",xl 
+C                        write(*,*)" nd parav ",nd-1 ," inside ",iEln-1
+C                        write(*,*)" with ultra ", ultra 
 
-                    DEALLOCATE(xl, Nxi, N)
-                    GOTO 120
-                 END IF
-              
+!                      Get displacement  
+!                      Localize p inside the parent element  
+                       CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
+     2                         xp, xi,fl)  
+                       IF( .NOT.fl) write(*,*)" GETXI not converging "
+
+!                      evaluate N at xi 
+                       CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
+     2                      N,Nxi)
+
+!                      use this to compute disp al node xp 
+                       d = 0._RKIND
+                       DO a=1, msh(jM)%eNoN
+                          Ac = msh(jM)%IEN(a,iEln)
+C                           d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
+C                           d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
+C                           d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+
+C                           d(1) = d(1) - N(a)*Dn(1,Ac) 
+C                           d(2) = d(2) - N(a)*Dn(2,Ac) 
+C                           d(3) = d(3) - N(a)*Dn(3,Ac) 
+!                         We have to use Do because Dn contains the result 
+!                         coming from the solid 
+                          d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
+                          d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
+                          d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+                       END DO
+
+!                      update uris disp                                                   
+                       uris(iUris)%Yd(:,nd) = d
+
+                       DEALLOCATE(xl, Nxi, N)
+                       GOTO 120
+                    END IF
+                 
+                 END DO
+                 DEALLOCATE(xl, N, Nxi)
               END DO
-              DEALLOCATE(xl, N, Nxi)
+
+120           CONTINUE
            END DO
-
-120        CONTINUE
-        END DO
+         END DO
       END DO
-
-!     Compute the projection from the disp of the element 
-
-!     Use this function to GETXI(eType, eNoN, xl, xp, xi, flag)
-      
       
       RETURN
       END SUBROUTINE URIS_UpdateDisp
@@ -403,506 +377,323 @@ C                        d(3) = d(3) - N(a)*Dn(3,Ac)
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: i, j, iM, iFa, a, b, Ac, e
       INTEGER(KIND=IKIND) :: fid, dispNtClose,dispNtOpen,dispNn,
-     2  t, ioStatus
+     2  t, ioStatus, iUris
       REAL(KIND=RKIND) :: fibN(nsd), rtmp
       CHARACTER(LEN=stdL) :: ctmp, fExt
-      TYPE(listType), POINTER :: lPtr, lPM
+      TYPE(listType), POINTER :: lPtr, lPM, lPN
       TYPE(fileType) :: fTmp
 
       REAL(KIND=RKIND), ALLOCATABLE :: tmpX(:,:), gX(:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: tmpD(:,:,:),dispClose(:,:,:), 
      2   dispOpen(:,:,:)
 
-      uris%nMsh  = list%srch("Add URIS mesh",ll=1)
-      std = " Number of immersed surfaces for uris: "//uris%nMsh
-      ALLOCATE (uris%msh(uris%nMsh), gX(0,0))
+      nUris  = list%srch("Add URIS mesh",ll=1)
+      std = " Number of immersed surfaces for uris: "//nUris
+      ALLOCATE(uris(nUris))
+      DO iUris=1, nUris
+         lPM => list%get(uris(iUris)%name, "Add URIS mesh", iUris)
+         std  = "Reading URIS mesh <"//CLR(TRIM(uris(iUris)%name))//">"
+         uris(iUris)%scF = 1._RKIND
+         lPtr => lPM%get(uris(iUris)%scF,"Mesh scale factor",
+     2          lb=0._RKIND)
 
-      uris%tnNo = 0
-      DO iM=1, uris%nMsh
-         lPM => list%get(uris%msh(iM)%name, "Add URIS mesh", iM)
-         lPtr => lPM%get(uris%msh(iM)%lShl, "Set mesh as shell")
-         IF (.NOT.uris%msh(iM)%lShl) err = "Only shells are allowed"
+         uris(iUris)%nFa = lPM%srch("Add URIS face")
+         ALLOCATE (uris(iUris)%msh(uris(iUris)%nFa), gX(0,0), 
+     2      uris(iUris)%nrm(nsd))
 
-         std  = "Reading URIS mesh <"//CLR(TRIM(uris%msh(iM)%name))//">"
-         CALL READSV(lPM, uris%msh(iM))
-         IF (uris%msh(iM)%eType .EQ. eType_NA) THEN
-            CALL READCCNE(lPM, uris%msh(iM))
-         END IF
-         IF (uris%msh(iM)%eType .EQ. eType_NA) THEN
-            CALL READNRB(lPM, uris%msh(iM))
-         END IF
-         IF (uris%msh(iM)%eType .EQ. eType_NA) THEN
-            CALL READGAMBIT(lPM, uris%msh(iM))
-         END IF
-         IF (uris%msh(iM)%eType .EQ. eType_NA) THEN
-            err = " Failed to identify format of the uris mesh"
-         END IF
+         lPtr => lPM%get(fTmp, "Positive flow normal file")
+         fid = fTmp%open()
+         READ (fid,*) uris(iUris)%nrm(:)
+         CLOSE (fid)
 
-         std = " Number of uris nodes: "//uris%msh(iM)%gnNo
-         std = " Number of uris elements: "//uris%msh(iM)%gnEl
+         lPtr => lPM%get(uris(iUris)%sdf_deps, "Thickness")
+         uris(iUris)%tnNo = 0
+         DO iM=1, uris(iUris)%nFa
+            ! Set as shell
+            uris(iUris)%msh(iM)%lShl = .TRUE.
+            lPN => lPM%get(uris(iUris)%msh(iM)%name, "Add URIS face",
+     2          iM)
+            std = "Reading URIS face <"
+     2              //CLR(TRIM(uris(iUris)%msh(iM)%name))//">"
+            CALL READSV(lPN, uris(iUris)%msh(iM))
+            IF (uris(iUris)%msh(iM)%eType .EQ. eType_NA) THEN
+               CALL READCCNE(lPN, uris(iUris)%msh(iM))
+            END IF
+            IF (uris(iUris)%msh(iM)%eType .EQ. eType_NA) THEN
+               CALL READNRB(lPN, uris(iUris)%msh(iM))
+            END IF
+            IF (uris(iUris)%msh(iM)%eType .EQ. eType_NA) THEN
+               CALL READGAMBIT(lPN, uris(iUris)%msh(iM))
+            END IF
+            IF (uris(iUris)%msh(iM)%eType .EQ. eType_NA) THEN
+               err = " Failed to identify format of the uris mesh"
+            END IF
 
-!     Making sure face names are unique
-!     FK: we don't need faces for URIS right?         
-         write(*,*) "NUMBER OF FACES: ", uris%msh(iM)%nFa
-         DO iFa=1, uris%msh(iM)%nFa
-            uris%msh(iM)%fa(iFa)%iM = iM
-            ctmp = uris%msh(iM)%fa(iFa)%name
-            DO i=1, iM
-               DO j=1, uris%msh(i)%nFa
-                  IF (ctmp .EQ. uris%msh(i)%fa(j)%name .AND.
-     2               (i.NE.iM .OR. j.NE.iFa)) THEN
-                     err = " Repeating face names is not allowed"
-                  END IF
+            std = " Number of uris nodes: "//uris(iUris)%msh(iM)%gnNo
+            std = " Number of uris elements: "//uris(iUris)%msh(iM)%gnEl
+
+!        Read valve motion: note that this motion is defined on the
+!        reference configuration         
+            lPtr => lPN%get(fTmp, "Open motion file path")
+            fid = fTmp%open()
+            READ (fid,*) dispNtOpen, dispNn
+            IF (dispNn .NE. uris(iUris)%msh(iM)%gnNo) THEN
+                write(*,*) dispNn, uris(iUris)%msh(iM)%gnNo
+                err = "Mismatch in node numbers between URIS mesh and
+     2                displacements."
+            END IF
+            ALLOCATE(dispOpen(dispNtOpen, nsd, dispNn))
+            DO t=1, dispNtOpen
+               DO a=1, dispNn
+                   READ (fid,*, IOSTAT=ioStatus) dispOpen(t,:,a)
                END DO
             END DO
-         END DO
-
-!     Read valve motion: note that this motion is defined on the
-!     reference configuration         
-         lPtr => lPM%get(fTmp, "Valve open motion file path")
-         fid = fTmp%open()
-         READ (fid,*) dispNtOpen, dispNn
-         IF (dispNn .NE. uris%msh(iM)%gnNo) THEN
-             err = "Mismatch in node numbers between URIS mesh and
-     2              displacements"
-         END IF
-         ALLOCATE(dispOpen(dispNtOpen, nsd, dispNn))
-         DO t=1, dispNtOpen
-            DO a=1, dispNn
-                READ (fid,*, IOSTAT=ioStatus) dispOpen(t,:,a)
-            END DO
-         END DO
-         lPtr => lPM%get(fTmp, "Valve close motion file path")
-         fid = fTmp%open()
-         READ (fid,*) dispNtClose, dispNn
-         IF (dispNn .NE. uris%msh(iM)%gnNo) THEN
-             err = "Mismatch in node numbers between URIS mesh and
-     2              displacements"
-         END IF
-         ALLOCATE(dispClose(dispNtClose, nsd, dispNn))
-         DO t=1, dispNtClose
-            DO a=1, dispNn
-                READ (fid,*, IOSTAT=ioStatus) dispClose(t,:,a)
-            END DO
-         END DO
-!     To scale the mesh, while attaching x to gX
-         uris%msh(iM)%scF = 1._RKIND
-         lPtr => lPM%get(uris%msh(iM)%scF,"Mesh scale factor",
-     2                                                     lb=0._RKIND)
-         a = uris%tnNo + uris%msh(iM)%gnNo
-         IF (iM .GT. 1) THEN
-            ALLOCATE(tmpX(nsd,uris%tnNo))
-            tmpX = gX
-            DEALLOCATE(gX)
-            ALLOCATE(gX(nsd,a))
-            gX(:,1:uris%tnNo) = tmpX
-            DEALLOCATE(tmpX)
-            ! Move data for open
-            ALLOCATE(tmpD(dispNtOpen,nsd,uris%tnNo))
-            tmpD = uris%DxOpen
-            DEALLOCATE(uris%DxOpen)
-            ALLOCATE(uris%DxOpen(dispNtOpen,nsd,a))
-            uris%DxOpen(:,:,1:uris%tnNo)=tmpD
-            DEALLOCATE(tmpD)
-            ! Move data for close
-            ALLOCATE(tmpD(dispNtClose,nsd,uris%tnNo))
-            tmpD = uris%DxClose
-            DEALLOCATE(uris%DxClose)
-            ALLOCATE(uris%DxClose(dispNtClose,nsd,a))
-            uris%DxClose(:,:,1:uris%tnNo)=tmpD
-            DEALLOCATE(tmpD)
-         ELSE
-            DEALLOCATE(gX)
-            ALLOCATE(gX(nsd,a))
-            ALLOCATE(uris%DxOpen(dispNtOpen,nsd,a))
-            ALLOCATE(uris%DxClose(dispNtClose,nsd,a))
-         END IF
-         gX(:,uris%tnNo+1:a) = uris%msh(iM)%x * uris%msh(iM)%scF
-         uris%DxOpen(:,:,uris%tnNo+1:a)=dispOpen
-         uris%DxClose(:,:,uris%tnNo+1:a)=dispClose
-         uris%tnNo           = a
-         DEALLOCATE(uris%msh(iM)%x)
-         DEALLOCATE(dispOpen, dispClose)
-C          lPtr => lPM%get(uris%msh(iM)%dx,"Mesh global edge size",1)
-      END DO
-      ALLOCATE(uris%x(nsd,uris%tnNo))
-      ALLOCATE(uris%xCu(nsd,uris%tnNo))
-C       ALLOCATE(uris%xCuo(nsd,uris%tnNo))
-      uris%x = gX
-      uris%xCu = gX
-C       uris%xCuo = gX
-      ALLOCATE(uris%Yd(nsd,uris%tnNo))
-      uris%Yd = 0._RKIND
-      DEALLOCATE(gX)
-
-!     Setting msh%gN, msh%lN parameter
-      b = 0
-      DO iM=1, uris%nMsh
-         uris%msh(iM)%nNo = uris%msh(iM)%gnNo
-         ALLOCATE(uris%msh(iM)%gN(uris%msh(iM)%nNo), 
-     2                             uris%msh(iM)%lN(uris%tnNo))
-         uris%msh(iM)%gN = 0
-         uris%msh(iM)%lN = 0
-         DO a=1, uris%msh(iM)%nNo
-            b = b + 1
-            uris%msh(iM)%gN(a) = b
-            uris%msh(iM)%lN(b) = a
-         END DO
-      END DO
-      IF (b .NE. uris%tnNo) err =
-     2   " Mismatch in uris%tnNo. Correction needed"
-
-!     Remap msh%gIEN array
-      DO iM=1, uris%nMsh
-         uris%msh(iM)%nEl = uris%msh(iM)%gnEl
-         ALLOCATE(uris%msh(iM)%IEN(uris%msh(iM)%eNoN,uris%msh(iM)%nEl))
-         DO e=1, uris%msh(iM)%nEl
-            DO a=1, uris%msh(iM)%eNoN
-               Ac = uris%msh(iM)%gIEN(a,e)
-               Ac = uris%msh(iM)%gN(Ac)
-               uris%msh(iM)%IEN(a,e) = Ac
-            END DO
-         END DO
-         DEALLOCATE(uris%msh(iM)%gIEN)
-      END DO
-
-!     Re-arranging fa structure - %gN, %lN, %IEN
-      b = 0
-      DO iM=1, uris%nMsh
-         DO iFa=1, uris%msh(iM)%nFa
-            ALLOCATE(uris%msh(iM)%fa(iFa)%lN(uris%tnNo))
-            uris%msh(iM)%fa(iFa)%lN = 0
-            DO a=1, uris%msh(iM)%fa(iFa)%nNo
-               Ac = uris%msh(iM)%fa(iFa)%gN(a)
-               Ac = uris%msh(iM)%gN(Ac)
-               uris%msh(iM)%fa(iFa)%gN(a)  = Ac
-               uris%msh(iM)%fa(iFa)%lN(Ac) = a
-            END DO
-            DO e=1, uris%msh(iM)%fa(iFa)%nEl
-               DO a=1, uris%msh(iM)%fa(iFa)%eNoN
-                  Ac = uris%msh(iM)%fa(iFa)%IEN(a,e)
-                  Ac = uris%msh(iM)%gN(Ac)
-                  uris%msh(iM)%fa(iFa)%IEN(a,e) = Ac
+            CLOSE (fid)
+            lPtr => lPN%get(fTmp, "Close motion file path")
+            fid = fTmp%open()
+            READ (fid,*) dispNtClose, dispNn
+            IF (dispNn .NE. uris(iUris)%msh(iM)%gnNo) THEN
+                write(*,*) dispNn, uris(iUris)%msh(iM)%gnNo
+                err = "Mismatch in node numbers between URIS mesh and
+     2                displacements."
+            END IF
+            ALLOCATE(dispClose(dispNtClose, nsd, dispNn))
+            DO t=1, dispNtClose
+               DO a=1, dispNn
+                   READ (fid,*, IOSTAT=ioStatus) dispClose(t,:,a)
                END DO
             END DO
+            CLOSE (fid)
+!        To scale the mesh, while attaching x to gX
+            a = uris(iUris)%tnNo + uris(iUris)%msh(iM)%gnNo
+            IF (iM .GT. 1) THEN
+               ALLOCATE(tmpX(nsd,uris(iUris)%tnNo))
+               tmpX = gX
+               DEALLOCATE(gX)
+               ALLOCATE(gX(nsd,a))
+               gX(:,1:uris(iUris)%tnNo) = tmpX
+               DEALLOCATE(tmpX)
+               ! Move data for open
+               ALLOCATE(tmpD(dispNtOpen,nsd,uris(iUris)%tnNo))
+               tmpD = uris(iUris)%DxOpen
+               DEALLOCATE(uris(iUris)%DxOpen)
+               ALLOCATE(uris(iUris)%DxOpen(dispNtOpen,nsd,a))
+               uris(iUris)%DxOpen(:,:,1:uris(iUris)%tnNo)=tmpD
+               DEALLOCATE(tmpD)
+               ! Move data for close
+               ALLOCATE(tmpD(dispNtClose,nsd,uris(iUris)%tnNo))
+               tmpD = uris(iUris)%DxClose
+               DEALLOCATE(uris(iUris)%DxClose)
+               ALLOCATE(uris(iUris)%DxClose(dispNtClose,nsd,a))
+               uris(iUris)%DxClose(:,:,1:uris(iUris)%tnNo)=tmpD
+               DEALLOCATE(tmpD)
+            ELSE
+               DEALLOCATE(gX)
+               ALLOCATE(gX(nsd,a))
+               ALLOCATE(uris(iUris)%DxOpen(dispNtOpen,nsd,a))
+               ALLOCATE(uris(iUris)%DxClose(dispNtClose,nsd,a))
+            END IF
+            gX(:,uris(iUris)%tnNo+1:a) = uris(iUris)%msh(iM)%x * 
+     2          uris(iUris)%scF
+            uris(iUris)%DxOpen(:,:,uris(iUris)%tnNo+1:a)=dispOpen
+            uris(iUris)%DxClose(:,:,uris(iUris)%tnNo+1:a)=dispClose
+            uris(iUris)%tnNo           = a
+            DEALLOCATE(uris(iUris)%msh(iM)%x)
+            DEALLOCATE(dispOpen, dispClose)
          END DO
+         ALLOCATE(uris(iUris)%x(nsd,uris(iUris)%tnNo))
+         uris(iUris)%x = gX
+         ALLOCATE(uris(iUris)%Yd(nsd,uris(iUris)%tnNo))
+         uris(iUris)%Yd = 0._RKIND
+         DEALLOCATE(gX)
+
+!        Setting msh%gN, msh%lN parameter
+         b = 0
+         DO iM=1, uris(iUris)%nFa
+            uris(iUris)%msh(iM)%nNo = uris(iUris)%msh(iM)%gnNo
+            ALLOCATE(uris(iUris)%msh(iM)%gN(uris(iUris)%msh(iM)%nNo), 
+     2                        uris(iUris)%msh(iM)%lN(uris(iUris)%tnNo))
+            uris(iUris)%msh(iM)%gN = 0
+            uris(iUris)%msh(iM)%lN = 0
+            DO a=1, uris(iUris)%msh(iM)%nNo
+               b = b + 1
+               uris(iUris)%msh(iM)%gN(a) = b
+               uris(iUris)%msh(iM)%lN(b) = a
+            END DO
+         END DO
+         IF (b .NE. uris(iUris)%tnNo) err =
+     2      " Mismatch in uris(iUris)%tnNo. Correction needed"
+
+!        Remap msh%gIEN array
+         DO iM=1, uris(iUris)%nFa
+            uris(iUris)%msh(iM)%nEl = uris(iUris)%msh(iM)%gnEl
+            ALLOCATE(uris(iUris)%msh(iM)%IEN(uris(iUris)%msh(iM)%eNoN,
+     2         uris(iUris)%msh(iM)%nEl))
+            DO e=1, uris(iUris)%msh(iM)%nEl
+               DO a=1, uris(iUris)%msh(iM)%eNoN
+                  Ac = uris(iUris)%msh(iM)%gIEN(a,e)
+                  Ac = uris(iUris)%msh(iM)%gN(Ac)
+                  uris(iUris)%msh(iM)%IEN(a,e) = Ac
+               END DO
+            END DO
+            DEALLOCATE(uris(iUris)%msh(iM)%gIEN)
+         END DO
+
+         IF (uris(iUris)%nFa .GT. 1) THEN
+            std = " Total number of uris nodes: "//uris(iUris)%tnNo
+            std = " Total number of uris elements: "//
+     2              SUM(uris(iUris)%msh%nEl)
+         END IF
       END DO
-
-!     Setting dmnId parameter here, if there is at least one mesh that
-!     has defined eId.
-C       DO iM=1, nMsh
-C          lPM => list%get(uris%msh(iM)%name,"Add uris",iM)
-
-C          lPtr => lPM%get(i,"Domain (uris)",ll=0,
-C      2                                     ul=BIT_SIZE(uris%dmnId)-1)
-C          IF (ASSOCIATED(lPtr)) CALL SETDMNID(uris%msh(iM), i)
-
-C          lPtr => lPM%get(fTmp,"Domain (uris) file path")
-C          IF (ASSOCIATED(lPtr)) THEN
-C             i = LEN(TRIM(fTmp%fname))
-C             fExt = fTmp%fname(i-2:i)
-C             IF (TRIM(fExt).EQ."vtp" .OR. TRIM(fExt).EQ."vtu") THEN
-C                CALL SETDMNIDVTK(uris%msh(iM), fTmp%fname, "DOMAIN_ID")
-C             ELSE
-C                CALL SETDMNIDFF(uris%msh(iM), fTmp%open())
-C             END IF
-C          END IF
-
-C          IF (.NOT.ALLOCATED(uris%msh(iM)%eId)) err =
-C      2      " Immersed bodies require domain ID parameter to be set"
-C       END DO
-C       ALLOCATE(uris%dmnId(uris%tnNo))
-C       uris%dmnId = 0
-C       DO iM=1, uris%nMsh
-C          DO e=1, uris%msh(iM)%nEl
-C             DO a=1, uris%msh(iM)%eNoN
-C                Ac = uris%msh(iM)%IEN(a,e)
-C                uris%dmnId(Ac) = IOR(uris%dmnId(Ac),uris%msh(iM)%eId(e))
-C             END DO
-C          END DO
-C       END DO
-
-!     Read fiber orientation
-C       flag = .FALSE.
-C       DO iM=1, uris%nMsh
-C          lPM => list%get(uris%msh(iM)%name,"Add uris",iM)
-C          j = lPM%srch("Fiber direction file path")
-C          IF (j .EQ. 0) j = lPM%srch("Fiber direction")
-C          IF (j .NE. 0) THEN
-C             flag = .TRUE.
-C             EXIT
-C          END IF
-C       END DO
-
-C       IF (flag) THEN
-C          DO iM=1, uris%nMsh
-C             lPM => list%get(uris%msh(iM)%name,"Add uris",iM)
-
-C             uris%msh(iM)%nFn = lPM%srch("Fiber direction file path")
-C             j = uris%msh(iM)%nFn
-C             IF (uris%msh(iM)%nFn .NE. 0) THEN
-C                ALLOCATE(uris%msh(iM)%fN(j*nsd,uris%msh(iM)%nEl))
-C                uris%msh(iM)%fN = 0._RKIND
-C                DO i=1, uris%msh(iM)%nFn
-C                   lPtr => lPM%get(cTmp, "Fiber direction file path", i)
-C                   CALL READFIBNFF(uris%msh(iM), cTmp, "Furis_DIR", i)
-C                END DO
-C             ELSE
-C                uris%msh(iM)%nFn = lPM%srch("Fiber direction")
-C                j = uris%msh(iM)%nFn
-C                IF (uris%msh(iM)%nFn .NE. 0) THEN
-C                   ALLOCATE(uris%msh(iM)%fN(j*nsd,uris%msh(iM)%nEl))
-C                   uris%msh(iM)%fN = 0._RKIND
-C                   DO i=1, uris%msh(iM)%nFn
-C                      lPtr => lPM%get(fibN, "Fiber direction", i)
-C                      rtmp = SQRT(NORM(fibN))
-C                      IF (.NOT.ISZERO(rtmp)) fibN(:) = fibN(:)/rtmp
-C                      DO e=1, uris%msh(iM)%nEl
-C                         uris%msh(iM)%fN((i-1)*nsd+1:i*nsd,e) = 
-C      2                                                      fibN(1:nsd)
-C                      END DO
-C                   END DO
-C                END IF
-C             END IF
-C          END DO
-C       ELSE
-C          uris%msh(:)%nFn = 0
-C       END IF
-
-      IF (uris%nMsh .GT. 1) THEN
-         std = " Total number of uris nodes: "//uris%tnNo
-         std = " Total number of uris elements: "//SUM(uris%msh%nEl)
-      END IF
-
       std = CLR(" uris mesh data imported successfully",3)
 
       RETURN
       END SUBROUTINE uris_READMSH
 !####################################################################
 !     Write IB solution to a vtu file
-      SUBROUTINE URIS_WRITEVTUS(lU)
+      SUBROUTINE URIS_WRITEVTUS
       USE COMMOD
       USE ALLFUN
       USE vtkXMLMod
       IMPLICIT NONE
-      REAL(KIND=RKIND), INTENT(IN) :: lU(nsd,uris%tnNo)
 
-      TYPE(dataType) :: d(uris%nMsh)
       TYPE(vtkXMLType) :: vtu
 
       INTEGER(KIND=IKIND) :: iStat, iEq, iOut, iM, a, e, Ac, Ec, nNo,
-     2   nEl, s, l, ie, is, nSh, oGrp, outDof, nOut, cOut
+     2   nEl, s, l, ie, is, nSh, oGrp, outDof, nOut, cOut, iUris
       CHARACTER(LEN=stdL) :: fName
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: outS(:)
       INTEGER(KIND=IKIND), ALLOCATABLE :: tmpI(:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:)
       CHARACTER(LEN=stdL), ALLOCATABLE :: outNames(:)
-
-      IF (cm%slv()) THEN
-         uris%savedOnce = .TRUE.
-         RETURN
-      END IF
+      TYPE(dataType), ALLOCATABLE:: d(:)
 
 !     we plot coord + displ
       nOut   = 2
       outDof = nOut * nsd
-C       DO iEq=1, nEq
-C          DO iOut=1, eq(iEq)%nOutIB
-C             IF (.NOT.eq(iEq)%outIB(iOut)%wtn(1)) CYCLE
-C             nOut   = nOut + 1
-C             outDof = outDof + eq(iEq)%outIB(iOut)%l
-C          END DO
-C       END DO
-
-
       ALLOCATE(outNames(nOut), outS(nOut+1))
-
 !     Prepare all solultions in to dataType d
-      nNo = 0
-      nEl = 0
-      DO iM=1, uris%nMsh
-         cOut           = 1
-         outS(cOut)     = 1
-         outS(cOut+1)   = nsd + 1
-         outNames(cOut) = ""
+      DO iUris=1, nUris
+         ALLOCATE(d(uris(iUris)%nFa))
+         nNo = 0
+         nEl = 0
+         DO iM=1, uris(iUris)%nFa
+            cOut           = 1
+            outS(cOut)     = 1
+            outS(cOut+1)   = nsd + 1
+            outNames(cOut) = ""
 
-         IF (uris%msh(iM)%eType .EQ. eType_NRB) err =
-     2      " Outputs for NURBS data is under development"
+            IF (uris(iUris)%msh(iM)%eType .EQ. eType_NRB) err =
+     2         " Outputs for NURBS data is under development"
 
-         d(iM)%nNo     = uris%msh(iM)%nNo
-         d(iM)%nEl     = uris%msh(iM)%nEl
-         d(iM)%eNoN    = uris%msh(iM)%eNoN
-         d(iM)%vtkType = uris%msh(iM)%vtkType
+            d(iM)%nNo     = uris(iUris)%msh(iM)%nNo
+            d(iM)%nEl     = uris(iUris)%msh(iM)%nEl
+            d(iM)%eNoN    = uris(iUris)%msh(iM)%eNoN
+            d(iM)%vtkType = uris(iUris)%msh(iM)%vtkType
+        
+            !IF (ALLOCATED(d(iM)%x)) DEALLOCATE(d(iM)%x) 
+            !IF (ALLOCATED(d(iM)%IEN)) DEALLOCATE(d(iM)%IEN) 
+            ALLOCATE(d(iM)%x(outDof,d(iM)%nNo))
+            ALLOCATE(d(iM)%IEN(d(iM)%eNoN,d(iM)%nEl))
+            DO a=1, uris(iUris)%msh(iM)%nNo
+               Ac = uris(iUris)%msh(iM)%gN(a)
+               d(iM)%x(1:nsd,a) = uris(iUris)%x(:,Ac)
+            END DO
+            DO e=1, uris(iUris)%msh(iM)%nEl
+               d(iM)%IEN(:,e) = uris(iUris)%msh(iM)%IEN(:,e)
+            END DO
 
-         ALLOCATE(d(iM)%x(outDof,d(iM)%nNo),
-     2      d(iM)%IEN(d(iM)%eNoN,d(iM)%nEl))
-         DO a=1, uris%msh(iM)%nNo
-            Ac = uris%msh(iM)%gN(a)
-            d(iM)%x(1:nsd,a) = uris%x(:,Ac)
+            l  = nsd !eq(iEq)%outIB(iOut)%l
+            s  = 1 !eq(iEq)%s + eq(iEq)%outIB(iOut)%o
+            e  = s + l - 1
+
+            cOut = cOut + 1
+            is   = outS(cOut)
+            ie   = is + l - 1
+            outS(cOut+1)   = ie + 1
+            outNames(1) = "coordinates"
+            outNames(2) = "URIS_displacement"
+
+            DO a=1, uris(iUris)%msh(iM)%nNo
+               Ac = uris(iUris)%msh(iM)%gN(a)
+               d(iM)%x(is:ie,a) = uris(iUris)%Yd(s:e,Ac)
+            END DO
+
+            nNo = nNo +  d(iM)%nNo
+            nEl = nEl +  d(iM)%nEl
          END DO
 
-         DO e=1, uris%msh(iM)%nEl
-            d(iM)%IEN(:,e) = uris%msh(iM)%IEN(:,e)
-         END DO
+         ALLOCATE(tmpV(maxnsd,nNo))
 
-C          DO iEq=1, nEq
-C             DO iOut=1, 2 !eq(iEq)%nOutIB
-C                IF (.NOT.eq(iEq)%outIB(iOut)%wtn(1)) CYCLE
-         l  = nsd !eq(iEq)%outIB(iOut)%l
-         s  = 1 !eq(iEq)%s + eq(iEq)%outIB(iOut)%o
-         e  = s + l - 1
+!        Writing to vtu file (master only)
+         IF (cTS .GE. 1000) THEN
+            fName = STR(cTS)
+         ELSE
+            WRITE(fName,'(I3.3)') cTS
+         END IF
 
-         cOut = cOut + 1
-         is   = outS(cOut)
-         ie   = is + l - 1
-         outS(cOut+1)   = ie + 1
-C          outNames(1) = "URIS_"//TRIM(eq(iEq)%outIB(iOut)%name)
-         outNames(1) = "coordinates"
-         outNames(2) = "URIS_displacement"
+         fName = TRIM(saveName)//"_uris_"// TRIM(uris(iUris)%name)//
+     2          "_"//TRIM(ADJUSTL(fName))//".vtu"
+         dbg = "Writing VTU"
+         CALL vtkInitWriter(vtu, TRIM(fName), iStat)
+         IF (iStat .LT. 0) err = "VTU file write error (init)"
 
-C                oGrp = eq(iEq)%outIB(iOut)%grp
-C                SELECT CASE (oGrp)
-C                   CASE (outGrp_NA)
-C                   err = "Undefined output grp in VTK"
-C                CASE (outGrp_Y)
-C                   DO a=1, uris%msh(iM)%nNo
-C                      Ac = uris%msh(iM)%gN(a)
-C                      d(iM)%x(is:ie,a) = lY(s:e,Ac)
-C                   END DO
-C                CASE (outGrp_D)
-         DO a=1, uris%msh(iM)%nNo
-            Ac = uris%msh(iM)%gN(a)
-            d(iM)%x(is:ie,a) = lU(s:e,Ac)
-         END DO
-
-C                CASE DEFAULT
-C                   err = "Undefined output "//
-C      2               TRIM(eq(iEq)%outIB(iOut)%name)
-C C                END SELECT
-C             END DO
-C          END DO
-
-         ALLOCATE(d(iM)%xe(d(iM)%nEl,1))
-         IF (.NOT.savedOnce) THEN
-            IF (ALLOCATED(uris%dmnID)) THEN
-               d(iM)%xe(:,1) = REAL(uris%msh(iM)%eId(:), KIND=RKIND)
-            ELSE
-               d(iM)%xe(:,1) = 1._RKIND
-            END IF
-         END  IF
-         nNo = nNo +  d(iM)%nNo
-         nEl = nEl +  d(iM)%nEl
-      END DO
-
-      ALLOCATE(tmpV(maxnsd,nNo))
-
-C       write(*,*)" d%x ", d(1)%x
-C       write(*,*)" d%x ", SIZE(d(1)%x,1)
-C       write(*,*)" d%x ", SIZE(d(1)%x,2)
-
-
-!     Writing to vtu file (master only)
-      IF (cTS .GE. 1000) THEN
-         fName = STR(cTS)
-      ELSE
-         WRITE(fName,'(I3.3)') cTS
-      END IF
-
-      fName = TRIM(saveName)//"_uris_"//TRIM(ADJUSTL(fName))//".vtu"
-      dbg = "Writing VTU"
-
-      CALL vtkInitWriter(vtu, TRIM(fName), iStat)
-      IF (iStat .LT. 0) err = "VTU file write error (init)"
-
-!     Writing the position data
-      iOut = 1
-      s    = outS(iOut)
-      e    = outS(iOut+1)-1
-      nSh  = 0
-      tmpV = 0._RKIND
-      DO iM=1, uris%nMsh
-         DO a=1, d(iM)%nNo
-            tmpV(1:nsd,a+nSh) = d(iM)%x(s:e,a)
-         END DO
-         nSh = nSh + d(iM)%nNo
-      END DO
-      CALL putVTK_pointCoords(vtu, tmpV(1:nsd,:), iStat)
-      IF (iStat .LT. 0) err = "VTU file write error (coords)"
-
-!     Writing the connectivity data
-      DO iM=1, uris%nMsh
-         ALLOCATE(tmpI(d(iM)%eNoN,d(iM)%nEl))
-         DO e=1, d(iM)%nEl
-            tmpI(:,e) = d(iM)%IEN(:,e) - 1
-         END DO
-         CALL putVTK_elemIEN(vtu, tmpI, d(iM)%vtkType, iStat)
-         IF (iStat .LT. 0) err = "VTU file write error (ien)"
-         DEALLOCATE(tmpI)
-      END DO
-
-C       write(*,*)" outS ",  outS
-
-!     Writing all solutions
-      DO iOut=1, nOut
-         IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
-         s = outS(iOut)
-         e = outS(iOut+1) - 1
-         l = e - s + 1
-
-         ALLOCATE(tmpV(l, nNo))
-         nSh = 0
-         DO iM=1, uris%nMsh
+!        Writing the position data
+         iOut = 1
+         s    = outS(iOut)
+         e    = outS(iOut+1)-1
+         nSh  = 0
+         tmpV = 0._RKIND
+         DO iM=1, uris(iUris)%nFa
             DO a=1, d(iM)%nNo
-               tmpV(:,a+nSh) = d(iM)%x(s:e,a)
+               tmpV(1:nsd,a+nSh) = d(iM)%x(s:e,a)
             END DO
             nSh = nSh + d(iM)%nNo
          END DO
-         CALL putVTK_pointData(vtu, outNames(iOut), tmpV, iStat)
-         IF (iStat .LT. 0) err = "VTU file write error (point data)"
+         CALL putVTK_pointCoords(vtu, tmpV(1:nsd,:), iStat)
+         IF (iStat .LT. 0) err = "VTU file write error (coords)"
+
+!        Writing the connectivity data
+         DO iM=1, uris(iUris)%nFa
+            ALLOCATE(tmpI(d(iM)%eNoN,d(iM)%nEl))
+            DO e=1, d(iM)%nEl
+               tmpI(:,e) = d(iM)%IEN(:,e) - 1
+            END DO
+            CALL putVTK_elemIEN(vtu, tmpI, d(iM)%vtkType, iStat)
+            IF (iStat .LT. 0) err = "VTU file write error (ien)"
+            DEALLOCATE(tmpI)
+         END DO
+
+!        Writing all solutions
+         DO iOut=1, nOut
+            IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+            s = outS(iOut)
+            e = outS(iOut+1) - 1
+            l = e - s + 1
+
+            ALLOCATE(tmpV(l, nNo))
+            nSh = 0
+            DO iM=1, uris(iUris)%nFa
+               DO a=1, d(iM)%nNo
+                  tmpV(:,a+nSh) = d(iM)%x(s:e,a)
+               END DO
+               nSh = nSh + d(iM)%nNo
+            END DO
+            CALL putVTK_pointData(vtu, outNames(iOut), tmpV, iStat)
+            IF (iStat .LT. 0) err = "VTU file write error (point data)"
+         END DO
+
+         DO iM=1, uris(iUris)%nFa
+            CALL DESTROY(d(iM))
+         END DO
+
+         CALL vtkWriteToFile(vtu, iStat)
+         IF (iStat .LT. 0) err = "VTU file write error"
+
+         CALL flushVTK(vtu)
+         IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
       END DO
-
-!     Write element-based variables
-C       IF (.NOT.savedOnce .OR. mvMsh) THEN
-C          uris%savedOnce = .TRUE.
-C          ALLOCATE(tmpI(1,nEl))
-C !     Write the domain ID
-C          IF (ALLOCATED(uris%dmnID)) THEN
-C             Ec = 0
-C             DO iM=1, uris%nMsh
-C                DO e=1, d(iM)%nEl
-C                   Ec = Ec + 1
-C                   tmpI(1,Ec) = INT(d(iM)%xe(e,1), KIND=IKIND)
-C                END DO
-C             END DO
-C             CALL putVTK_elemData(vtu, 'Domain_ID', tmpI, iStat)
-C             IF (iStat .LT. 0) err = "VTU file write error (dom id)"
-C          END IF
-
-C !     Write the mesh ID
-C          IF (uris%nMsh .GT. 1) THEN
-C             Ec = 0
-C             DO iM=1, uris%nMsh
-C                DO e=1, d(iM)%nEl
-C                   Ec = Ec + 1
-C                   tmpI(1,Ec) = iM
-C                END DO
-C             END DO
-C             CALL putVTK_elemData(vtu, 'Mesh_ID', tmpI, iStat)
-C             IF (iStat .LT. 0) err = "VTU file write error (mesh id)"
-C          END IF
-C          DEALLOCATE(tmpI)
-C       END IF
-
-      DO iM=1, uris%nMsh
-         CALL DESTROY(d(iM))
-      END DO
-
-      CALL vtkWriteToFile(vtu, iStat)
-      IF (iStat .LT. 0) err = "VTU file write error"
-
-      CALL flushVTK(vtu)
-
       RETURN
       END SUBROUTINE URIS_WRITEVTUS
 !####################################################################
@@ -917,108 +708,108 @@ C       END IF
       REAL(KIND=RKIND) :: ALLOCATABLE 
       LOGICAL :: flag
 
-      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM
+      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM,iUris
       REAL(KIND=RKIND) :: dS, minS, Jac, nV(nsd), xb(nsd), dotP
       REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:)
 
       REAL(KIND=RKIND) :: minb(nsd), maxb(nsd), extra(nsd)
       ALLOCATE(xXi(nsd, nsd-1))
-      ALLOCATE(lX(nsd, uris%msh(1)%eNoN))
 
-      IF (.NOT. ALLOCATED(uris%sdf)) THEN
-          ALLOCATE(uris%sdf(tnNo))
-      END IF
-      ! We need to check if the valve needs to move 
-      ! This cut off threshold needs to be specified from the input
-      ! file!
-      IF (cntURIS.GE.1) THEN
-        IF ((.NOT.urisCloseFlag).AND.
-     2          (cntURIS.LE.SIZE(uris%DxOpen,1)))THEN
-            write(*,*) "CHECK OPEN COORDS before: ", MINVAL(uris%x),
-     2          MAXVAL(uris%x)
-            uris%x = uris%DxOpen(cntURIS,:,:)
-            write(*,*) "CHECK OPEN COORDS: ", MINVAL(uris%x),
-     2          MAXVAL(uris%x)
-        ELSE IF (urisCloseFlag.AND.
-     2          (cntURIS.LE.SIZE(uris%DxClose,1))) THEN
-            uris%x = uris%DxClose(cntURIS,:,:)
-        ELSE
-            RETURN
+      DO iUris=1, nUris
+        ALLOCATE(lX(nsd, uris(iUris)%msh(1)%eNoN))
+        IF (.NOT. ALLOCATED(uris(iUris)%sdf)) THEN
+            ALLOCATE(uris(iUris)%sdf(tnNo))
         END IF
-      END IF
-      write(*,*) "RECOMPUTING SDF"
-      uris%sdf = uris%sdf_default
-
-      ! FK:
-      ! Each time when the URIS moves, we need to recompute the signed
-      ! distance function
-
-      ! Now we assume that for each uris, we only have one valve
-      ! We will need to work on generalization later
-      ! Find the bounding box of the valve, the BBox will be 10% larger
-      ! than the actual valve.
-      minb = HUGE(minb)
-      maxb = TINY(maxb)
-      DO i=1, nsd
-         minb(i) = MINVAL(uris%x(i,:))  
-         maxb(i) = MAXVAL(uris%x(i,:))
-         extra(i) = (maxb(i) - minb(i)) * 0.1
-      END DO
-
-      ! Should this be computed on the reference or current
-      ! configuration?
-      DO ca=1, tnNo
-        minS = HUGE(minS)
-        xp = x(:, ca) + Do(nsd+2:2*nsd+1,ca)
-!       Is the node inside the BBox? 
-        IF (ALL(xp.GE.minb-extra).AND.ALL(xp.LE.maxb+extra)) THEN
-            ! This point is inside the BBox
-            ! Find the closest URIS face centroid
-            DO iM=1, uris%nMsh
-                ! Here we are using original coordinates, plus 
-                ! the displacements
-                DO e=1, uris%msh(iM)%nEl
-                    xb = 0._RKIND
-                    DO a=1, uris%msh(iM)%eNoN
-                        Ac = uris%msh(iM)%IEN(a,e)
-                        xb = xb + uris%x(:,Ac) + uris%Yd(:,Ac) 
-                    END DO
-                    xb = xb/REAL(uris%msh(iM)%eNoN, KIND=RKIND)
-                    dS = SQRT( SUM( (xp(:)-xb(:))**2._RKIND ) )
-                    IF (dS .LT. minS) THEN
-                        minS = dS
-                        Ec = e
-                        jM = iM
-                    END IF
-                END DO
-            END DO
-            ! We also need to compute the sign (above or below
-            ! the valve).
-            ! Compute the element normal
-            xXi = 0._RKIND
-            lX = 0._RKIND
-            xb = 0._RKIND
-            DO a=1, uris%msh(jM)%eNoN
-               Ac = uris%msh(jM)%IEN(a,Ec)
-               xb = xb + uris%x(:,Ac) + uris%Yd(:,Ac)
-               lX(:,a) = uris%x(:,Ac) + uris%Yd(:,Ac)
-            END DO
-            xb   = xb / REAL(uris%msh(jM)%eNoN, KIND=RKIND)
-            DO a = 1, uris%msh(jM)%eNoN
-                DO i = 1, nsd-1
-                    xXi(:,i) = xXi(:,i)+lX(:,a)*uris%msh(jM)%Nx(i,a,1)
-                END DO
-            END DO
-            nV(:) = CROSS(xXi)
-            nV(:) = nV(:) / SQRT(NORM(nV))
-            dotP = NORM(xp-xb, nV)
+        ! We need to check if the valve needs to move 
+        ! This cut off threshold needs to be specified from the input
+        ! file!
+        IF (uris(iUris)%cnt.NE.1000000) THEN
+          IF ((.NOT.uris(iUris)%clsFlg).AND.
+     2            (uris(iUris)%cnt.LE.SIZE(uris(iUris)%DxOpen,1)))THEN
+              uris(iUris)%x = uris(iUris)%DxOpen(uris(iUris)%cnt,:,:)
+          ELSE IF (uris(iUris)%clsFlg.AND.
+     2            (uris(iUris)%cnt.LE.SIZE(uris(iUris)%DxClose,1))) THEN
+              uris(iUris)%x = uris(iUris)%DxClose(uris(iUris)%cnt,:,:)
+          ELSE
+              RETURN
+          END IF
+        END IF
+        write(*,*) "RECOMPUTING SDF"
+        uris(iUris)%sdf = uris(iUris)%sdf_default
     
-            uris%sdf(ca) = dotP
- 
-        END IF
+        write(*,*) "SDF CK", MINVAL(uris(iUris)%x),
+     2          MAXVAL(uris(iUris)%x)
+        ! FK:
+        ! Each time when the URIS moves, we need to recompute the signed
+        ! distance function
 
-      END DO
-     
-      write(*,*) "any nan in sdf? ", ANY(ISNAN(uris%sdf))
+        ! Now we assume that for each uris, we only have one valve
+        ! We will need to work on generalization later
+        ! Find the bounding box of the valve, the BBox will be 10% larger
+        ! than the actual valve.
+        minb = HUGE(minb)
+        maxb = TINY(maxb)
+        DO i=1, nsd
+           minb(i) = MINVAL(uris(iUris)%x(i,:))  
+           maxb(i) = MAXVAL(uris(iUris)%x(i,:))
+           extra(i) = (maxb(i) - minb(i)) * 0.1
+        END DO
+
+        ! Should this be computed on the reference or current
+        ! configuration?
+        DO ca=1, tnNo
+          minS = HUGE(minS)
+          xp = x(:, ca) + Do(nsd+2:2*nsd+1,ca)
+!         Is the node inside the BBox? 
+          IF (ALL(xp.GE.minb-extra).AND.ALL(xp.LE.maxb+extra)) THEN
+              ! This point is inside the BBox
+              ! Find the closest URIS face centroid
+              DO iM=1, uris(iUris)%nFa
+                  ! Here we are using original coordinates, plus 
+                  ! the displacements
+                  DO e=1, uris(iUris)%msh(iM)%nEl
+                      xb = 0._RKIND
+                      DO a=1, uris(iUris)%msh(iM)%eNoN
+                          Ac = uris(iUris)%msh(iM)%IEN(a,e)
+                          xb = xb + uris(iUris)%x(:,Ac) + 
+     2                         uris(iUris)%Yd(:,Ac) 
+                      END DO
+                      xb = xb/REAL(uris(iUris)%msh(iM)%eNoN, KIND=RKIND)
+                      dS = SQRT( SUM( (xp(:)-xb(:))**2._RKIND ) )
+                      IF (dS .LT. minS) THEN
+                          minS = dS
+                          Ec = e
+                          jM = iM
+                      END IF
+                  END DO
+              END DO
+              ! We also need to compute the sign (above or below
+              ! the valve).
+              ! Compute the element normal
+              xXi = 0._RKIND
+              lX = 0._RKIND
+              xb = 0._RKIND
+              DO a=1, uris(iUris)%msh(jM)%eNoN
+                 Ac = uris(iUris)%msh(jM)%IEN(a,Ec)
+                 xb = xb + uris(iUris)%x(:,Ac) + uris(iUris)%Yd(:,Ac)
+                 lX(:,a) = uris(iUris)%x(:,Ac) + uris(iUris)%Yd(:,Ac)
+              END DO
+              xb   = xb / REAL(uris(iUris)%msh(jM)%eNoN, KIND=RKIND)
+              DO a = 1, uris(iUris)%msh(jM)%eNoN
+                  DO i = 1, nsd-1
+                      xXi(:,i) = xXi(:,i) + 
+     2                      lX(:,a)*uris(iUris)%msh(jM)%Nx(i,a,1)
+                  END DO
+              END DO
+              nV(:) = CROSS(xXi)
+              nV(:) = nV(:) / SQRT(NORM(nV))
+              dotP = NORM(xp-xb, nV)
+    
+              uris(iUris)%sdf(ca) = dotP
+ 
+          END IF
+        END DO
+        write(*,*) "any nan in sdf? ", ANY(ISNAN(uris(iUris)%sdf))
+      END DO 
       RETURN
       END SUBROUTINE URIS_CALCSDF
