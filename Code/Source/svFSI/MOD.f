@@ -942,7 +942,7 @@ C          TYPE(ibCommType) :: cm
 !     Number of URIS surfaces
       INTEGER(KIND=IKIND) :: nUris      
 !     URIS resistance
-      REAL(KIND=RKIND) :: urisRes = 1.E10_RKIND 
+      REAL(KIND=RKIND) :: urisRes = 1.E5_RKIND 
 
 
 !     INTEGER(KIND=IKIND) VARIABLES

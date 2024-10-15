@@ -160,14 +160,13 @@
       e = s + m - 1
 
       tmpV(1:m,:) = Yn(s:e,:)*sImm
-
       DO i = 1, tnNo
         tmpVNrm(1,i) = NORM(tmpV(1:m,i),uris(iUris)%nrm)
       END DO
      
       meanV = 0._RKIND
       DO iM=1, nMsh 
-        meanV = meanV + Integ(iM,tmpV)/volI
+        meanV = meanV + Integ(iM,tmpVNrm)/volI
       END DO
       write(*,*)" mean Vel ", meanV
 
@@ -693,6 +692,7 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
 
          CALL flushVTK(vtu)
          IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+         IF (ALLOCATED(d)) DEALLOCATE(d)
       END DO
       RETURN
       END SUBROUTINE URIS_WRITEVTUS
@@ -810,6 +810,7 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
           END IF
         END DO
         write(*,*) "any nan in sdf? ", ANY(ISNAN(uris(iUris)%sdf))
+        IF (ALLOCATED(lX)) DEALLOCATE(lX)
       END DO 
       RETURN
       END SUBROUTINE URIS_CALCSDF
