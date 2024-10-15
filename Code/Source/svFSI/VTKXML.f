@@ -427,7 +427,7 @@
       LOGICAL :: lIbl, lD0
       INTEGER(KIND=IKIND) :: iStat, iEq, iOut, iM, a, e, Ac, Ec, nNo,
      2   nEl, s, l, ie, is, nSh, oGrp, outDof, nOut, cOut, ne, iFn, nFn,
-     3   nOute
+     3   nOute, iUris
       CHARACTER(LEN=stdL) :: fName
       TYPE(dataType) :: d(nMsh)
       TYPE(vtkXMLType) :: vtu
@@ -435,6 +435,7 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: outS(:), tmpI(:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: tmpV(:,:), tmpVe(:)
       CHARACTER(LEN=stdL), ALLOCATABLE :: outNames(:), outNamesE(:)
+      CHARACTER(LEN=stdL) :: arrName
 
       lIbl = .FALSE.
       lD0  = .FALSE.
@@ -810,6 +811,19 @@
          CALL putVTK_pointData(vtu, outNames(iOut), tmpV, iStat)
          IF (iStat .LT. 0) err = "VTU file write error (point data)"
       END DO
+
+!     Write Signed distance data for URIS
+      IF (urisFlag) THEN
+          IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
+          ALLOCATE(tmpV(1,tnNo))
+          DO iUris=1, nUris
+             tmpV(1, :) = uris(iUris)%sdf
+             arrName = "URIS_SDF_"//uris(iUris)%name
+             CALL putVTK_pointData(vtu, arrName, tmpV, iStat)
+          END DO
+          IF (iStat .LT. 0) err = "VTU file write error (uris sdf)"
+          DEALLOCATE(tmpV)
+      END IF
 
 !     Write element-based variables
       ne = 0

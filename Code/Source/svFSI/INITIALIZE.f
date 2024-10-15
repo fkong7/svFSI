@@ -659,7 +659,7 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) iM, iEq, iProj
+      INTEGER(KIND=IKIND) iM, iEq, iProj, iUris
 
 !     Deallocating meshes
       IF (ALLOCATED(msh)) THEN
@@ -793,14 +793,22 @@
       END IF
 
       IF (urisFlag) THEN
-         IF(ALLOCATED(uris%Yd))    DEALLOCATE(uris%Yd)
-         IF(ALLOCATED(uris%dmnID))    DEALLOCATE(uris%dmnID)
-         IF(ALLOCATED(uris%x))    DEALLOCATE(uris%x)
-         IF(ALLOCATED(uris%xCu))    DEALLOCATE(uris%xCu)
-         DO iM=1, uris%nMsh
-            CALL DESTROY(uris%msh(iM))
+         DO iUris=1, nUris
+            IF(ALLOCATED(uris(iUris)%DxOpen)) THEN 
+                DEALLOCATE(uris(iUris)%DxOpen)
+            END IF
+            IF(ALLOCATED(uris(iUris)%DxClose)) THEN
+                DEALLOCATE(uris(iUris)%DxClose)
+            END IF
+            IF(ALLOCATED(uris(iUris)%Yd))   DEALLOCATE(uris(iUris)%Yd)
+            IF(ALLOCATED(uris(iUris)%x))    DEALLOCATE(uris(iUris)%x)
+            IF(ALLOCATED(uris(iUris)%nrm))  DEALLOCATE(uris(iUris)%nrm)
+            IF(ALLOCATED(uris(iUris)%sdf))  DEALLOCATE(uris(iUris)%sdf)
+            DO iM=1, uris(iUris)%nFa
+               CALL DESTROY(uris(iUris)%msh(iM))
+            END DO
+            DEALLOCATE(uris(iUris)%msh)
          END DO
-         DEALLOCATE(uris%msh)
          DEALLOCATE(uris)
       END IF
 

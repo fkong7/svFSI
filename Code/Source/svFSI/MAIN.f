@@ -43,7 +43,7 @@
 
       LOGICAL l1, l2, l3
       INTEGER(KIND=IKIND) i, iM, iBc, ierr, iEqOld, stopTS, j, 
-     2      iProj
+     2      iProj, iUris
       REAL(KIND=RKIND) timeP(3)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: incL(:)
@@ -121,6 +121,7 @@
 
 !     Apply Dirichlet BCs strongly
          CALL SETBCDIR(An, Yn, Dn)
+         IF (urisFlag) CALL URIS_CALCSDF
 !     Inner loop for iteration
          DO
             iEqOld = cEq
@@ -355,39 +356,24 @@
 !        Part related to unfitted RIS
 !        If the valve is active, look at the pressure difference 
          IF(urisFlag) THEN 
-
-            IF( urisActFlag ) THEN 
-               cntURIS = cntURIS + 1
-
-               IF(.NOT.((cTS.GE.10).AND.(cntURIS .LT. 10))) THEN 
-                  CALL URIS_MEANP  
+            DO iUris=1, nUris
+               uris(iUris)%cnt = uris(iUris)%cnt + 1
+               write(*,*) "MAIN URIS flag for ",iUris,uris(iUris)%clsFlg
+               IF( uris(iUris)%clsFlg ) THEN 
+                  CALL URIS_MEANP(iUris)
+               ELSE 
+                  CALL URIS_MEANV(iUris)
+                  IF( uris(iUris)%cnt .EQ. 1) THEN 
+                     GOTO 11
+                  END IF
                END IF
+               write(*,*) "MAIN URIS af for ",iUris,uris(iUris)%clsFlg
+            END DO
 
-               !CALL URIS_MEANV 
-               IF( cntURIS .EQ. 0) THEN 
-                  IF( cntURIS .LT. 10) GOTO 11
-               END IF
-
-            ELSE 
-               cntURIS = cntURIS + 1
-               
-               IF(.NOT.((cTS.GE.10).AND.(cntURIS .LT. 10))) THEN 
-                  CALL URIS_MEANV  
-               END IF
-
-               !CALL URIS_MEANV 
-               IF( cntURIS .EQ. 0) THEN 
-                  IF( cntURIS .LT. 10) GOTO 11
-               END IF
-
-            END IF
-
-C             IF( time .EQ. 0.5) urisActFlag = .FALSE.
-
-            IF (mvMsh) THEN 
-               CALL URIS_UpdateDisp !(Do,Dn)
-            END IF
-            CALL URIS_WRITEVTUS(uris%Yd)
+            !IF (mvMsh) THEN 
+            !   CALL URIS_UpdateDisp !(Do,Dn)
+            !END IF
+            CALL URIS_WRITEVTUS
          END IF
 !---     end RIS/URIS stuff 
 

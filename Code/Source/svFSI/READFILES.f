@@ -231,13 +231,8 @@
       i = list%srch("Add URIS mesh")
       IF (i .GT. 0) THEN
          urisFlag = .TRUE.
-         ALLOCATE(uris)
+         urisActFlag = .TRUE.
          CALL URIS_READMSH(list)
-
-         IF(.NOT.ALLOCATED(uris%Yd)) THEN 
-            ALLOCATE(uris%Yd(nsd,uris%msh(1)%nNo))
-            uris%Yd = 0._RKIND
-         END IF
 
       END IF
 
