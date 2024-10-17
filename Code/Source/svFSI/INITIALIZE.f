@@ -43,7 +43,7 @@
 
       LOGICAL :: flag
       INTEGER(KIND=IKIND) :: i,j, a, iEq, iDmn, iM, iFa, ierr, nnz,
-     2          gnnz, iProj
+     2          gnnz, iProj, iUris
       CHARACTER(LEN=stdL) :: fTmp, sTmp
       REAL(KIND=RKIND) :: am
       TYPE(FSILS_commuType) :: communicator
@@ -162,6 +162,7 @@
          IF (ecCpld) i = i + 1
       END IF
       IF (risFlag) i = i + RIS%nbrRIS
+      IF (urisFlag) i = i + nUris * 2
       i = IKIND*(1+SIZE(stamp)) + RKIND*(2+nEq+cplBC%nX+i*tnNo)
 
       IF (ibFlag) i = i + RKIND*(3*nsd+1)*ib%tnNo
@@ -538,7 +539,8 @@
       REAL(KIND=RKIND), INTENT(OUT) :: timeP(3)
 
       INTEGER(KIND=IKIND), PARAMETER :: fid = 1
-      INTEGER(KIND=IKIND) tStamp(SIZE(stamp)), i
+      INTEGER(KIND=IKIND) tStamp(SIZE(stamp)), i, iUris, urisCnt(nUris),
+     2  urisClsFlg(nUris)
 
       i = 0
       IF (.NOT.bin2VTK) THEN
@@ -563,6 +565,10 @@
                ELSE IF (risFlag) THEN
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad, RIS%clsFlg
+               ELSE IF (urisFlag) THEN
+                  READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad, urisCnt,
+     3               urisClsFlg
                ELSE
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, Ad
@@ -582,6 +588,9 @@
                ELSE IF (risFlag) THEN
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do, RIS%clsFlg
+               ELSE IF (urisFlag) THEN
+                  READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2               eq%iNorm, cplBC%xo, Yo, Ao, Do, urisCnt, urisClsFlg
                ELSE
                   READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2               eq%iNorm, cplBC%xo, Yo, Ao, Do
@@ -594,6 +603,9 @@
             ELSE IF (risFlag) THEN
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2            eq%iNorm, cplBC%xo, Yo, Ao, RIS%clsFlg
+            ELSE IF (urisFlag) THEN
+               READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
+     2            eq%iNorm, cplBC%xo, Yo, Ao, urisCnt, urisClsFlg
             ELSE
                READ(fid,REC=cm%tF()) tStamp, cTS, time, timeP(1),
      2            eq%iNorm, cplBC%xo, Yo, Ao
@@ -619,6 +631,13 @@
          END IF
       END IF
       CLOSE(fid)
+      
+      IF (urisFlag) THEN
+          DO iUris=1, nUris
+            uris(iUris)%cnt = urisCnt(iUris)
+            uris(iUris)%clsFlg = urisClsFlg(iUris)
+          END DO
+      END IF
 
 !     First checking all variables on master processor, since on the
 !     other processor data will be shifted due to any change on the

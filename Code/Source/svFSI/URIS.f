@@ -159,7 +159,9 @@
       s = eq(iEq)%s 
       e = s + m - 1
 
-      tmpV(1:m,:) = Yn(s:e,:)*sImm
+      DO i=1, nsd
+        tmpV(i,:) = Yn(s+i-1,:) * sImm(1,:)
+      END DO
       DO i = 1, tnNo
         !tmpVNrm(1,i) = NORM(tmpV(1:m,i),uris(iUris)%nrm)
         tmpVNrm(1,i) = tmpV(1,i)*uris(iUris)%nrm(1) + 
@@ -170,6 +172,7 @@
       meanV = 0._RKIND
       DO iM=1, nMsh 
         meanV = meanV + Integ(iM,tmpVNrm)/volI
+        write(*,*) "!!!!WHY???", iM, Integ(iM,tmpVNrm)
       END DO
       write(*,*)" mean Vel ", meanV
 
@@ -711,7 +714,7 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
       REAL(KIND=RKIND) :: ALLOCATABLE 
       LOGICAL :: flag
 
-      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM,iUris
+      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM,iUris, cnt
       REAL(KIND=RKIND) :: dS, minS, Jac, nV(nsd), xb(nsd), dotP
       REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:)
 
@@ -722,17 +725,16 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
         ! We need to check if the valve needs to move 
         ! This cut off threshold needs to be specified from the input
         ! file!
-        IF (uris(iUris)%cnt.NE.1000000) THEN
-          IF ((.NOT.uris(iUris)%clsFlg).AND.
-     2            (uris(iUris)%cnt.LE.SIZE(uris(iUris)%DxOpen,1)))THEN
-              uris(iUris)%x = uris(iUris)%DxOpen(uris(iUris)%cnt,:,:)
-          ELSE IF (uris(iUris)%clsFlg.AND.
-     2            (uris(iUris)%cnt.LE.SIZE(uris(iUris)%DxClose,1))) THEN
-              uris(iUris)%x = uris(iUris)%DxClose(uris(iUris)%cnt,:,:)
-          ELSE
-              CYCLE
-          END IF
-        END IF
+        IF (.NOT.uris(iUris)%clsFlg) THEN
+            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxOpen,1))
+            uris(iUris)%x = uris(iUris)%DxOpen(cnt, :, :)
+        ELSE
+            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
+            uris(iUris)%x = uris(iUris)%DxClose(cnt, :, :)
+        END IF 
+        write(*,*) "C CNT: ", cnt, uris(iUris)%cnt, uris(iUris)%clsFlg
+        IF (ALLOCATED(uris(iUris)%sdf).AND.cnt.LT.uris(iUris)%cnt) CYCLE
+
         ALLOCATE(lX(nsd, uris(iUris)%msh(1)%eNoN))
         IF (.NOT. ALLOCATED(uris(iUris)%sdf)) THEN
             ALLOCATE(uris(iUris)%sdf(tnNo))
