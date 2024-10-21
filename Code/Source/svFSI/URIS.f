@@ -201,9 +201,6 @@
       USE ALLFUN
       IMPLICIT NONE
 
-C       REAL(KIND=RKIND), INTENT(IN) :: lDo(nsd,tnNo)
-C       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
-
       INTEGER(KIND=IKIND) :: flag, iM, jM, iEln, a, nd, Ac, iUris
       REAL(KIND=RKIND) :: xp(nsd), xi(nsd), d(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), N(:), Nxi(:,:)
@@ -211,20 +208,22 @@ C       REAL(KIND=RKIND), INTENT(IN) :: lD(nsd,tnNo)
 
 !     For each point in the immersed surface we need to localize it 
 !     = find the fluid element that contains the node
+!     Since the fluid element could be on another processor, we need to
+!     gather the displacement values at the end      
+!     FK: it's probably better to save the element ids so that we don't
+!     have to run the search every time step, only during open or close      
       DO iUris=1, nUris
          DO iM=1, uris(iUris)%nFa
            flag = 1
            ultra = .FALSE.
            xi = 0.5_RKIND
            
-C            DO nd = 1, uris(iUris)%msh(iM)%nNo
            nd = 0
            DO WHILE(nd .LE. uris(iUris)%tnNo)
-!             Check if we were able to find the tetra, if not run the search with 
-!             an approximation 
+!             Check if we were able to find the tetra.
+!             FK: if not, the tetra is on another processor 
               IF(flag .EQ. 0) THEN 
                  IF( ultra ) THEN 
-                    write(*,*)"***ERROR,tet not found for para nd ",nd-1
                     nd = nd + 1
                     ultra = .FALSE.
                  ELSE 
@@ -240,79 +239,40 @@ C            DO nd = 1, uris(iUris)%msh(iM)%nNo
 123           CONTINUE
               flag = 1
               
-              ! FK: Should we narrow down to which mesh to save time?
-              ! This will also be problematic for parallelization
               DO jM=1, nMsh
                  ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
      2                                           Nxi(nsd,msh(jM)%eNoN))
-
-C                  write(*,*)" here 1 "
                  DO iEln = 1, msh(jM)%nEl
-C                     flag = 0
-C                     write(*,*)" here 2 "
                     DO a=1, msh(jM)%eNoN
                        Ac = msh(jM)%IEN(a,iEln)
-C                        xl(:,a)  = ( x(:,Ac) + disp)
-C                        write(*,*)" here 3 " 
-C                        IF(mvMsh) THEN 
-C                           xl(:,a) = x(:,Ac) + Dn(nsd+2:2*nsd+1,Ac) ! problem here 
-C                        ELSE 
                           xl(:,a) = x(:,Ac) 
-C                        END IF
                     END DO 
-
-C                     write(*,*)" here 4 "
-C !                    Check if it is inside 
-C                     write(*,*)" xp ", xp 
-C                     write(*,*)" here 5 "
-C                     write(*,*)" xl ", xl(:,1)
-C                     write(*,*)" xl ", xl(:,2)
-C                     write(*,*)" xl ", xl(:,3)
-C                     write(*,*)" xl ", xl(:,4)
-C                     write(*,*)" ultra ", ultra 
                     CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
 
                     IF( flag .EQ. 1) THEN 
-C                        write(*,*)" nd parav ",nd-1," inside ",iEln,": ",xl 
-C                        write(*,*)" nd ",nd," inside ",iEln,": ",xl 
-C                        write(*,*)" nd parav ",nd-1 ," inside ",iEln-1
-C                        write(*,*)" with ultra ", ultra 
-
 !                      Get displacement  
 !                      Localize p inside the parent element  
                        CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
      2                         xp, xi,fl)  
                        IF( .NOT.fl) write(*,*)" GETXI not converging "
-
 !                      evaluate N at xi 
                        CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
      2                      N,Nxi)
-
 !                      use this to compute disp al node xp 
                        d = 0._RKIND
                        DO a=1, msh(jM)%eNoN
                           Ac = msh(jM)%IEN(a,iEln)
-C                           d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-C                           d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-C                           d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
-
-C                           d(1) = d(1) - N(a)*Dn(1,Ac) 
-C                           d(2) = d(2) - N(a)*Dn(2,Ac) 
-C                           d(3) = d(3) - N(a)*Dn(3,Ac) 
 !                         We have to use Do because Dn contains the result 
 !                         coming from the solid 
                           d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
                           d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
                           d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
                        END DO
-
 !                      update uris disp                                                   
                        uris(iUris)%Yd(:,nd) = d
-
                        DEALLOCATE(xl, Nxi, N)
                        GOTO 120
                     END IF
-                 
                  END DO
                  DEALLOCATE(xl, N, Nxi)
               END DO
@@ -640,7 +600,7 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
 
          fName = TRIM(saveName)//"_uris_"// TRIM(uris(iUris)%name)//
      2          "_"//TRIM(ADJUSTL(fName))//".vtu"
-         dbg = "Writing VTU"
+         dbg = "Writing URIS VTU"
          CALL vtkInitWriter(vtu, TRIM(fName), iStat)
          IF (iStat .LT. 0) err = "VTU file write error (init)"
 
@@ -742,11 +702,10 @@ C                           d(3) = d(3) - N(a)*Dn(3,Ac)
         write(*,*) "!!!RECOMPUTING SDF for", iUris
         uris(iUris)%sdf = uris(iUris)%sdf_default
     
-        write(*,*) "!!!SDF CK for", iUris, MINVAL(uris(iUris)%x),
-     2          MAXVAL(uris(iUris)%x)
         ! FK:
         ! Each time when the URIS moves, we need to recompute the signed
-        ! distance function
+        ! distance function.
+        ! DO WE NEED TO RECOMPUTE WHEN THE MESH MOVES? Ideally not
 
         ! Now we assume that for each uris, we only have one valve
         ! We will need to work on generalization later

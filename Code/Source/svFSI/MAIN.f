@@ -373,7 +373,7 @@
             !IF (mvMsh) THEN 
             !   CALL URIS_UpdateDisp !(Do,Dn)
             !END IF
-            CALL URIS_WRITEVTUS
+            IF (cm%mas()) CALL URIS_WRITEVTUS
          END IF
 !---     end RIS/URIS stuff 
 

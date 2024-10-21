@@ -487,6 +487,11 @@
          outDof = outDof + nsd
       END IF
 
+!     SDF for each URIS      
+      IF (urisFlag) THEN
+          nOut = nOut + nUris
+          outDof = outDof + nUris
+      END IF
       ALLOCATE(outNames(nOut), outS(nOut+1), outNamesE(nOute))
 
 !     Prepare all solultions in to dataType d
@@ -731,6 +736,19 @@
                d(iM)%x(is:ie,a) = REAL(iblank(Ac), KIND=RKIND)
             END DO
          END IF
+         IF (urisFlag) THEN
+            DO iUris=1, nUris
+                cOut           = cOut + 1
+                is             = outS(cOut)
+                ie             = is
+                outS(cOut+1)   = ie + 1
+                outNames(cOut) = "URIS_SDF_"//uris(iUris)%name
+                DO a=1, msh(iM)%nNo
+                   Ac = msh(iM)%gN(a)
+                   d(iM)%x(is:ie,a) = uris(iUris)%sdf(Ac)
+                END DO
+            END DO
+         END IF
       END DO
 
 !     Integrate data from all processors
@@ -811,19 +829,6 @@
          CALL putVTK_pointData(vtu, outNames(iOut), tmpV, iStat)
          IF (iStat .LT. 0) err = "VTU file write error (point data)"
       END DO
-
-!     Write Signed distance data for URIS
-      IF (urisFlag) THEN
-          IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
-          ALLOCATE(tmpV(1,tnNo))
-          DO iUris=1, nUris
-             tmpV(1, :) = uris(iUris)%sdf
-             arrName = "URIS_SDF_"//uris(iUris)%name
-             CALL putVTK_pointData(vtu, arrName, tmpV, iStat)
-          END DO
-          IF (iStat .LT. 0) err = "VTU file write error (uris sdf)"
-          DEALLOCATE(tmpV)
-      END IF
 
 !     Write element-based variables
       ne = 0

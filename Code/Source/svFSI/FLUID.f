@@ -130,12 +130,8 @@
 
 !--         Plot the coordinates of the quad point in the current configuration 
             IF(urisFlag) THEN 
-               xq = 0._RKIND
                distSrf = 0._RKIND
                DO a=1, eNoN 
-                  xq(1) = xq(1) + fs(1)%N(a,g)*xl(1,a)
-                  xq(2) = xq(2) + fs(1)%N(a,g)*xl(2,a)
-                  xq(3) = xq(3) + fs(1)%N(a,g)*xl(3,a)
                   Ac = lM%IEN(a,e)
                   DO iUris=1, nUris
                      distSrf(iUris) = distSrf(iUris) + 
@@ -148,7 +144,7 @@
                   IF (distSrf(iUris).LE.uris(iUris)%sdf_deps) THEN
                       DDirTmp = (1+COS(PI*distSrf(iUris)/
      2                      uris(iUris)%sdf_deps))/
-     2                      (2*uris(iUris)%sdf_deps**2)
+     3                      (2*uris(iUris)%sdf_deps**2)
                       IF (DDirTmp.GT.DDir) DDir = DDirTmp
                   END IF
                END DO
