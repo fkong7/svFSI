@@ -966,6 +966,8 @@ C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)       
 !        Mesh scale factor
          REAL(KIND=RKIND) :: scF = 1._RKIND
+!        Array to store the fluid mesh elements that the uris node is in
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elemId(:,:)
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes

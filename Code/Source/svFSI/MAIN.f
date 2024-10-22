@@ -370,9 +370,9 @@
                write(*,*) "MAIN URIS af for ",iUris,uris(iUris)%clsFlg
             END DO
 
-            !IF (mvMsh) THEN 
-            !   CALL URIS_UpdateDisp !(Do,Dn)
-            !END IF
+            IF (mvMsh) THEN 
+               CALL URIS_UpdateDisp !(Do,Dn)
+            END IF
             IF (cm%mas()) CALL URIS_WRITEVTUS
          END IF
 !---     end RIS/URIS stuff 

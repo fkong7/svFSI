@@ -201,10 +201,10 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) :: flag, iM, jM, iEln, a, nd, Ac, iUris
+      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, iUris,cnt
       REAL(KIND=RKIND) :: xp(nsd), xi(nsd), d(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), N(:), Nxi(:,:)
-      LOGICAL :: ultra, fl
+      LOGICAL :: fl
 
 !     For each point in the immersed surface we need to localize it 
 !     = find the fluid element that contains the node
@@ -213,77 +213,123 @@
 !     FK: it's probably better to save the element ids so that we don't
 !     have to run the search every time step, only during open or close      
       DO iUris=1, nUris
-         DO iM=1, uris(iUris)%nFa
-           flag = 1
-           ultra = .FALSE.
-           xi = 0.5_RKIND
-           
-           nd = 0
-           DO WHILE(nd .LE. uris(iUris)%tnNo)
-!             Check if we were able to find the tetra.
-!             FK: if not, the tetra is on another processor 
-              IF(flag .EQ. 0) THEN 
-                 IF( ultra ) THEN 
-                    nd = nd + 1
-                    ultra = .FALSE.
-                 ELSE 
-                    ultra = .TRUE.
-                    GOTO 123
-                 END IF
-              ELSE
-                 nd = nd + 1
-                 ultra = .FALSE.
-              END IF
-
-              xp = uris(iUris)%x(:,nd) !+ uris(iUris)%Yd(:,nd)
-123           CONTINUE
-              flag = 1
+        ! We need to check if the valve needs to move 
+        IF (.NOT.uris(iUris)%clsFlg) THEN
+            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxOpen,1))
+        ELSE
+            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
+        END IF 
+        IF (ALLOCATED(uris(iUris)%elemId).AND.
+     2          cnt.LT.uris(iUris)%cnt) CYCLE
+    
+        CALL URIS_findTetra(iUris)
+        write(*,*) "disp 0", SHAPE(uris(iUris)%elemId), "Cm", cm%id()
+        write(*,*) uris(iUris)%elemId
+        DO nd=1, uris(iUris)%tnNo
+           write(*,*) "disp 0.1", cm%id()
+           jM = uris(iUris)%elemId(1, nd)
+           iEln = uris(iUris)%elemId(2, nd) 
+           write(*,*) "disp 0.2", cm%id()
+           xp = uris(iUris)%x(:,nd) !+ uris(iUris)%Yd(:,nd)
+           write(*,*) "disp 0.3", cm%id()
               
-              DO jM=1, nMsh
-                 ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN), 
-     2                                           Nxi(nsd,msh(jM)%eNoN))
-                 DO iEln = 1, msh(jM)%nEl
-                    DO a=1, msh(jM)%eNoN
-                       Ac = msh(jM)%IEN(a,iEln)
-                          xl(:,a) = x(:,Ac) 
-                    END DO 
-                    CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
-
-                    IF( flag .EQ. 1) THEN 
-!                      Get displacement  
-!                      Localize p inside the parent element  
-                       CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
-     2                         xp, xi,fl)  
-                       IF( .NOT.fl) write(*,*)" GETXI not converging "
-!                      evaluate N at xi 
-                       CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
+           DO a=1, msh(jM)%eNoN
+              Ac = msh(jM)%IEN(a,iEln)
+                 xl(:,a) = x(:,Ac) 
+           END DO 
+!          Get displacement  
+!          Localize p inside the parent element  
+           write(*,*) "disp 1", "Cm", cm%id()
+           CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
+     2             xp, xi,fl)  
+           IF( .NOT.fl) write(*,*)" GETXI not converging "
+!          evaluate N at xi 
+           CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
      2                      N,Nxi)
-!                      use this to compute disp al node xp 
-                       d = 0._RKIND
-                       DO a=1, msh(jM)%eNoN
-                          Ac = msh(jM)%IEN(a,iEln)
-!                         We have to use Do because Dn contains the result 
-!                         coming from the solid 
-                          d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-                          d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-                          d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
-                       END DO
-!                      update uris disp                                                   
-                       uris(iUris)%Yd(:,nd) = d
-                       DEALLOCATE(xl, Nxi, N)
-                       GOTO 120
-                    END IF
-                 END DO
-                 DEALLOCATE(xl, N, Nxi)
-              END DO
-
-120           CONTINUE
+           write(*,*) "disp 2", "Cm", cm%id()
+!          use this to compute disp al node xp 
+           d = 0._RKIND
+           DO a=1, msh(jM)%eNoN
+              Ac = msh(jM)%IEN(a,iEln)
+!             We have to use Do because Dn contains the result 
+!             coming from the solid 
+              d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
+              d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
+              d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
            END DO
-         END DO
+           write(*,*) "disp 3", "Cm", cm%id()
+!          update uris disp                                                   
+           uris(iUris)%Yd(:,nd) = d
+           write(*,*) "disp 4", "Cm", cm%id()
+           DEALLOCATE(xl, Nxi, N)
+        END DO
       END DO
       
       RETURN
       END SUBROUTINE URIS_UpdateDisp
+!####################################################################
+!--------------------------------------------------------------------
+!     This subroutine compute the disp of the immersed surface with 
+!     fem projection  
+      SUBROUTINE URIS_findTetra(iUris)
+      USE TYPEMOD
+      USE COMMOD
+      USE ALLFUN
+      IMPLICIT NONE
+
+      INTEGER(KIND=IKIND), INTENT(IN) :: iUris
+      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, ierr
+      INTEGER(KIND=IKIND), ALLOCATABLE :: local_elemId(:,:)
+      REAL(KIND=RKIND) :: xp(nsd)
+      REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:)
+      LOGICAL :: ultra
+
+!     For each point in the immersed surface we need to localize it 
+!     = find the fluid element that contains the node
+!     Since the fluid element could be on another processor, we need to
+!     gather the displacement values at the end      
+!     FK: it's probably better to save the element ids so that we don't
+!     have to run the search every time step, only during open or close      
+      ultra = .True.
+      IF (.NOT. ALLOCATED(uris(iUris)%elemId)) THEN
+         ALLOCATE(uris(iUris)%elemId(2, uris(iUris)%tnNo))
+      END IF
+      ALLOCATE(local_elemId(2, uris(iUris)%tnNo))
+      local_elemId = -1._IKIND
+      write(*,*) "findTetra: 0", cm%id()
+      DO nd=1, uris(iUris)%tnNo
+         flag = 0
+!        Check if we were able to find the tetra.
+!        FK: if not, the tetra is on another processor 
+         xp = uris(iUris)%x(:,nd) !+ uris(iUris)%Yd(:,nd)
+         DO jM=1, nMsh
+            ALLOCATE(xl(nsd,msh(jM)%eNoN)) 
+            DO iEln = 1, msh(jM)%nEl
+               DO a=1, msh(jM)%eNoN
+                  Ac = msh(jM)%IEN(a,iEln)
+                  xl(:,a) = x(:,Ac) 
+               END DO 
+               CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
+
+               IF( flag .EQ. 1) THEN 
+                  local_elemId(1, nd) = jM
+                  local_elemId(2, nd) = iEln
+                  DEALLOCATE(xl)
+                  GOTO 120
+               END IF
+            END DO
+            DEALLOCATE(xl)
+         END DO
+120      CONTINUE
+      END DO
+      write(*,*) "findTetra: 1", cm%id()
+      CALL MPI_ALLREDUCE(local_elemId, uris(iUris)%elemId, 
+     2   uris(iUris)%tnNo, MPI_INTEGER, MPI_MAX, cm%com(), ierr)
+      DEALLOCATE(local_elemId)
+      write(*,*) "findTetra: 2", cm%id()
+      
+      RETURN
+      END SUBROUTINE URIS_findTetra
 !####################################################################
 !--------------------------------------------------------------------
 !     This subroutine check if a node is inside a tetrahedron  
@@ -683,8 +729,6 @@
 
       DO iUris=1, nUris
         ! We need to check if the valve needs to move 
-        ! This cut off threshold needs to be specified from the input
-        ! file!
         IF (.NOT.uris(iUris)%clsFlg) THEN
             cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxOpen,1))
             uris(iUris)%x = uris(iUris)%DxOpen(cnt, :, :)
@@ -692,7 +736,6 @@
             cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
             uris(iUris)%x = uris(iUris)%DxClose(cnt, :, :)
         END IF 
-        write(*,*) "C CNT: ", cnt, uris(iUris)%cnt, uris(iUris)%clsFlg
         IF (ALLOCATED(uris(iUris)%sdf).AND.cnt.LT.uris(iUris)%cnt) CYCLE
 
         ALLOCATE(lX(nsd, uris(iUris)%msh(1)%eNoN))
@@ -703,12 +746,8 @@
         uris(iUris)%sdf = uris(iUris)%sdf_default
     
         ! FK:
-        ! Each time when the URIS moves, we need to recompute the signed
-        ! distance function.
-        ! DO WE NEED TO RECOMPUTE WHEN THE MESH MOVES? Ideally not
-
-        ! Now we assume that for each uris, we only have one valve
-        ! We will need to work on generalization later
+        ! Each time when the URIS moves (open/close), we need to 
+        ! recompute the signed distance function.
         ! Find the bounding box of the valve, the BBox will be 10% larger
         ! than the actual valve.
         minb = HUGE(minb)
@@ -719,11 +758,14 @@
            extra(i) = (maxb(i) - minb(i)) * 0.1
         END DO
 
-        ! Should this be computed on the reference or current
-        ! configuration?
+        ! The SDF is computed on the reference configuration, which
+        ! means that the valves will be morphed based on the fluid mesh
+        ! motion. If the fluid mesh stretches near the valve, the valve
+        ! leaflets will also be streched. Note that
+        ! this is a simplifying assumption. 
         DO ca=1, tnNo
           minS = HUGE(minS)
-          xp = x(:, ca) + Do(nsd+2:2*nsd+1,ca)
+          xp = x(:, ca)
 !         Is the node inside the BBox? 
           IF (ALL(xp.GE.minb-extra).AND.ALL(xp.LE.maxb+extra)) THEN
               ! This point is inside the BBox
@@ -735,8 +777,7 @@
                       xb = 0._RKIND
                       DO a=1, uris(iUris)%msh(iM)%eNoN
                           Ac = uris(iUris)%msh(iM)%IEN(a,e)
-                          xb = xb + uris(iUris)%x(:,Ac) + 
-     2                         uris(iUris)%Yd(:,Ac) 
+                          xb = xb + uris(iUris)%x(:,Ac)
                       END DO
                       xb = xb/REAL(uris(iUris)%msh(iM)%eNoN, KIND=RKIND)
                       dS = SQRT( SUM( (xp(:)-xb(:))**2._RKIND ) )
@@ -755,8 +796,8 @@
               xb = 0._RKIND
               DO a=1, uris(iUris)%msh(jM)%eNoN
                  Ac = uris(iUris)%msh(jM)%IEN(a,Ec)
-                 xb = xb + uris(iUris)%x(:,Ac) + uris(iUris)%Yd(:,Ac)
-                 lX(:,a) = uris(iUris)%x(:,Ac) + uris(iUris)%Yd(:,Ac)
+                 xb = xb + uris(iUris)%x(:,Ac)
+                 lX(:,a) = uris(iUris)%x(:,Ac)
               END DO
               xb   = xb / REAL(uris(iUris)%msh(jM)%eNoN, KIND=RKIND)
               DO a = 1, uris(iUris)%msh(jM)%eNoN
