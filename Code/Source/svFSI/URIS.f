@@ -243,9 +243,9 @@
               Ac = msh(jM)%IEN(a,iEln)
 !             We have to use Do because Dn contains the result 
 !             coming from the solid 
-              d(1) = d(1) - N(a)*Dn(nsd+2,Ac) 
-              d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
-              d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
+              d(1) = d(1) + N(a)*Do(nsd+2,Ac) 
+              d(2) = d(2) + N(a)*Do(nsd+3,Ac) 
+              d(3) = d(3) + N(a)*Do(nsd+4,Ac) 
            END DO
 !          update uris disp                                                   
            localYd(:,nd) = d
