@@ -968,6 +968,9 @@ C !        Displacement (new)
          REAL(KIND=RKIND) :: scF = 1._RKIND
 !        Array to store the fluid mesh elements that the uris node is in
          INTEGER(KIND=IKIND), ALLOCATABLE :: elemId(:,:)
+!        Array to how many times a uris node is found in the fluid mesh
+!        of  a processor
+         INTEGER(KIND=IKIND), ALLOCATABLE :: elemCounter(:)
 
 !        DERIVED TYPE VARIABLES
 !        IB meshes

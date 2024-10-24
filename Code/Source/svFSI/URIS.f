@@ -172,7 +172,6 @@
       meanV = 0._RKIND
       DO iM=1, nMsh 
         meanV = meanV + Integ(iM,tmpVNrm)/volI
-        write(*,*) "!!!!WHY???", iM, Integ(iM,tmpVNrm)
       END DO
       write(*,*)" mean Vel ", meanV
 
@@ -201,9 +200,11 @@
       USE ALLFUN
       IMPLICIT NONE
 
-      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, iUris,cnt
+      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, iUris, cnt, 
+     2  ierr
       REAL(KIND=RKIND) :: xp(nsd), xi(nsd), d(nsd)
-      REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), N(:), Nxi(:,:)
+      REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), N(:), Nxi(:,:),
+     2  localYd(:,:)
       LOGICAL :: fl
 
 !     For each point in the immersed surface we need to localize it 
@@ -213,40 +214,29 @@
 !     FK: it's probably better to save the element ids so that we don't
 !     have to run the search every time step, only during open or close      
       DO iUris=1, nUris
-        ! We need to check if the valve needs to move 
-        IF (.NOT.uris(iUris)%clsFlg) THEN
-            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxOpen,1))
-        ELSE
-            cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
-        END IF 
-        IF (ALLOCATED(uris(iUris)%elemId).AND.
-     2          cnt.LT.uris(iUris)%cnt) CYCLE
-    
         CALL URIS_findTetra(iUris)
-        write(*,*) "disp 0", SHAPE(uris(iUris)%elemId), "Cm", cm%id()
-        write(*,*) uris(iUris)%elemId
+        ALLOCATE(localYd(nsd, uris(iUris)%tnNo))
+        localYd = 0._RKIND
         DO nd=1, uris(iUris)%tnNo
-           write(*,*) "disp 0.1", cm%id()
            jM = uris(iUris)%elemId(1, nd)
+           ! If the fluid mesh element is not on the current proc
+           IF (jM.EQ.-1) CYCLE
            iEln = uris(iUris)%elemId(2, nd) 
-           write(*,*) "disp 0.2", cm%id()
            xp = uris(iUris)%x(:,nd) !+ uris(iUris)%Yd(:,nd)
-           write(*,*) "disp 0.3", cm%id()
-              
+           ALLOCATE(xl(nsd,msh(jM)%eNoN), N(msh(jM)%eNoN),
+     2                                 Nxi(nsd,msh(jM)%eNoN))
            DO a=1, msh(jM)%eNoN
               Ac = msh(jM)%IEN(a,iEln)
                  xl(:,a) = x(:,Ac) 
            END DO 
 !          Get displacement  
 !          Localize p inside the parent element  
-           write(*,*) "disp 1", "Cm", cm%id()
            CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
      2             xp, xi,fl)  
            IF( .NOT.fl) write(*,*)" GETXI not converging "
 !          evaluate N at xi 
            CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
      2                      N,Nxi)
-           write(*,*) "disp 2", "Cm", cm%id()
 !          use this to compute disp al node xp 
            d = 0._RKIND
            DO a=1, msh(jM)%eNoN
@@ -257,12 +247,17 @@
               d(2) = d(2) - N(a)*Dn(nsd+3,Ac) 
               d(3) = d(3) - N(a)*Dn(nsd+4,Ac) 
            END DO
-           write(*,*) "disp 3", "Cm", cm%id()
 !          update uris disp                                                   
-           uris(iUris)%Yd(:,nd) = d
-           write(*,*) "disp 4", "Cm", cm%id()
+           localYd(:,nd) = d
            DEALLOCATE(xl, Nxi, N)
         END DO
+        CALL MPI_ALLREDUCE(localYd, uris(iUris)%Yd, 
+     2      uris(iUris)%tnNo*nsd, mpreal, MPI_SUM, cm%com(), ierr)
+        DO nd=1, uris(iUris)%tnNo
+            uris(iUris)%Yd(:, nd) = uris(iUris)%Yd(:, nd)/
+     2          REAL(MAX(1,uris(iUris)%elemCounter(nd)))
+        END DO
+        DEALLOCATE(localYd)
       END DO
       
       RETURN
@@ -278,12 +273,20 @@
       IMPLICIT NONE
 
       INTEGER(KIND=IKIND), INTENT(IN) :: iUris
-      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, ierr
-      INTEGER(KIND=IKIND), ALLOCATABLE :: local_elemId(:,:)
+      INTEGER(KIND=IKIND) :: flag, jM, iEln, a, nd, Ac, ierr, cnt
+      INTEGER(KIND=IKIND), ALLOCATABLE :: local_counter(:)
       REAL(KIND=RKIND) :: xp(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:)
       LOGICAL :: ultra
-
+      ! We need to check if the valve needs to move 
+      IF (.NOT.uris(iUris)%clsFlg) THEN
+          cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxOpen,1))
+      ELSE
+          cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
+      END IF 
+      IF (ALLOCATED(uris(iUris)%elemId).AND.
+     2        cnt.LT.uris(iUris)%cnt) RETURN
+    
 !     For each point in the immersed surface we need to localize it 
 !     = find the fluid element that contains the node
 !     Since the fluid element could be on another processor, we need to
@@ -292,11 +295,15 @@
 !     have to run the search every time step, only during open or close      
       ultra = .True.
       IF (.NOT. ALLOCATED(uris(iUris)%elemId)) THEN
-         ALLOCATE(uris(iUris)%elemId(2, uris(iUris)%tnNo))
+          ALLOCATE(uris(iUris)%elemId(2,uris(iUris)%tnNo))
       END IF
-      ALLOCATE(local_elemId(2, uris(iUris)%tnNo))
-      local_elemId = -1._IKIND
-      write(*,*) "findTetra: 0", cm%id()
+      IF (.NOT. ALLOCATED(uris(iUris)%elemCounter)) THEN
+          ALLOCATE(uris(iUris)%elemCounter(uris(iUris)%tnNo))
+      END IF
+      ALLOCATE(local_counter(uris(iUris)%tnNo))
+      uris(iUris)%elemId = -1._IKIND
+      local_counter = 0._IKIND
+      uris(iUris)%elemCounter = 0._IKIND
       DO nd=1, uris(iUris)%tnNo
          flag = 0
 !        Check if we were able to find the tetra.
@@ -312,8 +319,9 @@
                CALL insideTet(msh(jM)%eNoN,xp,xl,flag, ultra)
 
                IF( flag .EQ. 1) THEN 
-                  local_elemId(1, nd) = jM
-                  local_elemId(2, nd) = iEln
+                  uris(iUris)%elemId(1, nd) = jM
+                  uris(iUris)%elemId(2, nd) = iEln
+                  local_counter = 1
                   DEALLOCATE(xl)
                   GOTO 120
                END IF
@@ -322,12 +330,9 @@
          END DO
 120      CONTINUE
       END DO
-      write(*,*) "findTetra: 1", cm%id()
-      CALL MPI_ALLREDUCE(local_elemId, uris(iUris)%elemId, 
-     2   uris(iUris)%tnNo, MPI_INTEGER, MPI_MAX, cm%com(), ierr)
-      DEALLOCATE(local_elemId)
-      write(*,*) "findTetra: 2", cm%id()
-      
+      CALL MPI_ALLREDUCE(local_counter, uris(iUris)%elemCounter, 
+     2   uris(iUris)%tnNo, mpint, MPI_SUM, cm%com(), ierr)
+      DEALLOCATE(local_counter)
       RETURN
       END SUBROUTINE URIS_findTetra
 !####################################################################
@@ -368,7 +373,6 @@
      5             .AND. (xp(3) .LE. maxb(3)) 
      6             .AND. (xp(3) .GE. minb(3)) ) THEN 
 !        The node is inside the Bounding Box
-         !FK: What if the node is inside the BBox but not poly??
          flag = IN_POLY(xp, xl, ext)
 !         CALL IN_POLY2(xp,xl, flag)
       END IF 
