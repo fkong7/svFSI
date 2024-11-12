@@ -80,8 +80,8 @@
       DO iM=1, nMsh
          volD = volD + Integ(iM,sDST)
       END DO
-      write(*,*)" volume upstream ", volU
-      write(*,*)" volume downstream ", volD
+      write(*,*)" volume upstream ", volU, uris(iUris)%name
+      write(*,*)" volume downstream ", volD, uris(iUris)%name
 
       meanPU = 0._RKIND
       meanPD = 0._RKIND
@@ -102,8 +102,8 @@
       END DO
       meanPD = meanPD/volD
 
-      write(*,*)" mean P upstream ", meanPU
-      write(*,*)" mean P downstream ", meanPD
+      write(*,*)" mean P upstream ", meanPU, uris(iUris)%name
+      write(*,*)" mean P downstream ", meanPD, uris(iUris)%name
 
 !     If the uris has passed the closing state
       IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxClose,1)) THEN
@@ -111,7 +111,8 @@
               uris(iUris)%cnt = 1
               uris(iUris)%clsFlg = .FALSE.
               urisActFlag = .TRUE.
-              write(*,*) "Set urisOpenFlag to TRUE for uris ", iUris
+              write(*,*) "Set urisOpenFlag to TRUE for uris ", 
+     2              uris(iUris)%name
           END IF
       END IF
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
@@ -153,7 +154,7 @@
       DO iM=1, nMsh
         volI = volI + Integ(iM,sImm)
       END DO
-      write(*,*)" volume inside ", volI
+      write(*,*)" volume inside ", volI, uris(iUris)%name
 
       m = nsd
       s = eq(iEq)%s 
@@ -173,7 +174,7 @@
       DO iM=1, nMsh 
         meanV = meanV + Integ(iM,tmpVNrm)/volI
       END DO
-      write(*,*)" mean Vel ", meanV
+      write(*,*)" mean Vel ", meanV, uris(iUris)%name
 
 !     If the uris has passed the open state
       IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxOpen,1)) THEN
@@ -181,10 +182,11 @@
               uris(iUris)%cnt = 1
               urisActFlag = .TRUE.
               uris(iUris)%clsFlg = .TRUE.
-              write(*,*) "Set urisCloseFlag to TRUE"
+              write(*,*) "Set urisCloseFlag to TRUE", uris(iUris)%name
           END IF
       END IF
-      write(*,*) "urisCloseFlag is ", uris(iUris)%clsFlg
+      write(*,*) "urisCloseFlag is ", uris(iUris)%clsFlg, 
+     2      uris(iUris)%name
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
@@ -422,6 +424,8 @@
          CLOSE (fid)
 
          lPtr => lPM%get(uris(iUris)%sdf_deps, "Thickness")
+         lPtr => lPM%get(uris(iUris)%clsFlg, "Valve starts as closed")
+
          uris(iUris)%tnNo = 0
          DO iM=1, uris(iUris)%nFa
             ! Set as shell

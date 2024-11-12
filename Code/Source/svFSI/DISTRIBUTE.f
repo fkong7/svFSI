@@ -571,6 +571,7 @@
 
       DO iUris=1, nUris
         write(*,*) "URIS 1.0"
+        CALL cm%bcast(uris(iUris)%name)
         CALL cm%bcast(uris(iUris)%tnNo)
         write(*,*) "URIS 1.1"
         CALL cm%bcast(uris(iUris)%nFa)
