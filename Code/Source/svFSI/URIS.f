@@ -80,8 +80,8 @@
       DO iM=1, nMsh
          volD = volD + Integ(iM,sDST)
       END DO
-      write(*,*)" volume upstream ", volU, uris(iUris)%name
-      write(*,*)" volume downstream ", volD, uris(iUris)%name
+      std = " volume upstream "//volU//" for: "//uris(iUris)%name
+      std = " volume downstream "//volD//" for: "//uris(iUris)%name
 
       meanPU = 0._RKIND
       meanPD = 0._RKIND
@@ -102,8 +102,8 @@
       END DO
       meanPD = meanPD/volD
 
-      write(*,*)" mean P upstream ", meanPU, uris(iUris)%name
-      write(*,*)" mean P downstream ", meanPD, uris(iUris)%name
+      std = " mean P upstream "//meanPU//" for: "//uris(iUris)%name
+      std = " mean P downstream "//meanPD//" for: "//uris(iUris)%name
 
 !     If the uris has passed the closing state
       IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxClose,1)) THEN
@@ -111,8 +111,8 @@
               uris(iUris)%cnt = 1
               uris(iUris)%clsFlg = .FALSE.
               urisActFlag = .TRUE.
-              write(*,*) "Set urisOpenFlag to TRUE for uris ", 
-     2              uris(iUris)%name
+              std = "Set urisOpenFlag to TRUE for uris "//" for: "//uris
+     2              (iUris)%name
           END IF
       END IF
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
@@ -154,7 +154,7 @@
       DO iM=1, nMsh
         volI = volI + Integ(iM,sImm)
       END DO
-      write(*,*)" volume inside ", volI, uris(iUris)%name
+      std = " volume inside "//volI//" for: "//uris(iUris)%name
 
       m = nsd
       s = eq(iEq)%s 
@@ -174,7 +174,7 @@
       DO iM=1, nMsh 
         meanV = meanV + Integ(iM,tmpVNrm)/volI
       END DO
-      write(*,*)" mean Vel ", meanV, uris(iUris)%name
+      std = " mean Vel "//meanV//" for: "//uris(iUris)%name
 
 !     If the uris has passed the open state
       IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxOpen,1)) THEN
@@ -182,11 +182,12 @@
               uris(iUris)%cnt = 1
               urisActFlag = .TRUE.
               uris(iUris)%clsFlg = .TRUE.
-              write(*,*) "Set urisCloseFlag to TRUE", uris(iUris)%name
+              std="Set urisCloseFlag to TRUE"//" for: "//uris
+     2          (iUris)%name
           END IF
       END IF
-      write(*,*) "urisCloseFlag is ", uris(iUris)%clsFlg, 
-     2      uris(iUris)%name
+      std = "urisCloseFlag is "//uris(iUris)%clsFlg//" for: "//uris
+     2  (iUris)%name
 
       IF (ALLOCATED(tmpV)) DEALLOCATE(tmpV)
 
@@ -235,7 +236,7 @@
 !          Localize p inside the parent element  
            CALL GETXI(msh(jM)%eType,msh(jM)%eNoN, xl, 
      2             xp, xi,fl)  
-           IF( .NOT.fl) write(*,*)" GETXI not converging "
+           IF( .NOT.fl) std="URIS GETXI not converging "
 !          evaluate N at xi 
            CALL GETGNN(nsd,msh(jM)%eType,msh(jM)%eNoN,xi,
      2                      N,Nxi)
@@ -457,7 +458,6 @@
             fid = fTmp%open()
             READ (fid,*) dispNtOpen, dispNn
             IF (dispNn .NE. uris(iUris)%msh(iM)%gnNo) THEN
-                write(*,*) dispNn, uris(iUris)%msh(iM)%gnNo
                 err = "Mismatch in node numbers between URIS mesh and
      2                displacements."
             END IF
@@ -472,7 +472,6 @@
             fid = fTmp%open()
             READ (fid,*) dispNtClose, dispNn
             IF (dispNn .NE. uris(iUris)%msh(iM)%gnNo) THEN
-                write(*,*) dispNn, uris(iUris)%msh(iM)%gnNo
                 err = "Mismatch in node numbers between URIS mesh and
      2                displacements."
             END IF
@@ -750,7 +749,7 @@
         IF (.NOT. ALLOCATED(uris(iUris)%sdf)) THEN
             ALLOCATE(uris(iUris)%sdf(tnNo))
         END IF
-        write(*,*) "!!!RECOMPUTING SDF for", iUris
+        std = "Recomputing SDF for "//uris(iUris)%name
         uris(iUris)%sdf = uris(iUris)%sdf_default
     
         ! FK:
@@ -822,7 +821,6 @@
  
           END IF
         END DO
-        write(*,*) "any nan in sdf? ", ANY(ISNAN(uris(iUris)%sdf))
         IF (ALLOCATED(lX)) DEALLOCATE(lX)
       END DO 
       RETURN

@@ -358,7 +358,6 @@
          IF(urisFlag) THEN 
             DO iUris=1, nUris
                uris(iUris)%cnt = uris(iUris)%cnt + 1
-               write(*,*) "MAIN URIS flag for ",iUris,uris(iUris)%clsFlg
                IF( uris(iUris)%clsFlg ) THEN 
                   CALL URIS_MEANP(iUris)
                ELSE 
@@ -367,7 +366,6 @@
                      GOTO 11
                   END IF
                END IF
-               write(*,*) "MAIN URIS af for ",iUris,uris(iUris)%clsFlg
             END DO
 
             IF (mvMsh) THEN 

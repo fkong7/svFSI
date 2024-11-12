@@ -99,9 +99,7 @@
       CALL cm%bcast(urisFlag)
       !     Communicating RIS info
       IF (risFlag) CALL DISTRIS(gmtl)
-      write(*,*) "DISTURIS 0"
       IF (urisFlag) CALL DISTURIS(gmtl)
-      write(*,*) "DISTURIS 1"
 
       DO iM=1, nMsh
          dbg = "Partitioning mesh "//iM
@@ -558,7 +556,6 @@
       INTEGER(KIND=IKIND), ALLOCATABLE :: OpenN(:), CloseN(:)
    
       ! We will copy the URIS valves to all processors 
-      write(*,*) "URIS 0"
       CALL cm%bcast(nUris)
       ALLOCATE(OpenN(nUris), CloseN(nUris)) 
       IF (cm%slv()) THEN 
@@ -567,33 +564,24 @@
             ALLOCATE(uris(iUris)%nrm(nsd))
          END DO
       END IF 
-      write(*,*) "URIS 1"
 
       DO iUris=1, nUris
-        write(*,*) "URIS 1.0"
         CALL cm%bcast(uris(iUris)%name)
         CALL cm%bcast(uris(iUris)%tnNo)
-        write(*,*) "URIS 1.1"
         CALL cm%bcast(uris(iUris)%nFa)
         CALL cm%bcast(uris(iUris)%sdf_default)
         CALL cm%bcast(uris(iUris)%sdf_deps)
-        write(*,*) "URIS 1.1.1"
         CALL cm%bcast(uris(iUris)%nrm)
-        write(*,*) "URIS 1.1.2"
         CALL cm%bcast(uris(iUris)%clsFlg)
         CALL cm%bcast(uris(iUris)%cnt)
         CALL cm%bcast(uris(iUris)%scF)
-        write(*,*) "URIS 1.2"
         IF (cm%slv()) THEN
             ALLOCATE(uris(iUris)%msh(uris(iUris)%nFa))
         END IF
-        write(*,*) "URIS 1.2.1"
         DO iM=1, uris(iUris)%nFa
            CALL DISTURISMSH(uris(iUris)%msh(iM), iUris)
         END DO
-        write(*,*) "URIS 1.3"
       END DO
-      write(*,*) "URIS 2"
 
       IF (cm%mas()) THEN
         DO iUris=1, nUris
@@ -601,10 +589,8 @@
             CloseN(iUris) = SIZE(uris(iUris)%DxClose, 1)
         END DO
       END IF
-      write(*,*) "URIS 3"
       CALL cm%bcast(OpenN)
       CALL cm%bcast(CloseN)
-      write(*,*) "URIS 3.1"
       IF (cm%slv()) THEN
           DO iUris=1, nUris
              ALLOCATE(uris(iUris)%DxOpen(OpenN(iUris), nsd,
@@ -615,20 +601,15 @@
              ALLOCATE(uris(iUris)%Yd(nsd, uris(iUris)%tnNo))
          END DO
       END IF
-      write(*,*) "URIS 4"
 
       DO iUris=1, nUris
         CALL cm%bcast(uris(iUris)%x)
         CALL cm%bcast(uris(iUris)%Yd)
-        write(*,*) "URIS 4.5", cm%id()
         CALL cm%bcast(uris(iUris)%DxOpen)
         CALL cm%bcast(uris(iUris)%DxClose)
-        write(*,*) SHAPE(uris(iUris)%DxOpen), "id", cm%id()
-        write(*,*) "URIS 5"
       END DO
 
       DEALLOCATE(OpenN, CloseN)
-      write(*,*) "URIS 6"
       END SUBROUTINE DISTURIS
 !--------------------------------------------------------------------
       SUBROUTINE DISTURISMSH(lM, iUris)
@@ -639,7 +620,6 @@
 
       INTEGER(KIND=IKIND) i, insd
 
-      write(*,*) "IB 0", cm%id()
       CALL cm%bcast(lM%lShpF)
       CALL cm%bcast(lM%lShl)
       CALL cm%bcast(lM%lFib)
@@ -658,7 +638,6 @@
       CALL cm%bcast(lM%fib%locNd)
       CALL cm%bcast(lM%fib%locEl)
       CALL cm%bcast(lM%fib%locGP)
-      write(*,*) "IB 1", cm%id()
 
       IF (cm%slv()) THEN
          lM%nNo = lM%gnNo
@@ -674,18 +653,13 @@
          IF (lM%fib%locGP)
      2      ALLOCATE(lM%fib%fN(nsd*lM%fib%nFn,lM%nG,lM%nEl))
       END IF
-      write(*,*) "IB 2", cm%id()
       CALL cm%bcast(lM%gN)
-      write(*,*) "IB 2.1", cm%id()
       CALL cm%bcast(lM%lN)
-      write(*,*) "IB 2.2", cm%id()
       CALL cm%bcast(lM%IEN)
-      write(*,*) "IB 2.3", cm%id()
 
       IF (lM%fib%locNd .OR. lM%fib%locEl .OR. lM%fib%locGP) THEN
          CALL cm%bcast(lM%fib%fN)
       END IF
-      write(*,*) "IB 4", cm%id()
 
       IF (lM%eType .EQ. eType_NRB) THEN
          CALL cm%bcast(lM%nSl)
@@ -709,7 +683,6 @@
             lM%bs(i)%nNo = lM%bs(i)%n - lM%bs(i)%p - 1
          END DO
       END IF
-      write(*,*) "IB 5", cm%id()
 
       RETURN
       END SUBROUTINE DISTURISMSH
