@@ -778,8 +778,6 @@
               ! This point is inside the BBox
               ! Find the closest URIS face centroid
               DO iM=1, uris(iUris)%nFa
-                  ! Here we are using original coordinates, plus 
-                  ! the displacements
                   DO e=1, uris(iUris)%msh(iM)%nEl
                       xb = 0._RKIND
                       DO a=1, uris(iUris)%msh(iM)%eNoN
@@ -816,8 +814,13 @@
               nV(:) = CROSS(xXi)
               nV(:) = nV(:) / SQRT(NORM(nV))
               dotP = NORM(xp-xb, nV)
-    
-              uris(iUris)%sdf(ca) = dotP
+              IF (dotP .LE. 0._RKIND) THEN
+                  dotP = -1.
+              ELSE
+                  dotP = 1.
+              END IF
+              uris(iUris)%sdf(ca) = dotP * minS
+              !uris(iUris)%sdf(ca) = minS
  
           END IF
         END DO
