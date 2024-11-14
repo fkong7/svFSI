@@ -324,7 +324,7 @@
                IF( flag .EQ. 1) THEN 
                   uris(iUris)%elemId(1, nd) = jM
                   uris(iUris)%elemId(2, nd) = iEln
-                  local_counter = 1
+                  local_counter(nd) = local_counter(nd) + 1
                   DEALLOCATE(xl)
                   GOTO 120
                END IF
