@@ -212,6 +212,14 @@
             IF (bin2VTK) err = "BIN to VTK conversion is not allowed"//
      2         " with dynamic remeshing"
          END IF
+
+         i = list%srch("Add URIS mesh")
+         IF (i .GT. 0) THEN
+            urisFlag = .TRUE.
+            urisActFlag = .TRUE.
+            CALL URIS_READMSH(list)
+
+         END IF
       END IF ! resetSim
 
 !--------------------------------------------------------------------
@@ -227,14 +235,6 @@
          CALL IB_READOPTS(list)
       END IF
 
-!     TO-DO: FIX HARDED CODED # of RISs
-      i = list%srch("Add URIS mesh")
-      IF (i .GT. 0) THEN
-         urisFlag = .TRUE.
-         urisActFlag = .TRUE.
-         CALL URIS_READMSH(list)
-
-      END IF
 
 !--------------------------------------------------------------------
 !     Reading equations

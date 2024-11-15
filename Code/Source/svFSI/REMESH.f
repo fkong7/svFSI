@@ -46,7 +46,7 @@
       TYPE(mshType)  :: tMsh
 
       INTEGER(KIND=IKIND), PARAMETER :: fid=1
-      INTEGER(KIND=IKIND) :: iM, i, e, a, Ac, Ec, ierr, iEq, lDof
+      INTEGER(KIND=IKIND) :: iM, i, e, a, Ac, Ec, ierr, iEq, lDof, iUris
       REAL(KIND=RKIND) :: t1, t2
       CHARACTER(LEN=stdL) :: sTmp, fTmp
 
@@ -399,6 +399,20 @@
       IF (ALLOCATED(pSn))      DEALLOCATE(pSn)
       IF (ALLOCATED(pSa))      DEALLOCATE(pSa)
 
+      IF (urisFlag) THEN
+          ! After remeshing, we will simply deallocate all quantities
+          ! computed on the mesh. These will be recomputed in uris
+          ! functions.
+          DO iUris=1, nUris
+            IF (ALLOCATED(uris(iUris)%sdf)) DEALLOCATE(uris(iUris)%sdf)
+            IF (ALLOCATED(uris(iUris)%elemId)) THEN
+                DEALLOCATE(uris(iUris)%elemId)
+            END IF
+            IF (ALLOCATED(uris(iUris)%elemCounter)) THEN
+                DEALLOCATE(uris(iUris)%elemCounter)
+            END IF
+          END DO
+      END IF
       t2 = CPUT()
 
       std = " Time taken for remeshing: "//STR(t2-t1)//" (s)"
