@@ -966,6 +966,13 @@ C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)       
 !        Mesh scale factor
          REAL(KIND=RKIND) :: scF = 1._RKIND
+!        Mean pressure upstream
+         REAL(KIND=RKIND) :: meanPU = 0._RKIND         
+!        Mean pressure downstream
+         REAL(KIND=RKIND) :: meanPD = 0._RKIND         
+!        Relaxation factor to compute weighted averages of pressure
+!        values
+         REAL(KIND=RKIND) :: relax_factor = 0.5_RKIND         
 !        Array to store the fluid mesh elements that the uris node is in
          INTEGER(KIND=IKIND), ALLOCATABLE :: elemId(:,:)
 !        Array to how many times a uris node is found in the fluid mesh

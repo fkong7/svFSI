@@ -62,7 +62,7 @@
       ALLOCATE (tmpV(maxnsd,tnNo))
       ! FK: What if there are multiple meshes??
       ! TO-DO: We need to have a sdf array for each mesh
-      Deps = uris(iUris)%sdf_deps
+      Deps = uris(iUris)%sdf_deps * 2.5_RKIND
       volU = 0._RKIND
       volD = 0._RKIND
 !     Let's compute left side 
@@ -102,12 +102,19 @@
       END DO
       meanPD = meanPD/volD
 
-      std = " mean P upstream "//meanPU//" for: "//uris(iUris)%name
-      std = " mean P downstream "//meanPD//" for: "//uris(iUris)%name
+      uris(iUris)%meanPU = uris(iUris)%relax_factor * meanPU + (1 -
+     2      uris(iUris)%relax_factor) * uris(iUris)%meanPU
+      uris(iUris)%meanPD = uris(iUris)%relax_factor * meanPD + (1 -
+     2      uris(iUris)%relax_factor) * uris(iUris)%meanPD
+
+      std = " mean P upstream "//meanPU//" "//uris(iUris)%meanPU
+     2          //" for: "//uris(iUris)%name
+      std = " mean P downstream "//meanPD//" "//uris(iUris)%meanPD
+     2          //" for: "//uris(iUris)%name
 
 !     If the uris has passed the closing state
       IF (uris(iUris)%cnt.GT.SIZE(uris(iUris)%DxClose,1)) THEN
-          IF( (meanPD .GT. meanPU)) THEN
+          IF( (uris(iUris)%meanPD .GT. uris(iUris)%meanPU)) THEN
               uris(iUris)%cnt = 1
               uris(iUris)%clsFlg = .FALSE.
               urisActFlag = .TRUE.
