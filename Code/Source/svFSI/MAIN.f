@@ -360,11 +360,11 @@
                uris(iUris)%cnt = uris(iUris)%cnt + 1
                IF( uris(iUris)%clsFlg ) THEN 
                   CALL URIS_MEANP(iUris)
-               ELSE 
-                  CALL URIS_MEANV(iUris)
                   IF( uris(iUris)%cnt .EQ. 1) THEN 
                      GOTO 11
                   END IF
+               ELSE 
+                  CALL URIS_MEANV(iUris)
                END IF
             END DO
 
