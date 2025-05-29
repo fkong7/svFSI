@@ -405,6 +405,9 @@
           ! functions.
           DO iUris=1, nUris
             IF (ALLOCATED(uris(iUris)%sdf)) DEALLOCATE(uris(iUris)%sdf)
+            IF (ALLOCATED(uris(iUris)%sdf_t)) THEN
+                DEALLOCATE(uris(iUris)%sdf_t)
+            END IF
             IF (ALLOCATED(uris(iUris)%elemId)) THEN
                 DEALLOCATE(uris(iUris)%elemId)
             END IF

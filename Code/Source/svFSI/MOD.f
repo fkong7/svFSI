@@ -946,6 +946,10 @@
          INTEGER(KIND=IKIND) :: nFa = 0
 !        Position coordinates
          REAL(KIND=RKIND), ALLOCATABLE :: x(:,:)
+!        Position coordinates at previous time step
+         REAL(KIND=RKIND), ALLOCATABLE :: x_prev(:,:)
+!        Velocity 
+         REAL(KIND=RKIND), ALLOCATABLE :: v(:,:)
 C !        Displacement (new)
          REAL(KIND=RKIND), ALLOCATABLE :: Yd(:,:)
 !        Default signed distance value away from the valve
@@ -963,7 +967,9 @@ C !        Displacement (new)
 !        Iteration count
          INTEGER(KIND=IKIND) :: cnt = 1000000
 !        URIS: signed distance function of each node to the uris
-         REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)       
+         REAL(KIND=RKIND), ALLOCATABLE :: sdf(:)
+!        URIS: time derivative of the signed distance field       
+         REAL(KIND=RKIND), ALLOCATABLE :: sdf_t(:,:)       
 !        Mesh scale factor
          REAL(KIND=RKIND) :: scF = 1._RKIND
 !        Mean pressure upstream

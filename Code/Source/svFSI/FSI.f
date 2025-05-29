@@ -45,7 +45,7 @@
      2   Dg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn,iUris
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys, iFn, nFn,iUris,j
       REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd),distSrf(nUris)
       TYPE(fsType) :: fs(2)
 
@@ -54,7 +54,7 @@
      2   dl(:,:), bfl(:,:), fN(:,:), pS0l(:,:), pSl(:), tmXl(:),
      3   ya_l(:), lR(:,:), lK(:,:,:), lKd(:,:,:)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
-     2   Nwxx(:,:), Nqx(:,:)
+     2   Nwxx(:,:), Nqx(:,:), vValve(:, :)
       REAL(KIND=RKIND)  xq(nsd), Res, DDir, DDirTmp
 
       eNoN = lM%eNoN
@@ -67,6 +67,7 @@
          vmsStab = .FALSE.
       END IF
 
+
       DDir = 0._RKIND
 
 !     l = 3, if nsd==2 ; else 6;
@@ -76,6 +77,7 @@
      2   dl(tDof,eNoN), bfl(nsd,eNoN), fN(nsd,nFn), pS0l(nsymd,eNoN),
      3   pSl(nsymd), tmXl(eNoN), ya_l(eNoN), lR(dof,eNoN),
      4   lK(dof*dof,eNoN,eNoN), lKd(dof*nsd,eNoN,eNoN))
+      ALLOCATE(vValve(nUris, nsd))
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
@@ -158,13 +160,17 @@
 !--         Plot the coordinates of the quad point in the current configuration 
             IF(urisFlag) THEN 
                distSrf = 0._RKIND
+               vValve = 0._RKIND
                DO a=1, eNoN 
                   Ac = lM%IEN(a,e)
                   DO iUris=1, nUris
                      distSrf(iUris) = distSrf(iUris) + 
      2                  fs(1)%N(a,g)*ABS(uris(iUris)%sdf(Ac))
+                     vValve(iUris, :) = vValve(iUris, :) +
+     2                      fs(1)%N(a,g)*uris(iUris)%sdf_t(:, Ac)
                   END DO
                END DO 
+
 
                DDir = 0._RKIND
                DO iUris=1, nUris
@@ -187,7 +193,7 @@
                CASE (phys_fluid)
                   CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir)
+     3               al, yl, bfl, lR, lK, DDir, vValve)
 
                CASE (phys_lElas)
                   CALL LELAS3D(fs(1)%eNoN, w, fs(1)%N(:,g), Nwx, al, dl,
@@ -245,13 +251,13 @@
                IF (ISZERO(Jac)) err = "Jac < 0 @ element "//e
             END IF
             w = fs(2)%w(g) * Jac
-
+            
             IF (nsd .EQ. 3) THEN
                SELECT CASE (cPhys)
                CASE (phys_fluid)
                   CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,
      2               ksix, fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx,
-     3               al, yl, bfl, lR, lK, DDir)
+     3               al, yl, bfl, lR, lK, DDir, vValve)
 
                CASE (phys_ustruct)
                   CALL USTRUCT3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w,

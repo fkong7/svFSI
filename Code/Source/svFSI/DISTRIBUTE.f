@@ -601,12 +601,16 @@
              ALLOCATE(uris(iUris)%DxClose(CloseN(iUris), nsd,
      2   uris(iUris)%tnNo))
              ALLOCATE(uris(iUris)%x(nsd,uris(iUris)%tnNo))
+             ALLOCATE(uris(iUris)%x_prev(nsd,uris(iUris)%tnNo))
+             ALLOCATE(uris(iUris)%v(nsd,uris(iUris)%tnNo))
              ALLOCATE(uris(iUris)%Yd(nsd, uris(iUris)%tnNo))
          END DO
       END IF
 
       DO iUris=1, nUris
         CALL cm%bcast(uris(iUris)%x)
+        CALL cm%bcast(uris(iUris)%x_prev)
+        CALL cm%bcast(uris(iUris)%v)
         CALL cm%bcast(uris(iUris)%Yd)
         CALL cm%bcast(uris(iUris)%DxOpen)
         CALL cm%bcast(uris(iUris)%DxClose)

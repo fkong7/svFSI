@@ -527,7 +527,11 @@
             DEALLOCATE(dispOpen, dispClose)
          END DO
          ALLOCATE(uris(iUris)%x(nsd,uris(iUris)%tnNo))
+         ALLOCATE(uris(iUris)%x_prev(nsd,uris(iUris)%tnNo))
+         ALLOCATE(uris(iUris)%v(nsd,uris(iUris)%tnNo))
          uris(iUris)%x = gX
+         uris(iUris)%x_prev = gX
+         uris(iUris)%v = 0._RKIND
          ALLOCATE(uris(iUris)%Yd(nsd,uris(iUris)%tnNo))
          uris(iUris)%Yd = 0._RKIND
          DEALLOCATE(gX)
@@ -594,8 +598,8 @@
       CHARACTER(LEN=stdL), ALLOCATABLE :: outNames(:)
       TYPE(dataType), ALLOCATABLE:: d(:)
 
-!     we plot coord + displ
-      nOut   = 2
+!     we plot coord + displ + velocity
+      nOut   = 3
       outDof = nOut * nsd
       ALLOCATE(outNames(nOut), outS(nOut+1))
 !     Prepare all solultions in to dataType d
@@ -637,14 +641,25 @@
             is   = outS(cOut)
             ie   = is + l - 1
             outS(cOut+1)   = ie + 1
-            outNames(1) = "coordinates"
-            outNames(2) = "URIS_displacement"
 
             DO a=1, uris(iUris)%msh(iM)%nNo
                Ac = uris(iUris)%msh(iM)%gN(a)
                d(iM)%x(is:ie,a) = uris(iUris)%Yd(s:e,Ac)
             END DO
+            
+            cOut = cOut + 1
+            is   = outS(cOut)
+            ie   = is + l - 1
+            outS(cOut+1)   = ie + 1
 
+            DO a=1, uris(iUris)%msh(iM)%nNo
+               Ac = uris(iUris)%msh(iM)%gN(a)
+               d(iM)%x(is:ie,a) = uris(iUris)%v(:,Ac)
+            END DO
+
+            outNames(1) = "coordinates"
+            outNames(2) = "URIS_displacement"
+            outNames(3) = "URIS_velocity"
             nNo = nNo +  d(iM)%nNo
             nEl = nEl +  d(iM)%nEl
          END DO
@@ -734,8 +749,11 @@
       REAL(KIND=RKIND) :: ALLOCATABLE 
       LOGICAL :: flag
 
-      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM,iUris, cnt
-      REAL(KIND=RKIND) :: dS, minS, Jac, nV(nsd), xb(nsd), dotP
+      INTEGER(KIND=IKIND) :: i, ca, a, e, Ac, Ec, iM, jM,iUris, cnt,
+     2  cnt_m_1
+      REAL(KIND=RKIND) :: dS, minS, Jac, nV(nsd), xb(nsd), dotP,
+     2  xp_plane(nsd), E1(nsd), E2(nsd), v(nsd), g11, g12, g22, b1, b2,
+     3  det, xi, eta, N1, N2, N3, u_interp(nsd)
       REAL(KIND=RKIND), ALLOCATABLE :: lX(:,:), xXi(:,:)
 
       REAL(KIND=RKIND) :: minb(nsd), maxb(nsd), extra(nsd)
@@ -749,15 +767,25 @@
         ELSE
             cnt = MIN(uris(iUris)%cnt, SIZE(uris(iUris)%DxClose,1))
             uris(iUris)%x = uris(iUris)%DxClose(cnt, :, :)
-        END IF 
-        IF (ALLOCATED(uris(iUris)%sdf).AND.cnt.LT.uris(iUris)%cnt) CYCLE
+        END IF
+
+        uris(iUris)%v = (uris(iUris)%x - uris(iUris)%x_prev)/dt
+        uris(iUris)%x_prev = uris(iUris)%x
+        ! If the valve doesn't need to move, we assign velocity to be 0. 
+        IF (ALLOCATED(uris(iUris)%sdf).AND.cnt.LT.uris(iUris)%cnt) THEN
+            uris(iUris)%sdf_t = 0._RKIND
+            CYCLE
+        END IF
 
         ALLOCATE(lX(nsd, uris(iUris)%msh(1)%eNoN))
         IF (.NOT. ALLOCATED(uris(iUris)%sdf)) THEN
+            ALLOCATE(uris(iUris)%sdf_t(nsd, tnNo))
             ALLOCATE(uris(iUris)%sdf(tnNo))
         END IF
+
         std = "Recomputing SDF for "//uris(iUris)%name
         uris(iUris)%sdf = uris(iUris)%sdf_default
+        uris(iUris)%sdf_t = 0._RKIND
     
         ! FK:
         ! Each time when the URIS moves (open/close), we need to 
@@ -827,11 +855,39 @@
                   dotP = 1.
               END IF
               uris(iUris)%sdf(ca) = dotP * minS
-              !uris(iUris)%sdf(ca) = minS
- 
+
+              ! We need to interpolate valve velocity
+              ! project xp onto the triangle plane
+              xp_plane = xp - dotP * nV
+              ! compute barycentric (ξ,η) via the planar solve:
+              E1 = lX(:, 2) - lX(:, 1)
+              E2 = lX(:, 3) - lX(:, 1)
+              v  = xp_plane - lX(:, 1)
+              
+              g11 = NORM(E1,E1);  g12 = NORM(E1,E2);  g22 = NORM(E2,E2)
+              b1  = NORM(v ,E1);  b2  = NORM(v ,E2)
+              det = g11*g22 - g12*g12
+              
+              xi  = ( g22*b1 - g12*b2 ) / det
+              eta = ( g11*b2 - g12*b1 ) / det
+              
+              ! shape‐functions:
+              N1 = 1.0 - xi - eta
+              N2 =      xi
+              N3 =      eta
+              
+              ! interpolate the valve velocity:
+              u_interp =
+     2          N1*uris(iUris)%v(:,uris(iUris)%msh(jM)%IEN(1,Ec)) +
+     3          N2*uris(iUris)%v(:,uris(iUris)%msh(jM)%IEN(2,Ec)) +
+     4          N3*uris(iUris)%v(:,uris(iUris)%msh(jM)%IEN(3,Ec))
+              !dotP = NORM(u_interp, nV)
+              !uris(iUris)%sdf_t(:, ca) = dotP * nV
+              uris(iUris)%sdf_t(:, ca) = u_interp
           END IF
         END DO
         IF (ALLOCATED(lX)) DEALLOCATE(lX)
+
       END DO 
       RETURN
       END SUBROUTINE URIS_CALCSDF

@@ -821,8 +821,14 @@
             END IF
             IF(ALLOCATED(uris(iUris)%Yd))   DEALLOCATE(uris(iUris)%Yd)
             IF(ALLOCATED(uris(iUris)%x))    DEALLOCATE(uris(iUris)%x)
+            IF(ALLOCATED(uris(iUris)%x_prev))
+     2           DEALLOCATE(uris(iUris)%x_prev)
+            IF(ALLOCATED(uris(iUris)%v))    DEALLOCATE(uris(iUris)%v)
             IF(ALLOCATED(uris(iUris)%nrm))  DEALLOCATE(uris(iUris)%nrm)
             IF(ALLOCATED(uris(iUris)%sdf))  DEALLOCATE(uris(iUris)%sdf)
+            IF(ALLOCATED(uris(iUris)%sdf_t))  THEN
+                DEALLOCATE(uris(iUris)%sdf_t)
+            END IF
             DO iM=1, uris(iUris)%nFa
                CALL DESTROY(uris(iUris)%msh(iM))
             END DO

@@ -45,14 +45,14 @@
       REAL(KIND=RKIND), INTENT(IN) :: Ag(tDof,tnNo), Yg(tDof,tnNo)
 
       LOGICAL :: vmsStab
-      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys,iUris
+      INTEGER(KIND=IKIND) a, e, g, l, Ac, eNoN, cPhys,iUris, j
       REAL(KIND=RKIND) w, Jac, ksix(nsd,nsd), xq(nsd), DDir, DDirTmp,
      2  distSrf(nUris)
       TYPE(fsType) :: fs(2)
 
       INTEGER(KIND=IKIND), ALLOCATABLE :: ptr(:)
       REAL(KIND=RKIND), ALLOCATABLE :: xl(:,:), al(:,:), yl(:,:),
-     2   bfl(:,:), lR(:,:), lK(:,:,:)
+     2   bfl(:,:), lR(:,:), lK(:,:,:), vValve(:, :)
       REAL(KIND=RKIND), ALLOCATABLE :: xwl(:,:), xql(:,:), Nwx(:,:),
      2   Nwxx(:,:), Nqx(:,:)
 
@@ -71,6 +71,8 @@
 !     FLUID: dof = nsd+1
       ALLOCATE(ptr(eNoN), xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN),
      2   bfl(nsd,eNoN), lR(dof,eNoN), lK(dof*dof,eNoN,eNoN))
+
+      ALLOCATE(vValve(nUris, nsd))
 
 !     Loop over all elements of mesh
       DO e=1, lM%nEl
@@ -131,13 +133,17 @@
 !--         Plot the coordinates of the quad point in the current configuration 
             IF(urisFlag) THEN 
                distSrf = 0._RKIND
+               vValve = 0._RKIND
                DO a=1, eNoN 
                   Ac = lM%IEN(a,e)
                   DO iUris=1, nUris
                      distSrf(iUris) = distSrf(iUris) + 
      2                  fs(1)%N(a,g)*ABS(uris(iUris)%sdf(Ac))
+                     vValve(iUris, :) = vValve(iUris, :) +
+     2                      fs(1)%N(a,g)*uris(iUris)%sdf_t(:, Ac)
                   END DO
                END DO 
+
 
                DDir = 0._RKIND
                DO iUris=1, nUris
@@ -150,11 +156,12 @@
                END DO
 
                IF(.NOT.urisActFlag) DDir = 0._RKIND
+
             END IF
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir)
+     3            bfl, lR, lK, DDir, vValve)
 
              ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_M(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -181,10 +188,11 @@
             END IF
             w = fs(2)%w(g) * Jac
 
+            
             IF (nsd .EQ. 3) THEN
                CALL FLUID3D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
      2            fs(1)%N(:,g), fs(2)%N(:,g), Nwx, Nqx, Nwxx, al, yl,
-     3            bfl, lR, lK, DDir)
+     3            bfl, lR, lK, DDir, vValve)
 
             ELSE IF (nsd .EQ. 2) THEN
                CALL FLUID2D_C(vmsStab, fs(1)%eNoN, fs(2)%eNoN, w, ksix,
@@ -224,7 +232,7 @@ C             END IF
       END SUBROUTINE CONSTRUCT_FLUID
 !####################################################################
       SUBROUTINE FLUID3D_M(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, vValve)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -232,11 +240,11 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, vValve(nUris,3)
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
-      INTEGER(KIND=IKIND) a, b, k
+      INTEGER(KIND=IKIND) a, b, k, iUris
       REAL(KIND=RKIND) ctM, ctC, amd, wl, wr, rho, tauM, tauC, tauB, kT,
      2   kS, kU, divU, gam, mu, mu_s, mu_g, p, pa, u(3), ud(3), px(3),
      3   f(3), up(3), ua(3), ux(3,3), uxx(3,3,3), es(3,3), es_x(3,3,3),
@@ -248,7 +256,6 @@ C             END IF
       ELSE
           Res = urisRes
       END IF
-
 
       ctM  = 1._RKIND
       ctC  = 36._RKIND
@@ -445,9 +452,14 @@ C             END IF
       rS(3) = mu_x(1)*es(1,3) + mu_x(2)*es(2,3) + mu_x(3)*es(3,3)
      2      + mu*d2u2(3)
 
-      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + (Res*DDir)*u(1))
-      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + (Res*DDir)*u(2))
-      up(3) = -tauM*(rho*rV(3) + px(3) - rS(3) + (Res*DDir)*u(3))
+      up(1) = -tauM*(rho*rV(1) + px(1) - rS(1) + Res*DDir*u(1))
+      up(2) = -tauM*(rho*rV(2) + px(2) - rS(2) + Res*DDir*u(2))
+      up(3) = -tauM*(rho*rV(3) + px(3) - rS(3) + Res*DDir*u(3))
+      DO iUris=1, nUris
+        up(1) = up(1) - tauM*(Res*DDir)*(-vValve(iUris,1))
+        up(2) = up(2) - tauM*(Res*DDir)*(-vValve(iUris,2))
+        up(3) = up(3) - tauM*(Res*DDir)*(-vValve(iUris,3))
+      END DO
 
       IF (vmsFlag) THEN
          tauC = 1._RKIND / (tauM * (Kxi(1,1) + Kxi(2,2) + Kxi(3,3)))
@@ -615,6 +627,12 @@ C             END IF
          lR(1,a) = lR(1,a) + (Res*DDir)*w*Nw(a)*(u(1) + up(1))
          lR(2,a) = lR(2,a) + (Res*DDir)*w*Nw(a)*(u(2) + up(2))
          lR(3,a) = lR(3,a) + (Res*DDir)*w*Nw(a)*(u(3) + up(3))
+
+         DO iUris=1, nUris
+            lR(1,a) = lR(1,a) + (Res*DDir)*w*Nw(a)*(-vValve(iUris, 1))
+            lR(2,a) = lR(2,a) + (Res*DDir)*w*Nw(a)*(-vValve(iUris, 2))
+            lR(3,a) = lR(3,a) + (Res*DDir)*w*Nw(a)*(-vValve(iUris, 3))
+         END DO
       END DO
 
       RETURN
@@ -872,7 +890,7 @@ C             END IF
       END SUBROUTINE FLUID2D_M
 !####################################################################
       SUBROUTINE FLUID3D_C(vmsFlag, eNoNw, eNoNq, w, Kxi, Nw, Nq, Nwx,
-     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir)
+     2   Nqx, Nwxx, al, yl, bfl, lR, lK, DDir, vValve)
       USE COMMOD
       USE ALLFUN
       IMPLICIT NONE
@@ -880,11 +898,11 @@ C             END IF
       INTEGER(KIND=IKIND), INTENT(IN) :: eNoNw, eNoNq
       REAL(KIND=RKIND), INTENT(IN) :: w, Kxi(3,3), Nw(eNoNw), Nq(eNoNq),
      2   Nwx(3,eNoNw), Nqx(3,eNoNq), Nwxx(6,eNoNw), al(tDof,eNoNw),
-     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir 
+     3   yl(tDof,eNoNw), bfl(3,eNoNw), DDir, vValve(nUris,3)
       REAL(KIND=RKIND), INTENT(INOUT) :: lR(dof,eNoNw),
      2   lK(dof*dof,eNoNw,eNoNw)
 
-      INTEGER(KIND=IKIND) a, b, k
+      INTEGER(KIND=IKIND) a, b, k, iUris
       REAL(KIND=RKIND) ctM, ctC, amd, wl, rho, tauM, kT, kS, kU, divU,
      2   gam, mu, mu_s, mu_g, u(3), ud(3), px(3), f(3), up(3), ux(3,3),
      3   uxx(3,3,3), es(3,3), es_x(3,3,3), esNx(3,eNoNw), mu_x(3), uNx,
@@ -1087,6 +1105,11 @@ C             END IF
          up(1) = -tauM*(rho*rV(1) + px(1) - rS(1)+(Res*DDir)*u(1))
          up(2) = -tauM*(rho*rV(2) + px(2) - rS(2)+(Res*DDir)*u(2))
          up(3) = -tauM*(rho*rV(3) + px(3) - rS(3)+(Res*DDir)*u(3))
+         DO iUris=1, nUris
+           up(1) = up(1) - tauM*(Res*DDir)*(-vValve(iUris,1))
+           up(2) = up(2) - tauM*(Res*DDir)*(-vValve(iUris,2))
+           up(3) = up(3) - tauM*(Res*DDir)*(-vValve(iUris,3))
+         END DO
 
          DO a=1, eNoNw
             uNx = u(1)*Nwx(1,a) + u(2)*Nwx(2,a) + u(3)*Nwx(3,a)

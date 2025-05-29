@@ -489,8 +489,8 @@
 
 !     SDF for each URIS      
       IF (urisFlag) THEN
-          nOut = nOut + nUris
-          outDof = outDof + nUris
+          nOut = nOut + nUris * 2
+          outDof = outDof + nUris * (1+nsd)
       END IF
       ALLOCATE(outNames(nOut), outS(nOut+1), outNamesE(nOute))
 
@@ -746,6 +746,17 @@
                 DO a=1, msh(iM)%nNo
                    Ac = msh(iM)%gN(a)
                    d(iM)%x(is:ie,a) = uris(iUris)%sdf(Ac)
+                END DO
+            END DO
+            DO iUris=1, nUris
+                cOut           = cOut + 1
+                is             = outS(cOut)
+                ie             = is + nsd - 1
+                outS(cOut+1)   = ie + 1
+                outNames(cOut) = "URIS_SDF_v_"//uris(iUris)%name
+                DO a=1, msh(iM)%nNo
+                   Ac = msh(iM)%gN(a)
+                   d(iM)%x(is:ie,a) = uris(iUris)%sdf_t(:, Ac)
                 END DO
             END DO
          END IF
